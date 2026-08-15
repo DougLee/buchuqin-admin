@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, ensureLogin } from "../api";
 const data = ref<any>(),
@@ -10,7 +10,75 @@ onMounted(async () => {
   data.value = await api.dashboard();
   loading.value = false;
 });
-const labels = ["周一", "周二", "周三", "周四", "周五", "周六", "今天"];
+
+/* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段 */
+const trend = computed<any[]>(() =>
+  Array.isArray(data.value?.trend) ? data.value.trend : [],
+);
+const CHART_W = 700,
+  CHART_H = 230;
+const chartPoints = computed(() => {
+  const list = trend.value;
+  if (!list.length) return [];
+  const max = Math.max(1, ...list.map((t) => Number(t.paidAmount) || 0));
+  const step = list.length > 1 ? CHART_W / (list.length - 1) : 0;
+  return list.map((t, i) => ({
+    x: i * step,
+    y: CHART_H - 18 - ((Number(t.paidAmount) || 0) / max) * (CHART_H - 60),
+  }));
+});
+const linePath = computed(() =>
+  chartPoints.value
+    .map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+    .join(" "),
+);
+const areaPath = computed(() =>
+  chartPoints.value.length
+    ? `${linePath.value} L${CHART_W} ${CHART_H} L0 ${CHART_H}Z`
+    : "",
+);
+const axisLabels = computed(() => {
+  const list = trend.value;
+  const max = Math.max(1, ...list.map((t) => Number(t.paidAmount) || 0));
+  return [1, 0.8, 0.6, 0.4, 0.2, 0].map((f) => {
+    const v = max * f;
+    return v >= 1000
+      ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
+      : `${Math.round(v)}`;
+  });
+});
+function pctChange(current?: number, previous?: number) {
+  if (!previous) return null;
+  return ((Number(current) - Number(previous)) / previous) * 100;
+}
+const last = computed(() => trend.value[trend.value.length - 1]),
+  prev = computed(() => trend.value[trend.value.length - 2]);
+const revenueDelta = computed(() =>
+    pctChange(last.value?.paidAmount, prev.value?.paidAmount),
+  ),
+  ordersDelta = computed(() => pctChange(last.value?.orders, prev.value?.orders));
+const miniBars = computed(() => {
+  const list = trend.value.map((t) => Number(t.orders) || 0);
+  const max = Math.max(1, ...list);
+  return list.map((v) => Math.max(4, Math.round((v / max) * 100)));
+});
+const rateGap = computed(() =>
+  data.value ? Number(data.value.kpis.fulfillmentRate) - 95 : 0,
+);
+/* 实时动态来自接口 activities 字段（无数据时展示空态） */
+const activities = computed<any[]>(() =>
+  Array.isArray(data.value?.activities) ? data.value.activities : [],
+);
+function activityClass(type: string) {
+  if (["exception", "warning", "timeout", "alert"].includes(type))
+    return "orange";
+  if (["order", "success", "delivery", "done"].includes(type)) return "green";
+  return "blue";
+}
+function deltaText(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return null;
+  return `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`;
+}
 function exportReport() {
   const rows = [["指标", "数值"], ...Object.entries(data.value.kpis)];
   const csv = rows
@@ -52,7 +120,11 @@ function exportReport() {
           <strong
             ><small>¥</small>{{ data.kpis.revenue.toLocaleString() }}</strong
           >
-          <div class="delta up">↑ 18.6% <span>较昨日</span></div>
+          <div class="delta" :class="(revenueDelta ?? 0) >= 0 ? 'up' : 'down'">
+            <template v-if="deltaText(revenueDelta)"
+              >{{ deltaText(revenueDelta) }} <span>较昨日</span></template
+            ><span v-else>暂无环比数据</span>
+          </div>
           <div class="orb"></div>
         </article>
         <article class="kpi">
@@ -60,12 +132,17 @@ function exportReport() {
           <strong>{{ data.kpis.orders }}<small> 单</small></strong>
           <div class="mini-bars">
             <i
-              v-for="(v, i) in [32, 48, 40, 62, 56, 78, 86]"
+              v-for="(v, i) in miniBars"
               :key="i"
               :style="{ height: v + '%' }"
             ></i>
           </div>
-          <div class="delta up">↑ 12.3% <span>持续增长</span></div>
+          <div class="delta" :class="(ordersDelta ?? 0) >= 0 ? 'up' : 'down'">
+            <template v-if="deltaText(ordersDelta)"
+              >{{ deltaText(ordersDelta) }}
+              <span>较昨日</span></template
+            ><span v-else>暂无环比数据</span>
+          </div>
         </article>
         <article class="kpi">
           <p>履约准时率</p>
@@ -75,7 +152,9 @@ function exportReport() {
           >
             <strong>{{ data.kpis.fulfillmentRate }}%</strong>
           </div>
-          <div class="delta up">高于目标 1.8%</div>
+          <div class="delta" :class="rateGap >= 0 ? 'up' : 'down'">
+            {{ rateGap >= 0 ? "高于" : "低于" }}目标 {{ Math.abs(rateGap).toFixed(1) }}%
+          </div>
         </article>
         <article class="kpi alert-kpi">
           <p>待处理异常</p>
@@ -98,8 +177,7 @@ function exportReport() {
           </div>
           <div class="chart">
             <div class="axis">
-              <span>5k</span><span>4k</span><span>3k</span><span>2k</span
-              ><span>1k</span><span>0</span>
+              <span v-for="label in axisLabels" :key="label">{{ label }}</span>
             </div>
             <div class="plot">
               <div class="grid-lines"><i v-for="i in 6" :key="i"></i></div>
@@ -110,29 +188,35 @@ function exportReport() {
                     <stop offset="1" stop-color="#16a45b" stop-opacity="0" />
                   </linearGradient>
                 </defs>
+                <path v-if="areaPath" :d="areaPath" fill="url(#area)" />
                 <path
-                  d="M0 180 L116 140 L232 158 L348 92 L464 112 L580 55 L700 24 L700 230 L0 230Z"
-                  fill="url(#area)"
-                />
-                <path
-                  d="M0 180 L116 140 L232 158 L348 92 L464 112 L580 55 L700 24"
+                  v-if="linePath"
+                  :d="linePath"
                   fill="none"
                   stroke="#13a15b"
                   stroke-width="4"
                 />
-                <g fill="#b9f227" stroke="#075337" stroke-width="3">
-                  <circle cx="0" cy="180" r="6" />
-                  <circle cx="116" cy="140" r="6" />
-                  <circle cx="232" cy="158" r="6" />
-                  <circle cx="348" cy="92" r="6" />
-                  <circle cx="464" cy="112" r="6" />
-                  <circle cx="580" cy="55" r="6" />
-                  <circle cx="700" cy="24" r="7" />
+                <g
+                  v-if="chartPoints.length"
+                  fill="#b9f227"
+                  stroke="#075337"
+                  stroke-width="3"
+                >
+                  <circle
+                    v-for="(p, i) in chartPoints"
+                    :key="i"
+                    :cx="p.x"
+                    :cy="p.y"
+                    :r="i === chartPoints.length - 1 ? 7 : 6"
+                  />
                 </g>
               </svg>
               <div class="x-labels">
-                <span v-for="label in labels" :key="label">{{ label }}</span>
+                <span v-for="t in trend" :key="t.date">{{ t.date }}</span>
               </div>
+              <p v-if="!trend.length" class="chart-empty">
+                暂无趋势数据，等待接口返回 trend 字段
+              </p>
             </div>
           </div>
         </article>
@@ -199,7 +283,7 @@ function exportReport() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, i) in data.hotBuildings" :key="item.name">
+              <tr v-for="(item, i) in data.hotBuildings || []" :key="item.name">
                 <td>
                   <b class="rank">{{ i + 1 }}</b>
                 </td>
@@ -211,6 +295,9 @@ function exportReport() {
                 <td>
                   <span class="status success">{{ item.onTimeRate }}%</span>
                 </td>
+              </tr>
+              <tr v-if="!(data.hotBuildings || []).length">
+                <td colspan="5" class="empty-cell">暂无楼栋排行数据</td>
               </tr>
             </tbody>
           </table>
@@ -224,22 +311,15 @@ function exportReport() {
             <span class="live"><i></i> LIVE</span>
           </div>
           <div class="activity-list">
-            <div>
-              <i class="green"></i>
+            <div v-for="(a, i) in activities" :key="i">
+              <i :class="activityClass(a.type)"></i>
               <p>
-                <b>订单 BCQ...DED 已送达</b><span>西区 5 栋 612 · 刚刚</span>
+                <b>{{ a.text }}</b><span>{{ a.time }}</span>
               </p>
             </div>
-            <div>
-              <i class="orange"></i>
-              <p><b>2 个包裹即将超时</b><span>一级配送 · 3 分钟前</span></p>
-            </div>
-            <div>
-              <i class="blue"></i>
-              <p>
-                <b>西区 7 栋完成楼下交接</b><span>楼长 陈晨 · 8 分钟前</span>
-              </p>
-            </div>
+            <p v-if="!activities.length" class="empty-cell">
+              暂无实时动态，等待接口返回 activities 字段
+            </p>
           </div>
         </article>
       </section></template

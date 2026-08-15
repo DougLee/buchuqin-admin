@@ -413,6 +413,23 @@ a {
 .delta.up {
   color: #1b9a57;
 }
+.delta.down {
+  color: #b65322;
+}
+.chart-empty,
+.empty-cell {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 22px 0;
+}
+.chart-empty {
+  position: absolute;
+  inset: 0 0 20px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
 .hero-kpi .delta {
   color: var(--lime);
 }
