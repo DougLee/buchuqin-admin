@@ -1,20 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { api, ensureLogin } from "../api";
-const data = ref<any>(),
-  loading = ref(true);
+import { api } from "../api";
+import type { DashboardActivity, DashboardData, TrendPoint } from "../types";
+const data = ref<DashboardData>(),
+  loading = ref(true),
+  loadError = ref("");
 const router = useRouter();
 onMounted(async () => {
-  await ensureLogin();
-  data.value = await api.dashboard();
-  loading.value = false;
+  try {
+    data.value = await api.dashboard();
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : "加载失败";
+  } finally {
+    loading.value = false;
+  }
 });
 
 /* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段 */
-const trend = computed<any[]>(() =>
-  Array.isArray(data.value?.trend) ? data.value.trend : [],
-);
+const trend = computed<TrendPoint[]>(() => {
+  const list = data.value?.trend;
+  return Array.isArray(list) ? list : [];
+});
 const CHART_W = 700,
   CHART_H = 230;
 const chartPoints = computed(() => {
@@ -66,9 +73,10 @@ const rateGap = computed(() =>
   data.value ? Number(data.value.kpis.fulfillmentRate) - 95 : 0,
 );
 /* 实时动态来自接口 activities 字段（无数据时展示空态） */
-const activities = computed<any[]>(() =>
-  Array.isArray(data.value?.activities) ? data.value.activities : [],
-);
+const activities = computed<DashboardActivity[]>(() => {
+  const list = data.value?.activities;
+  return Array.isArray(list) ? list : [];
+});
 function activityClass(type: string) {
   if (["exception", "warning", "timeout", "alert"].includes(type))
     return "orange";
@@ -79,7 +87,20 @@ function deltaText(value: number | null) {
   if (value === null || !Number.isFinite(value)) return null;
   return `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`;
 }
+const FLOW_LABELS: Record<string, string> = {
+  waitingPick: "待拣货",
+  waitingFirstMile: "骑手待接单",
+  firstMile: "一级配送",
+  waitingHandover: "楼下待交接",
+  lastMile: "二级配送",
+  delivered: "已送达待确认",
+  timeout: "超时异常",
+};
+function flowLabel(key: string): string {
+  return FLOW_LABELS[key] ?? key;
+}
 function exportReport() {
+  if (!data.value) return;
   const rows = [["指标", "数值"], ...Object.entries(data.value.kpis)];
   const csv = rows
     .map((row) =>
@@ -88,7 +109,7 @@ function exportReport() {
     .join("\n");
   const link = document.createElement("a");
   link.href = URL.createObjectURL(
-    new Blob(["\ufeff" + csv], { type: "text/csv" }),
+    new Blob(["﻿" + csv], { type: "text/csv" }),
   );
   link.download = `运营日报-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
@@ -113,7 +134,11 @@ function exportReport() {
     <div v-if="loading" class="skeleton-grid">
       <i v-for="i in 4" :key="i"></i>
     </div>
-    <template v-else
+    <div v-else-if="loadError" class="load-error">
+      <span>看板加载失败：{{ loadError }}</span>
+      <button class="btn ghost" @click="router.go(0)">刷新重试</button>
+    </div>
+    <template v-else-if="data"
       ><section class="kpi-grid">
         <article class="kpi hero-kpi">
           <p>今日支付金额</p>
@@ -238,17 +263,7 @@ function exportReport() {
             >
               <div class="flow-index">0{{ index + 1 }}</div>
               <div class="flow-info">
-                <span>{{
-                  (
-                    {
-                      waitingPick: "待拣货",
-                      firstMile: "一级配送",
-                      waitingHandover: "楼下待交接",
-                      lastMile: "二级配送",
-                      timeout: "超时异常",
-                    } as any
-                  )[key]
-                }}</span>
+                <span>{{ flowLabel(String(key)) }}</span>
                 <div>
                   <i
                     :style="{ width: Math.max(16, value * 9) + '%' }"

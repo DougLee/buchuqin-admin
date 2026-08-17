@@ -1,4 +1,21 @@
 import { clearSession, type SessionUser } from "./session";
+import type {
+  AdminUser,
+  AfterSale,
+  AuditLog,
+  BarcodeLookup,
+  Building,
+  Campus,
+  Coupon,
+  DashboardData,
+  InventoryTxn,
+  Order,
+  PageQuery,
+  Product,
+  Room,
+  Settlement,
+  Staff,
+} from "./types";
 
 interface ApiResult<T> {
   code: number;
@@ -16,6 +33,20 @@ let token = localStorage.getItem("adminToken") || "";
 /** 登出 / 会话失效时清空内存 token（localStorage 由 clearSession 处理）。 */
 export function clearToken() {
   token = "";
+}
+
+/**
+ * TODO(后端分页)：列表接口透传 page/pageSize query；api 仓列表接口尚未实现分页参数，
+ * 服务端会忽略未知 query 并返回全量——前端当前回退内存分页（DataPage 的
+ * filtered/paged 计算保持不变），后端分页落地后把「服务端模式」开关置为默认即可生效。
+ */
+function paginationQuery(query?: PageQuery): string {
+  return query ? `page=${query.page}&pageSize=${query.pageSize}` : "";
+}
+
+function withQuery(...parts: (string | undefined)[]): string {
+  const query = parts.filter(Boolean).join("&");
+  return query ? `?${query}` : "";
 }
 
 async function request<T>(
@@ -66,87 +97,95 @@ export async function ensureLogin() {
 }
 
 export const api = {
-  dashboard: () => request<any>("/admin/dashboard"),
-  products: () => request<any[]>("/admin/products"),
+  dashboard: () => request<DashboardData>("/admin/dashboard"),
+  products: (query?: PageQuery) =>
+    request<Product[]>(`/admin/products${withQuery(paginationQuery(query))}`),
   lookupBarcode: (barcode: string) =>
-    request<any>("/admin/products/barcode/lookup", {
+    request<BarcodeLookup>("/admin/products/barcode/lookup", {
       method: "POST",
       body: JSON.stringify({ barcode }),
     }),
   createProduct: (data: Record<string, unknown>) =>
-    request<any>("/admin/products", {
+    request<Product>("/admin/products", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateProduct: (id: string, data: { price: number; stock: number }) =>
-    request<any>(`/admin/products/${id}`, {
+    request<Product>(`/admin/products/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  inventory: () => request<any[]>("/admin/inventory"),
-  inventoryTxns: (productId?: string) =>
-    request<any[]>(
-      `/admin/inventory/txns${productId ? `?productId=${productId}` : ""}`,
+  inventory: (query?: PageQuery) =>
+    request<Product[]>(`/admin/inventory${withQuery(paginationQuery(query))}`),
+  inventoryTxns: (productId?: string, query?: PageQuery) =>
+    request<InventoryTxn[]>(
+      `/admin/inventory/txns${withQuery(productId ? `productId=${productId}` : "", paginationQuery(query))}`,
     ),
   stockIn: (data: { productId: string; quantity: number; reason: string }) =>
-    request<any>("/admin/inventory/stock-in", {
+    request<InventoryTxn>("/admin/inventory/stock-in", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   adjustInventory: (data: { productId: string; delta: number; reason: string }) =>
-    request<any>("/admin/inventory/adjust", {
+    request<InventoryTxn>("/admin/inventory/adjust", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  orders: (status = "all") => request<any[]>(`/admin/orders?status=${status}`),
+  orders: (status = "all", query?: PageQuery) =>
+    request<Order[]>(
+      `/admin/orders${withQuery(`status=${status}`, paginationQuery(query))}`,
+    ),
   orderAction: (id: string, action: string) =>
-    request<any>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
-  staff: () => request<any[]>("/admin/staff"),
+    request<Order>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
+  staff: () => request<Staff[]>("/admin/staff"),
   createStaff: (data: Record<string, unknown>) =>
-    request<any>("/admin/staff", {
+    request<Staff>("/admin/staff", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateStaff: (id: string, data: Record<string, unknown>) =>
-    request<any>(`/admin/staff/${id}`, {
+    request<Staff>(`/admin/staff/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
   deleteStaff: (id: string) =>
-    request<any>(`/admin/staff/${id}`, { method: "DELETE" }),
-  afterSales: () => request<any[]>("/admin/after-sales"),
+    request<Staff>(`/admin/staff/${id}`, { method: "DELETE" }),
+  afterSales: () => request<AfterSale[]>("/admin/after-sales"),
   reviewAfterSale: (id: string, approved: boolean) =>
-    request<any>(`/admin/after-sales/${id}/review`, {
+    request<AfterSale>(`/admin/after-sales/${id}/review`, {
       method: "POST",
       body: JSON.stringify({ approved }),
     }),
-  settlements: () => request<any[]>("/admin/settlements"),
-  campuses: () => request<any[]>("/admin/campuses"),
-  buildings: () => request<any[]>("/admin/buildings"),
+  settlements: (query?: PageQuery) =>
+    request<Settlement[]>(
+      `/admin/settlements${withQuery(paginationQuery(query))}`,
+    ),
+  campuses: () => request<Campus[]>("/admin/campuses"),
+  buildings: () => request<Building[]>("/admin/buildings"),
   createBuilding: (data: Record<string, unknown>) =>
-    request<any>("/admin/buildings", {
+    request<Building>("/admin/buildings", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateBuilding: (id: string, data: Record<string, unknown>) =>
-    request<any>(`/admin/buildings/${id}`, {
+    request<Building>(`/admin/buildings/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
   deleteBuilding: (id: string) =>
-    request<any>(`/admin/buildings/${id}`, { method: "DELETE" }),
+    request<Building>(`/admin/buildings/${id}`, { method: "DELETE" }),
   rooms: (buildingId: string) =>
-    request<any[]>(`/admin/buildings/${buildingId}/rooms`),
+    request<Room[]>(`/admin/buildings/${buildingId}/rooms`),
   createRoom: (buildingId: string, data: { floor: number; roomNo: string }) =>
-    request<any>(`/admin/buildings/${buildingId}/rooms`, {
+    request<Room>(`/admin/buildings/${buildingId}/rooms`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
   deleteRoom: (buildingId: string, roomId: string) =>
-    request<any>(`/admin/buildings/${buildingId}/rooms/${roomId}`, {
+    request<Room>(`/admin/buildings/${buildingId}/rooms/${roomId}`, {
       method: "DELETE",
     }),
-  coupons: () => request<any[]>("/admin/coupons"),
+  coupons: () => request<Coupon[]>("/admin/coupons"),
   createCoupon: (data: {
     name: string;
     amount: number;
@@ -154,20 +193,20 @@ export const api = {
     total: number;
     expiresAt: string;
   }) =>
-    request<any>("/admin/coupons", {
+    request<Coupon>("/admin/coupons", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateCouponStatus: (id: string, status: "active" | "paused") =>
-    request<any>(`/admin/coupons/${id}`, {
+    request<Coupon>(`/admin/coupons/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
   issueCoupon: (id: string, userIds: string[]) =>
-    request<any>(`/admin/coupons/${id}/issue`, {
+    request<Coupon>(`/admin/coupons/${id}/issue`, {
       method: "POST",
       body: JSON.stringify({ userIds }),
     }),
-  adminUsers: () => request<any[]>("/admin/users"),
-  audits: () => request<any[]>("/admin/audit-logs"),
+  adminUsers: () => request<AdminUser[]>("/admin/users"),
+  audits: () => request<AuditLog[]>("/admin/audit-logs"),
 };

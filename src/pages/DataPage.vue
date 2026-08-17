@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { api, ensureLogin } from "../api";
+import { api } from "../api";
+import { canWrite } from "../session";
+import type {
+  AdminRow,
+  AdminUser,
+  BarcodeLookup,
+  Building,
+  Coupon,
+  InventoryTxn,
+  PageQuery,
+  Product,
+  Room,
+  Staff,
+} from "../types";
 const route = useRoute(),
-  rows = ref<any[]>([]),
+  rows = ref<AdminRow[]>([]),
   loading = ref(true),
+  loadError = ref(""),
   keyword = ref(""),
-  selected = ref<any>(),
+  selected = ref<AdminRow>(),
   message = ref(""),
   messageError = ref(false),
   creating = ref(false),
@@ -14,6 +28,7 @@ const route = useRoute(),
   video = ref<HTMLVideoElement>(),
   scanError = ref(""),
   confirmDelete = ref(false),
+  productEdit = ref({ price: 0, stock: 0 }),
   productForm = ref({
     barcode: "",
     name: "",
@@ -28,20 +43,23 @@ const route = useRoute(),
   });
 const statusFilter = ref("all"),
   page = ref(1),
-  pageSize = 10;
+  pageSize = 10,
+  serverMode = ref(false);
 let cameraStream: MediaStream | undefined;
 
 /* ---------- 通用表单抽屉（新建/编辑：优惠券、楼栋、员工、库存操作） ---------- */
+type FormValue = string | number | boolean;
 interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "date" | "select" | "checkbox";
+  type?: "text" | "number" | "date" | "datetime" | "select" | "checkbox";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
   min?: number;
   step?: number;
   optional?: boolean;
+  optionalLabel?: string;
 }
 interface FormMeta {
   eyebrow: string;
@@ -49,14 +67,14 @@ interface FormMeta {
   submit: string;
   fields: FieldDef[];
   done: string;
-  save: (data: Record<string, any>) => Promise<void>;
+  save: (data: Record<string, FormValue>) => Promise<void>;
 }
 const formOpen = ref(false),
   formError = ref(""),
   formSaving = ref(false),
-  formData = ref<Record<string, any>>({}),
+  formData = ref<Record<string, FormValue>>({}),
   formMeta = ref<FormMeta>();
-function openForm(meta: FormMeta, initial: Record<string, any>) {
+function openForm(meta: FormMeta, initial: Record<string, FormValue>) {
   formMeta.value = meta;
   formData.value = { ...initial };
   formError.value = "";
@@ -70,8 +88,12 @@ function fieldOptions(field: FieldDef) {
     current !== "" &&
     !options.some((o) => String(o.value) === String(current))
   )
-    options.push({ value: current, label: `当前值：${current}` });
+    options.push({ value: String(current), label: `当前值：${current}` });
   return options;
+}
+function fieldInputType(field: FieldDef): string {
+  if (field.type === "datetime") return "datetime-local";
+  return field.type || "text";
 }
 async function submitForm() {
   const meta = formMeta.value;
@@ -91,7 +113,7 @@ async function submitForm() {
 }
 
 /* ---------- 楼栋 / 寝室 ---------- */
-const buildings = ref<any[]>([]);
+const buildings = ref<Building[]>([]);
 async function ensureBuildings() {
   if (!buildings.value.length) buildings.value = await api.buildings();
   return buildings.value;
@@ -102,14 +124,13 @@ function buildingOptions() {
 async function refreshBuildings() {
   buildings.value = await api.buildings();
 }
-function buildingPayload(d: Record<string, any>) {
-  const payload: Record<string, any> = {
+function buildingPayload(d: Record<string, FormValue>) {
+  return {
     name: String(d.name || "").trim(),
     floors: Number(d.floors),
     hasElevator: !!d.hasElevator,
     gender: String(d.gender || "").trim(),
   };
-  return payload;
 }
 function openBuildingCreate() {
   openForm(
@@ -133,7 +154,7 @@ function openBuildingCreate() {
     { name: "", floors: 6, gender: "mixed", hasElevator: true },
   );
 }
-function openBuildingEdit(row: any) {
+function openBuildingEdit(row: Building) {
   selected.value = undefined;
   openForm(
     {
@@ -181,12 +202,12 @@ async function removeBuilding() {
 /* 寝室管理抽屉 */
 const roomsOpen = ref(false),
   roomsLoading = ref(false),
-  rooms = ref<any[]>([]),
-  roomsBuilding = ref<any>(),
+  rooms = ref<Room[]>([]),
+  roomsBuilding = ref<Building>(),
   roomError = ref(""),
   roomConfirmId = ref(""),
   roomForm = ref({ floor: 1, roomNo: "" });
-async function openRooms(building: any) {
+async function openRooms(building: Building) {
   selected.value = undefined;
   roomsBuilding.value = building;
   roomsOpen.value = true;
@@ -248,12 +269,12 @@ const ROLE_OPTIONS = [
   { value: "fulltime-rider", label: "全职配送员" },
   { value: "parttime-rider", label: "兼职配送员" },
 ];
-function staffPayload(d: Record<string, any>) {
-  const payload: Record<string, any> = {
+function staffPayload(d: Record<string, FormValue>) {
+  const payload: Record<string, FormValue> = {
     name: String(d.name || "").trim(),
-    role: d.role,
+    role: String(d.role || ""),
     staffNo: String(d.staffNo || "").trim(),
-    status: d.status,
+    status: String(d.status || "online"),
   };
   if (d.buildingId) payload.buildingId = d.buildingId;
   return payload;
@@ -281,7 +302,7 @@ function openStaffCreate() {
     { name: "", staffNo: "", role: "building-manager", buildingId: "", status: "online" },
   );
 }
-function openStaffEdit(row: any) {
+function openStaffEdit(row: Staff) {
   selected.value = undefined;
   void ensureBuildings();
   openForm(
@@ -305,7 +326,7 @@ function openStaffEdit(row: any) {
     {
       name: row.name,
       staffNo: row.staffNo,
-      role: row.role ?? row.roleText,
+      role: row.role ?? "building-manager",
       buildingId: row.buildingId ?? "",
       status: row.status ?? "online",
     },
@@ -353,7 +374,7 @@ function openCouponCreate() {
           amount: Number(d.amount),
           threshold: Number(d.threshold),
           total: Number(d.total),
-          expiresAt: d.expiresAt,
+          expiresAt: String(d.expiresAt),
         });
       },
     },
@@ -362,9 +383,10 @@ function openCouponCreate() {
 }
 async function toggleCoupon() {
   if (!selected.value) return;
-  const next = selected.value.status === "paused" ? "active" : "paused";
+  const coupon = selected.value as Coupon;
+  const next = coupon.status === "paused" ? "active" : "paused";
   try {
-    await api.updateCouponStatus(selected.value.id, next);
+    await api.updateCouponStatus(coupon.id, next);
     notify(next === "paused" ? "优惠券已暂停发放" : "优惠券已重新启用");
     selected.value = undefined;
     await load();
@@ -374,13 +396,13 @@ async function toggleCoupon() {
 }
 /* 定向发放抽屉 */
 const issueOpen = ref(false),
-  issueCouponRow = ref<any>(),
-  users = ref<any[]>([]),
+  issueCouponRow = ref<Coupon>(),
+  users = ref<AdminUser[]>([]),
   usersLoading = ref(false),
   usersError = ref(""),
   issueChecked = ref<Record<string, boolean>>({}),
   manualUserIds = ref("");
-async function openIssue(coupon: any) {
+async function openIssue(coupon: Coupon) {
   selected.value = undefined;
   issueCouponRow.value = coupon;
   issueOpen.value = true;
@@ -407,10 +429,10 @@ const selectedUserIds = computed(() => {
     .filter(Boolean);
   return [...new Set([...checked, ...manual])];
 });
-function userLabel(u: any) {
-  return u.name || u.nickname || u.phone || u.id;
+function userLabel(u: AdminUser) {
+  return u.nickname || u.phone || u.id;
 }
-function userSub(u: any) {
+function userSub(u: AdminUser) {
   return u.phone || u.id;
 }
 async function confirmIssue() {
@@ -432,7 +454,7 @@ async function confirmIssue() {
 }
 
 /* ---------- 库存：出入库操作 + 流水 ---------- */
-const productsCache = ref<any[]>([]);
+const productsCache = ref<Product[]>([]);
 async function ensureProducts() {
   if (!productsCache.value.length) productsCache.value = await api.products();
   return productsCache.value;
@@ -473,9 +495,9 @@ function openStockForm(kind: "stock-in" | "adjust") {
             isStockIn ? "入库数量必须大于 0" : "调整数量不能为 0",
           );
         if (isStockIn)
-          await api.stockIn({ productId: d.productId, quantity: qty, reason });
+          await api.stockIn({ productId: String(d.productId), quantity: qty, reason });
         else
-          await api.adjustInventory({ productId: d.productId, delta: qty, reason });
+          await api.adjustInventory({ productId: String(d.productId), delta: qty, reason });
       },
     },
     isStockIn
@@ -489,27 +511,33 @@ function switchInvTab(tab: string) {
   statusFilter.value = "all";
   page.value = 1;
 }
-const inventoryTxnsConfig = {
+interface SectionConfig {
+  title: string;
+  eyebrow: string;
+  desc: string;
+  loader: (query?: PageQuery) => Promise<AdminRow[]>;
+  columns: [string, string][];
+}
+const inventoryTxnsConfig: SectionConfig = {
   title: "库存与批次",
   eyebrow: "WAREHOUSE INVENTORY",
   desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-  loader: () => api.inventoryTxns(),
+  loader: (query) => api.inventoryTxns(undefined, query),
   columns: [
     ["createdAt", "时间"],
     ["type", "类型"],
-    ["name", "商品"],
+    ["product", "商品"],
     ["quantity", "数量"],
     ["reason", "原因"],
     ["operator", "操作人"],
   ],
 };
-
-const configs: Record<string, any> = {
+const configs: Record<string, SectionConfig> = {
   orders: {
     title: "订单与履约",
     eyebrow: "ORDER CONTROL",
     desc: "监控订单全生命周期与两段配送进度。",
-    loader: api.orders,
+    loader: (query) => api.orders("all", query),
     columns: [
       ["orderNo", "订单编号"],
       ["statusText", "当前状态"],
@@ -522,7 +550,7 @@ const configs: Record<string, any> = {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
     desc: "维护商品资料、校园售价与销售状态。",
-    loader: api.products,
+    loader: (query) => api.products(query),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -536,7 +564,7 @@ const configs: Record<string, any> = {
     title: "库存与批次",
     eyebrow: "WAREHOUSE INVENTORY",
     desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-    loader: api.inventory,
+    loader: (query) => api.inventory(query),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -551,7 +579,7 @@ const configs: Record<string, any> = {
     title: "履约人员",
     eyebrow: "TEAM PERFORMANCE",
     desc: "楼长与配送员账号状态、绩效和服务范围。",
-    loader: api.staff,
+    loader: () => api.staff(),
     columns: [
       ["staffNo", "工号"],
       ["name", "姓名"],
@@ -566,7 +594,7 @@ const configs: Record<string, any> = {
     title: "售后与退款",
     eyebrow: "AFTER-SALES DESK",
     desc: "集中审核质量投诉、退款与异常凭证。",
-    loader: api.afterSales,
+    loader: () => api.afterSales(),
     columns: [
       ["id", "售后单"],
       ["type", "类型"],
@@ -579,13 +607,13 @@ const configs: Record<string, any> = {
     title: "财务结算",
     eyebrow: "FINANCE SETTLEMENT",
     desc: "月度账单、配送提成和跨期调整。",
-    loader: api.settlements,
+    loader: (query) => api.settlements(query),
     columns: [
       ["staffName", "人员"],
       ["roleText", "角色"],
       ["period", "账期"],
       ["baseSalary", "底薪"],
-      ["commission", "提成"],
+      ["commissionTotal", "提成"],
       ["adjustment", "调整"],
       ["payable", "应结"],
       ["status", "状态"],
@@ -595,7 +623,7 @@ const configs: Record<string, any> = {
     title: "校园与组织",
     eyebrow: "CAMPUS NETWORK",
     desc: "管理楼栋、寝室与员工账号的组织服务网络。",
-    loader: api.buildings,
+    loader: () => api.buildings(),
     columns: [
       ["name", "楼栋"],
       ["floors", "楼层"],
@@ -609,7 +637,7 @@ const configs: Record<string, any> = {
     title: "营销活动",
     eyebrow: "GROWTH CAMPAIGNS",
     desc: "配置优惠券预算、领取门槛与核销效果。",
-    loader: api.coupons,
+    loader: () => api.coupons(),
     columns: [
       ["name", "优惠券"],
       ["amount", "面额"],
@@ -625,7 +653,7 @@ const configs: Record<string, any> = {
     title: "审计日志",
     eyebrow: "AUDIT TRAIL",
     desc: "追踪关键状态、金额与权限变更。",
-    loader: api.audits,
+    loader: () => api.audits(),
     columns: [
       ["createdAt", "时间"],
       ["operator", "操作人"],
@@ -642,23 +670,28 @@ const createLabels: Record<string, string> = {
   staff: "＋ 新建员工账号",
 };
 const section = computed(() => String(route.params.section)),
-  config = computed(() => {
+  config = computed<SectionConfig>(() => {
     if (section.value === "inventory" && invTab.value === "txns")
       return inventoryTxnsConfig;
     return configs[section.value] || configs.orders;
   }),
-  canCreate = computed(() => Boolean(createLabels[section.value])),
+  canWriteSection = computed(() => canWrite(section.value)),
+  canCreate = computed(
+    () => Boolean(createLabels[section.value]) && canWriteSection.value,
+  ),
   filtered = computed(() =>
-    rows.value.filter(
-      (row) =>
+    rows.value.filter((row) => {
+      const record = row as unknown as Record<string, unknown>;
+      return (
         JSON.stringify(row)
           .toLowerCase()
           .includes(keyword.value.toLowerCase()) &&
         (statusFilter.value === "all" ||
-          [row.status, row.statusText, String(row.online)].some((value) =>
-            String(value ?? "").includes(statusFilter.value),
-          )),
-    ),
+          [record.status, record.statusText, String(record.online ?? "")].some(
+            (value) => String(value ?? "").includes(statusFilter.value),
+          ))
+      );
+    }),
   ),
   totalPages = computed(() =>
     Math.max(1, Math.ceil(filtered.value.length / pageSize)),
@@ -668,11 +701,23 @@ const section = computed(() => String(route.params.section)),
   );
 async function load() {
   loading.value = true;
-  await ensureLogin();
-  rows.value = await config.value.loader();
-  loading.value = false;
+  loadError.value = "";
+  try {
+    rows.value = await config.value.loader(
+      serverMode.value ? { page: page.value, pageSize } : undefined,
+    );
+  } catch (error) {
+    rows.value = [];
+    loadError.value = error instanceof Error ? error.message : "加载失败";
+  } finally {
+    loading.value = false;
+  }
 }
 onMounted(load);
+watch(serverMode, () => {
+  page.value = 1;
+  void load();
+});
 watch(
   () => route.query.q,
   (value) => {
@@ -687,18 +732,32 @@ watch(
   () => {
     selected.value = undefined;
     invTab.value = "stock";
+    page.value = 1;
     load();
   },
 );
-function display(row: any, key: string) {
-  const v = row[key];
-  if (key === "hasElevator") return row.hasElevator ? "有电梯" : "无电梯";
+const STATUS_TEXT: Record<string, string> = {
+  "pending-review": "待复核",
+  confirmed: "已确认",
+  paid: "已支付",
+  active: "启用",
+  paused: "已暂停",
+  disabled: "已停用",
+};
+function display(row: AdminRow, key: string) {
+  const record = row as unknown as Record<string, unknown>;
+  const v = record[key];
+  if (key === "hasElevator") return record.hasElevator ? "有电梯" : "无电梯";
   if (key === "gender")
     return (
       ({ male: "男生", female: "女生", mixed: "混合" } as Record<string, string>)[
         String(v)
       ] ?? (v || "—")
     );
+  if (key === "product") {
+    const product = record.product as { name?: string } | undefined;
+    return product?.name ?? "—";
+  }
   if (key === "expiresAt")
     return v ? String(v).replace("T", " ").slice(0, 10) : "—";
   if (typeof v === "boolean") return v ? "在线" : "离线";
@@ -708,6 +767,7 @@ function display(row: any, key: string) {
       "price",
       "payableAmount",
       "baseSalary",
+      "commissionTotal",
       "commission",
       "adjustment",
       "payable",
@@ -717,30 +777,55 @@ function display(row: any, key: string) {
   )
     return `¥${v}`;
   if (key === "onTimeRate") return `${v}%`;
-  if (key === "createdAt") return String(v).replace("T", " ").slice(0, 16);
+  if (key === "status" && typeof v === "string" && STATUS_TEXT[v])
+    return STATUS_TEXT[v];
+  if (
+    ["createdAt", "startAt", "endAt", "effectiveAt", "confirmedAt", "paidAt"].includes(
+      key,
+    )
+  )
+    return v ? String(v).replace("T", " ").slice(0, 16) : "—";
   return v ?? "—";
 }
-function txnQuantity(row: any) {
-  const v = row.quantity ?? row.delta;
+function txnQuantity(row: AdminRow) {
+  const txn = row as InventoryTxn;
+  const v = txn.quantity ?? txn.delta;
   if (v === undefined || v === null) return "—";
-  return row.type === "adjust" && Number(v) > 0 ? `+${v}` : String(v);
+  return txn.type === "adjust" && Number(v) > 0 ? `+${v}` : String(v);
+}
+function isStockIn(row: AdminRow) {
+  return (row as InventoryTxn).type === "stock-in";
+}
+function txnTypeText(row: AdminRow) {
+  return (row as InventoryTxn).type === "stock-in" ? "采购入库" : "盘点调整";
+}
+function rowKey(row: AdminRow): string {
+  const record = row as unknown as Record<string, unknown>;
+  return String(row.id ?? record.orderNo ?? record.staffNo ?? record.period ?? "");
 }
 function notify(text: string, isError = false) {
   message.value = text;
   messageError.value = isError;
   setTimeout(() => (message.value = ""), 2600);
 }
-function openDetail(row: any) {
+function openDetail(row: AdminRow) {
   confirmDelete.value = false;
   selected.value = { ...row };
+  if (section.value === "products") {
+    const product = row as Product;
+    productEdit.value = {
+      price: Number(product.price),
+      stock: Number(product.availableStock ?? product.stock ?? 0),
+    };
+  }
 }
 async function act(action: string) {
   if (!selected.value) return;
   try {
     if (section.value === "products")
       await api.updateProduct(selected.value.id, {
-        price: Number(selected.value.price),
-        stock: Number(selected.value.availableStock),
+        price: Number(productEdit.value.price),
+        stock: Number(productEdit.value.stock),
       });
     else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
@@ -757,23 +842,19 @@ async function act(action: string) {
 }
 function exportData() {
   const csv = [
-    config.value.columns.map((c: any) => c[1]),
+    config.value.columns.map((c) => c[1]),
     ...filtered.value.map((row) =>
-      config.value.columns.map((c: any) =>
+      config.value.columns.map((c) =>
         c[0] === "quantity" && section.value === "inventory"
           ? txnQuantity(row)
-          : display(row, c[0]),
+          : String(display(row, c[0])),
       ),
     ),
   ]
-    .map((line) =>
-      line.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(","),
-    )
+    .map((line) => line.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
     .join("\n");
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(
-    new Blob(["\ufeff" + csv], { type: "text/csv" }),
-  );
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
   a.download = `${config.value.title}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
@@ -808,24 +889,40 @@ async function lookup() {
     scanError.value = "请输入 8—14 位商品条码";
     return;
   }
-  const result = await api.lookupBarcode(code);
-  if (result.found && result.exists !== false) {
-    scanError.value = "该商品已存在，可直接编辑库存与价格";
-    selected.value = {
-      ...result.product,
-      availableStock: result.product.stock,
+  try {
+    const result: BarcodeLookup = await api.lookupBarcode(code);
+    if (result.found && result.exists !== false) {
+      scanError.value = "该商品已存在，可直接编辑库存与价格";
+      selected.value = {
+        ...result.product,
+        availableStock: result.product.stock,
+      } as Product;
+      closeCreate();
+      return;
+    }
+    const found = result.product;
+    productForm.value = {
+      barcode: found.barcode ?? productForm.value.barcode,
+      name: found.name ?? productForm.value.name,
+      subtitle: found.subtitle ?? productForm.value.subtitle,
+      categoryId: found.categoryId ?? productForm.value.categoryId,
+      price: found.price ?? productForm.value.price,
+      originalPrice: found.originalPrice ?? productForm.value.originalPrice,
+      stock: found.stock ?? productForm.value.stock,
+      tag: found.tag ?? productForm.value.tag,
+      image: found.image ?? productForm.value.image,
+      weight: found.weight ?? productForm.value.weight,
     };
-    closeCreate();
-    return;
+    scanError.value = result.found
+      ? "已从公共条码库带出基础资料，请核对价格和库存"
+      : "未匹配到商品资料，请补全后保存";
+  } catch (error) {
+    scanError.value = error instanceof Error ? error.message : "条码查询失败";
   }
-  productForm.value = { ...productForm.value, ...result.product };
-  scanError.value = result.found
-    ? "已从公共条码库带出基础资料，请核对价格和库存"
-    : "未匹配到商品资料，请补全后保存";
 }
 async function startScan() {
   scanError.value = "";
-  const Detector = (window as any).BarcodeDetector;
+  const Detector = window.BarcodeDetector;
   if (!Detector) {
     scanError.value = "当前浏览器不支持摄像头条码识别，请手工输入条码";
     return;
@@ -870,11 +967,21 @@ async function saveProduct() {
     scanError.value = "请填写商品名称";
     return;
   }
-  await api.createProduct(productForm.value);
-  notify("SKU 已录入，商品数据已同步");
-  closeCreate();
-  await load();
+  try {
+    await api.createProduct(productForm.value);
+    notify("SKU 已录入，商品数据已同步");
+    closeCreate();
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  }
 }
+const couponPaused = computed(
+  () =>
+    Boolean(selected.value) &&
+    String((selected.value as unknown as Record<string, unknown>).status) ===
+      "paused",
+);
 </script>
 <template>
   <div class="workspace">
@@ -884,19 +991,12 @@ async function saveProduct() {
         <h1>{{ config.title }}</h1>
         <p>{{ config.desc }}</p>
       </div>
-      <button
-        class="btn primary"
-        :disabled="!canCreate"
-        @click="openCreate"
-      >
+      <button v-if="canCreate" class="btn primary" @click="openCreate">
         {{ createLabels[section] || "＋ 新建记录" }}
       </button>
     </div>
     <div class="toolbar">
-      <div
-        v-if="section === 'inventory'"
-        class="segmented inv-tabs"
-      >
+      <div v-if="section === 'inventory'" class="segmented inv-tabs">
         <button :class="{ active: invTab === 'stock' }" @click="switchInvTab('stock')">
           当前库存
         </button>
@@ -926,7 +1026,7 @@ async function saveProduct() {
         <option value="false">离线</option>
       </select>
       <div class="toolbar-spacer"></div>
-      <template v-if="section === 'inventory' && invTab === 'stock'">
+      <template v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')">
         <button class="btn ghost" @click="openStockForm('adjust')">
           盘点调整
         </button>
@@ -936,6 +1036,10 @@ async function saveProduct() {
       </template>
       <button class="btn ghost" @click="exportData">导出数据</button>
     </div>
+    <div v-if="loadError" class="load-error">
+      <span>加载失败：{{ loadError }}</span>
+      <button class="btn ghost" @click="load">重试</button>
+    </div>
     <div class="data-panel">
       <div class="data-summary">
         <div>
@@ -944,7 +1048,9 @@ async function saveProduct() {
         </div>
         <p>
           <span class="live-dot"></span>
-          {{ section === "inventory" && invTab === "txns" ? "流水已同步" : "数据已同步" }}
+          {{
+            section === "inventory" && invTab === "txns" ? "流水已同步" : "数据已同步"
+          }}
         </p>
       </div>
       <div class="table-wrap">
@@ -961,53 +1067,76 @@ async function saveProduct() {
                 <div class="row-skeleton"></div>
               </td>
             </tr>
-            <tr v-for="row in paged" :key="row.id || row.orderNo">
-              <td v-for="col in config.columns" :key="col[0]">
-                <span
-                  v-if="col[0] === 'type' && section === 'inventory' && invTab === 'txns'"
-                  class="status"
-                  :class="{ success: row.type === 'stock-in' }"
-                  >{{ row.type === "stock-in" ? "采购入库" : "盘点调整" }}</span
-                ><span
-                  v-else-if="['status', 'statusText', 'online'].includes(col[0])"
-                  class="status"
-                  :class="{
-                    success: String(display(row, col[0])).match(
-                      /在线|完成|active|on-sale|confirmed|approved/,
-                    ),
-                    warning: String(display(row, col[0])).match(/待|pending|paused/),
-                  }"
-                  >{{ display(row, col[0]) }}</span
-                ><strong
-                  v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
-                  >{{ display(row, col[0]) }}</strong
-                ><span v-else-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'">{{
-                  txnQuantity(row)
-                }}</span
-                ><span v-else>{{ display(row, col[0]) }}</span>
-              </td>
-              <td>
-                <button
-                  class="more"
-                  aria-label="更多操作"
-                  @click="openDetail(row)"
-                >
-                  •••
-                </button>
-              </td>
-            </tr>
+            <template v-else>
+              <tr v-if="!paged.length">
+                <td :colspan="config.columns.length + 1" class="empty-cell">
+                  {{ loadError ? "加载失败，请重试" : "暂无数据" }}
+                </td>
+              </tr>
+              <tr v-for="row in paged" :key="rowKey(row)">
+                <td v-for="col in config.columns" :key="col[0]">
+                  <span
+                    v-if="col[0] === 'type' && section === 'inventory' && invTab === 'txns'"
+                    class="status"
+                    :class="{ success: isStockIn(row) }"
+                    >{{ txnTypeText(row) }}</span
+                  ><span
+                    v-else-if="['status', 'statusText', 'online'].includes(col[0])"
+                    class="status"
+                    :class="{
+                      success: String(display(row, col[0])).match(
+                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付/,
+                      ),
+                      warning: String(display(row, col[0])).match(
+                        /待|pending|paused|已暂停|复核/,
+                      ),
+                    }"
+                    >{{ display(row, col[0]) }}</span
+                  ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
+                    >{{ display(row, col[0]) }}</strong
+                  ><span
+                    v-else-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'"
+                    >{{ txnQuantity(row) }}</span
+                  ><span v-else>{{ display(row, col[0]) }}</span>
+                </td>
+                <td>
+                  <button
+                    class="more"
+                    aria-label="更多操作"
+                    @click="openDetail(row)"
+                  >
+                    •••
+                  </button>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
       <div class="pagination">
         <span
-          >第 {{ page }} / {{ totalPages }} 页，共
-          {{ filtered.length }} 条</span
+          >第 {{ page }} / {{ totalPages }} 页，共 {{ filtered.length }} 条</span
         >
-        <div>
-          <button :disabled="page === 1" @click="page--">←</button
-          ><button class="active">{{ page }}</button
-          ><button :disabled="page === totalPages" @click="page++">→</button>
+        <div class="pager-right">
+          <label
+            class="page-mode"
+            title="后端列表接口暂未支持分页参数，当前回退前端分页（见 api.ts TODO）"
+          >
+            分页模式
+            <span class="segmented">
+              <button :class="{ active: !serverMode }" @click="serverMode = false">
+                前端
+              </button>
+              <button :class="{ active: serverMode }" @click="serverMode = true">
+                服务端
+              </button>
+            </span>
+          </label>
+          <div>
+            <button :disabled="page === 1" @click="page--">←</button
+            ><button class="active">{{ page }}</button
+            ><button :disabled="page === totalPages" @click="page++">→</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1021,65 +1150,68 @@ async function saveProduct() {
           <button aria-label="关闭" @click="selected = undefined">×</button>
         </div>
         <div class="drawer-fields">
-          <template v-if="section === 'products'"
+          <template v-if="section === 'products' && canWriteSection"
             ><label
               >校园售价<input
-                v-model.number="selected.price"
+                v-model.number="productEdit.price"
                 type="number"
                 min="0" /></label
             ><label
               >可售库存<input
-                v-model.number="selected.availableStock"
+                v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
           ></template>
           <div v-for="col in config.columns" :key="col[0]">
             <span>{{ col[1] }}</span
-            ><strong v-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'">{{
-              txnQuantity(selected)
-            }}</strong
+            ><strong
+              v-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'"
+              >{{ txnQuantity(selected) }}</strong
             ><strong v-else>{{ display(selected, col[0]) }}</strong>
           </div>
         </div>
         <div class="drawer-actions wrap">
-          <template v-if="section === 'products'">
+          <template v-if="section === 'products' && canWriteSection">
             <button class="btn primary" @click="act('save')">
               保存商品调整</button
           ></template>
-          <template v-else-if="section === 'orders'"
+          <template v-else-if="section === 'orders' && canWriteSection"
             ><button class="btn primary" @click="act('advance')">
               推进履约</button
             ><button class="btn danger-btn" @click="act('mark-exception')">
               标记异常
             </button></template
           >
-          <template v-else-if="section === 'after-sales'"
+          <template v-else-if="section === 'after-sales' && canWriteSection"
             ><button class="btn primary" @click="act('approve')">
               审核通过</button
             ><button class="btn danger-btn" @click="act('reject')">
               驳回申请
             </button></template
           >
-          <template v-else-if="section === 'marketing'">
+          <template v-else-if="section === 'marketing' && canWriteSection">
             <button class="btn primary" @click="toggleCoupon">
-              {{ selected.status === "paused" ? "启用优惠券" : "暂停发放" }}
+              {{ couponPaused ? "启用优惠券" : "暂停发放" }}
             </button>
-            <button class="btn ghost" @click="openIssue(selected)">
+            <button class="btn ghost" @click="openIssue(selected as Coupon)">
               定向发放
             </button>
           </template>
-          <template v-else-if="section === 'campuses'">
-            <button class="btn primary" @click="openBuildingEdit(selected)">
+          <template v-else-if="section === 'campuses' && canWriteSection">
+            <button
+              class="btn primary"
+              @click="openBuildingEdit(selected as Building)"
+            >
               编辑楼栋</button
-            ><button class="btn ghost" @click="openRooms(selected)">
+            ><button class="btn ghost" @click="openRooms(selected as Building)">
               寝室管理
             </button
             ><button class="btn danger-btn" @click="removeBuilding">
               {{ confirmDelete ? "确认删除" : "删除楼栋" }}
             </button>
           </template>
-          <template v-else-if="section === 'staff'">
-            <button class="btn primary" @click="openStaffEdit(selected)">
+          <template v-else-if="section === 'staff' && canWriteSection">
+            <button class="btn primary" @click="openStaffEdit(selected as Staff)">
               编辑员工</button
             ><button class="btn danger-btn" @click="removeStaff">
               {{ confirmDelete ? "确认软删除" : "软删除账号" }}
@@ -1115,7 +1247,9 @@ async function saveProduct() {
             <label v-else-if="field.type === 'select'" :class="{ wide: field.wide }"
               >{{ field.label
               }}<select v-model="formData[field.key]">
-                <option v-if="field.optional" value="">不绑定</option>
+                <option v-if="field.optional" value="">
+                  {{ field.optionalLabel ?? "不绑定" }}
+                </option>
                 <option
                   v-for="option in fieldOptions(field)"
                   :key="String(option.value)"
@@ -1129,7 +1263,7 @@ async function saveProduct() {
               >{{ field.label
               }}<input
                 v-model="formData[field.key]"
-                :type="field.type || 'text'"
+                :type="fieldInputType(field)"
                 :min="field.min"
                 :step="field.step"
                 :placeholder="field.placeholder"
@@ -1177,10 +1311,7 @@ async function saveProduct() {
           <div v-for="room in rooms" :key="room.id" class="room-row">
             <strong>{{ room.floor }} 层 · {{ room.roomNo }} 寝</strong>
             <small>二维码令牌 {{ room.qrToken }}</small>
-            <button
-              class="text-btn danger-text"
-              @click="removeRoom(room.id)"
-            >
+            <button class="text-btn danger-text" @click="removeRoom(room.id)">
               {{ roomConfirmId === room.id ? "确认删除" : "删除" }}
             </button>
           </div>
