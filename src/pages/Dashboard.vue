@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
 import type { DashboardActivity, DashboardData, TrendPoint } from "../types";
+import { fenToYuan } from "../utils/money";
 const data = ref<DashboardData>(),
   loading = ref(true),
   loadError = ref("");
@@ -17,15 +18,21 @@ onMounted(async () => {
   }
 });
 
-/* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段 */
+/* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段（paidAmount 为分，统一转元后绘图） */
 const trend = computed<TrendPoint[]>(() => {
   const list = data.value?.trend;
   return Array.isArray(list) ? list : [];
 });
+const trendYuan = computed(() =>
+  trend.value.map((t) => ({
+    ...t,
+    paidAmount: Number(fenToYuan(t.paidAmount)) || 0,
+  })),
+);
 const CHART_W = 700,
   CHART_H = 230;
 const chartPoints = computed(() => {
-  const list = trend.value;
+  const list = trendYuan.value;
   if (!list.length) return [];
   const max = Math.max(1, ...list.map((t) => Number(t.paidAmount) || 0));
   const step = list.length > 1 ? CHART_W / (list.length - 1) : 0;
@@ -45,7 +52,7 @@ const areaPath = computed(() =>
     : "",
 );
 const axisLabels = computed(() => {
-  const list = trend.value;
+  const list = trendYuan.value;
   const max = Math.max(1, ...list.map((t) => Number(t.paidAmount) || 0));
   return [1, 0.8, 0.6, 0.4, 0.2, 0].map((f) => {
     const v = max * f;
@@ -58,8 +65,8 @@ function pctChange(current?: number, previous?: number) {
   if (!previous) return null;
   return ((Number(current) - Number(previous)) / previous) * 100;
 }
-const last = computed(() => trend.value[trend.value.length - 1]),
-  prev = computed(() => trend.value[trend.value.length - 2]);
+const last = computed(() => trendYuan.value[trendYuan.value.length - 1]),
+  prev = computed(() => trendYuan.value[trendYuan.value.length - 2]);
 const revenueDelta = computed(() =>
     pctChange(last.value?.paidAmount, prev.value?.paidAmount),
   ),
@@ -96,9 +103,17 @@ const FLOW_LABELS: Record<string, string> = {
 function flowLabel(key: string): string {
   return FLOW_LABELS[key] ?? key;
 }
+/** KPI 中的金额指标（分），CSV 导出统一转元。 */
+const MONEY_KPI_KEYS = new Set(["revenue", "refundedAmount"]);
 function exportReport() {
   if (!data.value) return;
-  const rows = [["指标", "数值"], ...Object.entries(data.value.kpis)];
+  const rows = [
+    ["指标", "数值"],
+    ...Object.entries(data.value.kpis).map(([key, value]) => [
+      key,
+      MONEY_KPI_KEYS.has(key) ? `¥${fenToYuan(value)}` : String(value),
+    ]),
+  ];
   const csv = rows
     .map((row) =>
       row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
@@ -140,7 +155,7 @@ function exportReport() {
         <article class="kpi hero-kpi">
           <p :title="data.caliber.revenue">今日支付金额</p>
           <strong
-            ><small>¥</small>{{ data.kpis.revenue.toLocaleString() }}</strong
+            ><small>¥</small>{{ fenToYuan(data.kpis.revenue, true) }}</strong
           >
           <div class="delta" :class="(revenueDelta ?? 0) >= 0 ? 'up' : 'down'">
             <template v-if="deltaText(revenueDelta)"
@@ -191,7 +206,7 @@ function exportReport() {
               <span></span>今日新用户 {{ data.kpis.newUsers }} 人
             </li>
             <li :title="data.caliber.refundedAmount">
-              <span></span>今日退款 ¥{{ data.kpis.refundedAmount }}
+              <span></span>今日退款 ¥{{ fenToYuan(data.kpis.refundedAmount) }}
             </li>
           </ul>
           <button @click="router.push('/orders')">立即处理 →</button>
@@ -313,7 +328,7 @@ function exportReport() {
                   <strong>{{ item.name }}</strong>
                 </td>
                 <td>{{ item.orders }}</td>
-                <td>¥{{ item.revenue.toLocaleString() }}</td>
+                <td>¥{{ fenToYuan(item.revenue, true) }}</td>
                 <td>{{ item.completionRate }}%</td>
                 <td>
                   <span class="status success">{{ item.onTimeRate }}%</span>

@@ -1,6 +1,8 @@
 /**
  * 管理后台领域类型 —— 字段以 buchuqin-api /api/v1 实测响应为准
  * （2026-08-17 curl，契约见 buchuqin-api/docs/MILESTONE_API.md）。
+ * 金额契约：全部金额字段为整数「分」，展示经 utils/money.fenToYuan、
+ * 表单提交经 yuanToFen，禁止在业务代码裸除/乘 100。
  */
 
 /** 服务端分页参数。 */
@@ -45,7 +47,9 @@ export interface Product {
   categoryId: string;
   name: string;
   subtitle: string;
+  /** 售价（分）。 */
   price: number;
+  /** 建议零售价（分）。 */
   originalPrice: number;
   stock: number;
   lockedStock: number;
@@ -88,7 +92,14 @@ export interface Order {
   deliveryMode: string;
   remark: string;
   totalQuantity: number;
+  /** 实付金额（分）。 */
   payableAmount: number;
+  /** 商品金额（分）。 */
+  productAmount?: number;
+  /** 运费（分）。 */
+  deliveryFee?: number;
+  /** 优惠金额（分）。 */
+  discount?: number;
   estimatedArrival: string;
   packageNo: string;
   userPhone?: string;
@@ -118,7 +129,9 @@ export interface Coupon {
   id: string;
   campusId: string;
   name: string;
+  /** 面额（分）。 */
   amount: number;
+  /** 使用门槛（分）。 */
   threshold: number;
   total: number;
   status: string;
@@ -167,9 +180,13 @@ export interface Settlement {
   staffNo?: string;
   roleText: string;
   period: string;
+  /** 底薪（分）。 */
   baseSalary: number;
+  /** 提成合计（分）。 */
   commissionTotal: number;
+  /** 调整项（分）。 */
   adjustment: number;
+  /** 应结（分）。 */
   payable: number;
   status: "pending-review" | "confirmed" | "paid";
   confirmedAt?: string | null;
@@ -185,6 +202,7 @@ export interface CommissionRule {
   weightFrom: number | null;
   weightTo: number | null;
   mode: "instant" | "scheduled" | null;
+  /** 提成单价（分/单）。 */
   price: number;
   version: number;
   status: "active" | "disabled";
@@ -228,6 +246,7 @@ export interface DispatchInvitation {
   building: string | null;
   startAt: string;
   endAt: string;
+  /** 调配奖励（分）。 */
   reward: number;
   status: string;
   statusText: string;
@@ -270,6 +289,7 @@ export interface AfterSale {
 export interface TrendPoint {
   date: string;
   orders: number;
+  /** 支付金额（分）。 */
   paidAmount: number;
   newUsers: number;
 }
@@ -283,16 +303,19 @@ export interface DashboardActivity {
 export interface HotBuilding {
   name: string;
   orders: number;
+  /** 成交金额（分）。 */
   revenue: number;
   completionRate: number;
   onTimeRate: number;
 }
 
 export interface DashboardKpis {
+  /** 今日支付金额（分）。 */
   revenue: number;
   orders: number;
   paidUsers: number;
   newUsers: number;
+  /** 今日退款金额（分）。 */
   refundedAmount: number;
   fulfillmentRate: number;
   exceptions: number;
@@ -361,6 +384,7 @@ export interface DispatchRow {
   building: string;
   startAt: string;
   endAt: string;
+  /** 调配奖励（分）。 */
   reward: number;
   status: string;
   statusText: string;

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, fetchAllPages } from "../api";
 import { canWrite } from "../session";
+import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
   AdminRow,
   AdminUser,
@@ -381,10 +382,11 @@ function openCouponCreate() {
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
         if (!d.expiresAt) throw new Error("请选择有效期");
+        // 面额/门槛表单输元，提交前统一转分
         await api.createCoupon({
           name: String(d.name).trim(),
-          amount: Number(d.amount),
-          threshold: Number(d.threshold),
+          amount: yuanToFen(d.amount),
+          threshold: yuanToFen(d.threshold),
           total: Number(d.total),
           expiresAt: String(d.expiresAt),
         });
@@ -536,7 +538,7 @@ function openInviteForm(prefill?: {
           startAt: String(d.startAt),
           endAt: String(d.endAt),
           ...(d.reward !== "" && d.reward !== undefined
-            ? { reward: Number(d.reward) }
+            ? { reward: yuanToFen(d.reward) }
             : {}),
         });
       },
@@ -613,6 +615,7 @@ function openRuleCreate() {
         { key: "price", label: "提成单价（元/单）", type: "number", min: 0.01, step: 0.01 },
       ],
       save: async (d) => {
+        // 单价表单输元，校验后转分提交
         const price = Number(d.price);
         if (!Number.isFinite(price) || price <= 0)
           throw new Error("提成单价必须大于 0");
@@ -621,7 +624,7 @@ function openRuleCreate() {
             throw new Error("重量上限不能小于下限");
         }
         await api.createCommissionRule({
-          price,
+          price: yuanToFen(price),
           ...(d.buildingId ? { buildingId: String(d.buildingId) } : {}),
           ...(d.floor !== "" && d.floor !== undefined ? { floor: Number(d.floor) } : {}),
           ...(d.weightFrom !== "" && d.weightFrom !== undefined ? { weightFrom: Number(d.weightFrom) } : {}),
@@ -1101,6 +1104,23 @@ const STATUS_TEXT: Record<string, string> = {
   paused: "已暂停",
   disabled: "已停用",
 };
+/** 金额字段（契约：整数分），统一经 fenToYuan 展示为 ¥xx.xx。 */
+const MONEY_KEYS = [
+  "price",
+  "originalPrice",
+  "payableAmount",
+  "productAmount",
+  "deliveryFee",
+  "discount",
+  "baseSalary",
+  "commissionTotal",
+  "commission",
+  "adjustment",
+  "payable",
+  "amount",
+  "threshold",
+  "reward",
+];
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
@@ -1121,22 +1141,8 @@ function display(row: AdminRow, key: string) {
   if (key === "expiresAt")
     return v ? String(v).replace("T", " ").slice(0, 10) : "—";
   if (typeof v === "boolean") return v ? "在线" : "离线";
-  if (
-    typeof v === "number" &&
-    [
-      "price",
-      "payableAmount",
-      "baseSalary",
-      "commissionTotal",
-      "commission",
-      "adjustment",
-      "payable",
-      "amount",
-      "threshold",
-      "reward",
-    ].includes(key)
-  )
-    return `¥${v}`;
+  if (typeof v === "number" && MONEY_KEYS.includes(key))
+    return `¥${fenToYuan(v)}`;
   if (key === "onTimeRate") return `${v}%`;
   if (key === "status" && typeof v === "string" && STATUS_TEXT[v])
     return STATUS_TEXT[v];
@@ -1176,7 +1182,8 @@ function openDetail(row: AdminRow) {
   if (section.value === "products") {
     const product = row as Product;
     productEdit.value = {
-      price: Number(product.price),
+      // 接口价格为分，编辑框以元展示
+      price: Number(fenToYuan(product.price)),
       stock: Number(product.availableStock ?? product.stock ?? 0),
     };
   }
@@ -1186,7 +1193,7 @@ async function act(action: string) {
   try {
     if (section.value === "products")
       await api.updateProduct(selected.value.id, {
-        price: Number(productEdit.value.price),
+        price: yuanToFen(productEdit.value.price),
         stock: Number(productEdit.value.stock),
       });
     else if (section.value === "orders")
@@ -1276,8 +1283,15 @@ async function lookup() {
       name: found.name ?? productForm.value.name,
       subtitle: found.subtitle ?? productForm.value.subtitle,
       categoryId: found.categoryId ?? productForm.value.categoryId,
-      price: found.price ?? productForm.value.price,
-      originalPrice: found.originalPrice ?? productForm.value.originalPrice,
+      // 条码库带出的价格为分，表单以元回填
+      price:
+        found.price !== undefined
+          ? Number(fenToYuan(found.price))
+          : productForm.value.price,
+      originalPrice:
+        found.originalPrice !== undefined
+          ? Number(fenToYuan(found.originalPrice))
+          : productForm.value.originalPrice,
       stock: found.stock ?? productForm.value.stock,
       tag: found.tag ?? productForm.value.tag,
       image: found.image ?? productForm.value.image,
@@ -1338,7 +1352,12 @@ async function saveProduct() {
     return;
   }
   try {
-    await api.createProduct(productForm.value);
+    // 价格表单输元，提交前统一转分
+    await api.createProduct({
+      ...productForm.value,
+      price: yuanToFen(productForm.value.price),
+      originalPrice: yuanToFen(productForm.value.originalPrice),
+    });
     notify("SKU 已录入，商品数据已同步");
     closeCreate();
     await load();

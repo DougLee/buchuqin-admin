@@ -143,6 +143,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** price 为整数分（表单元输入经 yuanToFen 转换后提交）。 */
   updateProduct: (id: string, data: { price: number; stock: number }) =>
     request<Product>(`/admin/products/${id}`, {
       method: "PATCH",
@@ -221,6 +222,7 @@ export const api = {
     buildingId: string;
     startAt: string;
     endAt: string;
+    /** 调配奖励（分）。 */
     reward?: number;
   }) =>
     request<DispatchInvitation>("/admin/dispatch-invitations", {
@@ -241,6 +243,7 @@ export const api = {
     weightFrom?: number;
     weightTo?: number;
     mode?: "instant" | "scheduled";
+    /** 提成单价（分/单）。 */
     price: number;
     effectiveAt?: string;
   }) =>
@@ -248,6 +251,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** price 为整数分。 */
   updateCommissionRule: (
     id: string,
     data: { status?: "active" | "disabled"; price?: number },
@@ -293,6 +297,7 @@ export const api = {
     request<PagedResponse<Coupon>>(
       `/admin/coupons${withQuery(listQuery(query))}`,
     ),
+  /** amount / threshold 为整数分（表单输元，经 yuanToFen 转换后提交）。 */
   createCoupon: (data: {
     name: string;
     amount: number;
