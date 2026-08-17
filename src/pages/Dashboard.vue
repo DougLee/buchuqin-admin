@@ -69,9 +69,6 @@ const miniBars = computed(() => {
   const max = Math.max(1, ...list);
   return list.map((v) => Math.max(4, Math.round((v / max) * 100)));
 });
-const rateGap = computed(() =>
-  data.value ? Number(data.value.kpis.fulfillmentRate) - 95 : 0,
-);
 /* 实时动态来自接口 activities 字段（无数据时展示空态） */
 const activities = computed<DashboardActivity[]>(() => {
   const list = data.value?.activities;
@@ -141,7 +138,7 @@ function exportReport() {
     <template v-else-if="data"
       ><section class="kpi-grid">
         <article class="kpi hero-kpi">
-          <p>今日支付金额</p>
+          <p :title="data.caliber.revenue">今日支付金额</p>
           <strong
             ><small>¥</small>{{ data.kpis.revenue.toLocaleString() }}</strong
           >
@@ -153,7 +150,7 @@ function exportReport() {
           <div class="orb"></div>
         </article>
         <article class="kpi">
-          <p>今日订单</p>
+          <p :title="data.caliber.orders">今日订单</p>
           <strong>{{ data.kpis.orders }}<small> 单</small></strong>
           <div class="mini-bars">
             <i
@@ -170,23 +167,32 @@ function exportReport() {
           </div>
         </article>
         <article class="kpi">
-          <p>履约准时率</p>
+          <!-- IK93GP 后端口径：fulfillmentRate=履约完成率（delivered+completed 占比），准时率独立字段 onTimeRate -->
+          <p :title="data.caliber.fulfillmentRate">履约完成率</p>
           <div
             class="ring"
             :style="{ '--value': data.kpis.fulfillmentRate + '%' }"
           >
             <strong>{{ data.kpis.fulfillmentRate }}%</strong>
           </div>
-          <div class="delta" :class="rateGap >= 0 ? 'up' : 'down'">
-            {{ rateGap >= 0 ? "高于" : "低于" }}目标 {{ Math.abs(rateGap).toFixed(1) }}%
+          <div class="delta up" :title="data.caliber.onTimeRate">
+            当日达准时率 {{ data.kpis.onTimeRate }}%
           </div>
         </article>
         <article class="kpi alert-kpi">
           <p>待处理异常</p>
           <strong>{{ data.kpis.exceptions }}<small> 项</small></strong>
           <ul>
-            <li><span></span>配送异常 {{ data.kpis.exceptions }} 单</li>
+            <li :title="data.caliber.timeout">
+              <span></span>配送异常 {{ data.kpis.exceptions }} 单
+            </li>
             <li><span></span>待拣货 {{ data.fulfillment.waitingPick }} 单</li>
+            <li :title="data.caliber.newUsers">
+              <span></span>今日新用户 {{ data.kpis.newUsers }} 人
+            </li>
+            <li :title="data.caliber.refundedAmount">
+              <span></span>今日退款 ¥{{ data.kpis.refundedAmount }}
+            </li>
           </ul>
           <button @click="router.push('/orders')">立即处理 →</button>
         </article>
@@ -294,6 +300,7 @@ function exportReport() {
                 <th>楼栋</th>
                 <th>订单量</th>
                 <th>成交金额</th>
+                <th>完成率</th>
                 <th>准时率</th>
               </tr>
             </thead>
@@ -307,12 +314,13 @@ function exportReport() {
                 </td>
                 <td>{{ item.orders }}</td>
                 <td>¥{{ item.revenue.toLocaleString() }}</td>
+                <td>{{ item.completionRate }}%</td>
                 <td>
                   <span class="status success">{{ item.onTimeRate }}%</span>
                 </td>
               </tr>
               <tr v-if="!(data.hotBuildings || []).length">
-                <td colspan="5" class="empty-cell">暂无楼栋排行数据</td>
+                <td colspan="6" class="empty-cell">暂无楼栋排行数据</td>
               </tr>
             </tbody>
           </table>

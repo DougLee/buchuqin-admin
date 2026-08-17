@@ -13,6 +13,8 @@ const paths: Record<string, string> = {
   campus: "M3 21h18M6 21V8l6-5 6 5v13M9 12h2M13 12h2M9 16h2M13 16h2",
   marketing: "M3 11l18-5v12L3 14zM7 15l1 6h4l-1-7",
   audit: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5",
+  dispatch: "M4 7h11M14 4l3 3-3 3M20 17H9M10 14l-3 3 3 3",
+  rules: "M3 17L17 3l4 4L7 21H3zM9 12l3 3M13 8l3 3",
 };
 </script>
 <template>

@@ -45,12 +45,14 @@ const groups = [
       ["/staff", "staff", "履约人员"],
       ["/campuses", "campus", "校园组织"],
       ["/marketing", "marketing", "营销活动"],
+      ["/dispatch", "dispatch", "调配与请假"],
     ],
   },
   {
     label: "财务系统",
     items: [
       ["/finance", "finance", "结算中心"],
+      ["/rules", "rules", "提成规则"],
       ["/audit", "audit", "审计日志"],
     ],
   },

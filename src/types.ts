@@ -317,7 +317,11 @@ export type AdminRow =
   | AuditLog
   | AdminUser
   | AfterSale
-  | Campus;
+  | Campus
+  /* 扁平化视图行 */
+  | LeaveRow
+  | DispatchRow
+  | RuleRow;
 
 /* ---------- 调配与请假 / 提成规则的扁平化视图行 ---------- */
 

@@ -6,9 +6,12 @@ import type {
   BarcodeLookup,
   Building,
   Campus,
+  CommissionRule,
   Coupon,
   DashboardData,
+  DispatchInvitation,
   InventoryTxn,
+  LeaveRequest,
   Order,
   PageQuery,
   Product,
@@ -156,10 +159,62 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ approved }),
     }),
-  settlements: (query?: PageQuery) =>
+  settlements: (month?: string, query?: PageQuery) =>
     request<Settlement[]>(
-      `/admin/settlements${withQuery(paginationQuery(query))}`,
+      `/admin/settlements${withQuery(
+        month ? `month=${month}` : "",
+        paginationQuery(query),
+      )}`,
     ),
+  confirmSettlement: (id: string) =>
+    request<Settlement>(`/admin/settlements/${id}/confirm`, {
+      method: "POST",
+    }),
+  paySettlement: (id: string) =>
+    request<Settlement>(`/admin/settlements/${id}/pay`, { method: "POST" }),
+  leaveRequests: () => request<LeaveRequest[]>("/admin/leave-requests"),
+  dispatchInvitations: () =>
+    request<DispatchInvitation[]>("/admin/dispatch-invitations"),
+  createDispatchInvitation: (data: {
+    targetStaffId: string;
+    buildingId: string;
+    startAt: string;
+    endAt: string;
+    reward?: number;
+  }) =>
+    request<DispatchInvitation>("/admin/dispatch-invitations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  cancelDispatchInvitation: (id: string) =>
+    request<DispatchInvitation>(`/admin/dispatch-invitations/${id}/cancel`, {
+      method: "POST",
+    }),
+  commissionRules: (query?: PageQuery) =>
+    request<CommissionRule[]>(
+      `/admin/commission-rules${withQuery(paginationQuery(query))}`,
+    ),
+  createCommissionRule: (data: {
+    buildingId?: string;
+    floor?: number;
+    weightFrom?: number;
+    weightTo?: number;
+    mode?: "instant" | "scheduled";
+    price: number;
+    effectiveAt?: string;
+  }) =>
+    request<CommissionRule>("/admin/commission-rules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateCommissionRule: (
+    id: string,
+    data: { status?: "active" | "disabled"; price?: number },
+  ) =>
+    request<CommissionRule>(`/admin/commission-rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   campuses: () => request<Campus[]>("/admin/campuses"),
   buildings: () => request<Building[]>("/admin/buildings"),
   createBuilding: (data: Record<string, unknown>) =>

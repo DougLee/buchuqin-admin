@@ -8,11 +8,18 @@ import type {
   AdminUser,
   BarcodeLookup,
   Building,
+  CommissionRule,
   Coupon,
+  DispatchInvitation,
+  DispatchRow,
   InventoryTxn,
+  LeaveRequest,
+  LeaveRow,
   PageQuery,
   Product,
   Room,
+  RuleRow,
+  Settlement,
   Staff,
 } from "../types";
 const route = useRoute(),
@@ -453,6 +460,188 @@ async function confirmIssue() {
   }
 }
 
+/* ---------- 调配与请假：邀请楼长跨楼代管 ---------- */
+const staffCache = ref<Staff[]>([]),
+  inviteConfirmCancel = ref("");
+async function ensureManagers() {
+  if (!staffCache.value.length)
+    staffCache.value = (await api.staff()).filter(
+      (s) => s.role === "building-manager" && s.status !== "deleted",
+    );
+  return staffCache.value;
+}
+function managerOptions() {
+  const buildingId = String(formData.value.buildingId ?? "");
+  // 后端校验：目标必须是在职楼长，且不是该楼的绑定楼长，前端同步过滤
+  return staffCache.value
+    .filter((s) => !buildingId || s.buildingId !== buildingId)
+    .map((s) => ({
+      value: s.id,
+      label: `${s.name} · ${s.building ?? "未绑定楼栋"}${
+        s.status === "online" ? "" : "（离线）"
+      }`,
+    }));
+}
+function toDatetimeLocal(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function openInviteForm(prefill?: {
+  buildingId?: string | null;
+  startAt?: string;
+  endAt?: string;
+}) {
+  void ensureManagers();
+  void ensureBuildings();
+  openForm(
+    {
+      eyebrow: "DISPATCH INVITE",
+      title: "邀请调配",
+      submit: "发出邀请",
+      done: "调配邀请已发出，等待楼长接受",
+      fields: [
+        {
+          key: "buildingId",
+          label: "目标楼栋（请假楼长负责的楼）",
+          type: "select",
+          wide: true,
+          options: buildingOptions,
+        },
+        {
+          key: "targetStaffId",
+          label: "目标楼长（在职，非该楼绑定楼长）",
+          type: "select",
+          wide: true,
+          options: managerOptions,
+        },
+        { key: "startAt", label: "开始时间", type: "datetime" },
+        { key: "endAt", label: "结束时间", type: "datetime" },
+        { key: "reward", label: "调配奖励（元，可选）", type: "number", min: 0, step: 0.01 },
+      ],
+      save: async (d) => {
+        if (!d.buildingId) throw new Error("请选择目标楼栋");
+        if (!d.targetStaffId) throw new Error("请选择目标楼长");
+        if (!d.startAt || !d.endAt) throw new Error("请选择起止时间");
+        if (new Date(String(d.endAt)) <= new Date(String(d.startAt)))
+          throw new Error("结束时间必须晚于开始时间");
+        await api.createDispatchInvitation({
+          buildingId: String(d.buildingId),
+          targetStaffId: String(d.targetStaffId),
+          startAt: String(d.startAt),
+          endAt: String(d.endAt),
+          ...(d.reward !== "" && d.reward !== undefined
+            ? { reward: Number(d.reward) }
+            : {}),
+        });
+      },
+    },
+    {
+      buildingId: prefill?.buildingId ?? "",
+      targetStaffId: "",
+      startAt: toDatetimeLocal(prefill?.startAt),
+      endAt: toDatetimeLocal(prefill?.endAt),
+      reward: "",
+    },
+  );
+}
+function inviteFromSelected() {
+  if (!selected.value) return;
+  const leave = selected.value as unknown as LeaveRow;
+  selected.value = undefined;
+  openInviteForm({
+    buildingId: leave.buildingId,
+    startAt: leave.startAt,
+    endAt: leave.endAt,
+  });
+}
+async function cancelInvite() {
+  if (!selected.value) return;
+  const invite = selected.value as unknown as DispatchRow;
+  if (inviteConfirmCancel.value !== invite.id) {
+    inviteConfirmCancel.value = invite.id;
+    return;
+  }
+  try {
+    await api.cancelDispatchInvitation(invite.id);
+    notify("调配邀请已取消");
+    selected.value = undefined;
+    inviteConfirmCancel.value = "";
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "取消失败", true);
+  }
+}
+
+/* ---------- 提成规则：新建 + 启停 ---------- */
+function openRuleCreate() {
+  void ensureBuildings();
+  openForm(
+    {
+      eyebrow: "NEW RULE",
+      title: "新建提成规则",
+      submit: "保存规则",
+      done: "提成规则已创建",
+      fields: [
+        {
+          key: "buildingId",
+          label: "楼栋",
+          type: "select",
+          optional: true,
+          optionalLabel: "通配（全部楼栋）",
+          options: buildingOptions,
+        },
+        { key: "floor", label: "楼层（空=通配）", type: "number", min: 1, placeholder: "留空表示全部楼层" },
+        { key: "weightFrom", label: "重量下限 kg（空=不限）", type: "number", min: 0, step: 0.01 },
+        { key: "weightTo", label: "重量上限 kg（空=不限）", type: "number", min: 0, step: 0.01 },
+        {
+          key: "mode",
+          label: "配送模式",
+          type: "select",
+          optional: true,
+          optionalLabel: "通配（全部模式）",
+          options: () => [
+            { value: "instant", label: "即时达" },
+            { value: "scheduled", label: "预约达" },
+          ],
+        },
+        { key: "price", label: "提成单价（元/单）", type: "number", min: 0.01, step: 0.01 },
+      ],
+      save: async (d) => {
+        const price = Number(d.price);
+        if (!Number.isFinite(price) || price <= 0)
+          throw new Error("提成单价必须大于 0");
+        if (d.weightFrom !== "" && d.weightTo !== "" && d.weightFrom !== undefined && d.weightTo !== undefined) {
+          if (Number(d.weightTo) < Number(d.weightFrom))
+            throw new Error("重量上限不能小于下限");
+        }
+        await api.createCommissionRule({
+          price,
+          ...(d.buildingId ? { buildingId: String(d.buildingId) } : {}),
+          ...(d.floor !== "" && d.floor !== undefined ? { floor: Number(d.floor) } : {}),
+          ...(d.weightFrom !== "" && d.weightFrom !== undefined ? { weightFrom: Number(d.weightFrom) } : {}),
+          ...(d.weightTo !== "" && d.weightTo !== undefined ? { weightTo: Number(d.weightTo) } : {}),
+          ...(d.mode ? { mode: String(d.mode) as "instant" | "scheduled" } : {}),
+        });
+      },
+    },
+    { buildingId: "", floor: "", weightFrom: "", weightTo: "", mode: "", price: 3 },
+  );
+}
+async function toggleRule() {
+  if (!selected.value) return;
+  const rule = selected.value as unknown as RuleRow;
+  const next = rule.status === "active" ? "disabled" : "active";
+  try {
+    await api.updateCommissionRule(rule.id, { status: next });
+    notify(next === "active" ? "规则已启用（版本自增，在途提成不追溯）" : "规则已停用");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+
 /* ---------- 库存：出入库操作 + 流水 ---------- */
 const productsCache = ref<Product[]>([]);
 async function ensureProducts() {
@@ -511,6 +700,21 @@ function switchInvTab(tab: string) {
   statusFilter.value = "all";
   page.value = 1;
 }
+/* 财务结算：账期筛选（month=YYYY-MM，后端 B2 契约）。 */
+const monthOptions = computed(() => {
+  const now = new Date();
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+});
+const month = ref(monthOptions.value[0]);
+watch(month, () => {
+  if (section.value === "finance") {
+    page.value = 1;
+    void load();
+  }
+});
 interface SectionConfig {
   title: string;
   eyebrow: string;
@@ -532,6 +736,89 @@ const inventoryTxnsConfig: SectionConfig = {
     ["operator", "操作人"],
   ],
 };
+
+/* ---------- 调配与请假（IK8W5Y）：请假楼长 + 调配邀请 ---------- */
+function toLeaveRow(l: LeaveRequest): LeaveRow {
+  return {
+    id: l.id,
+    staffName: l.staff?.name ?? "—",
+    staffNo: l.staff?.staffNo ?? "—",
+    building: l.staff?.building ?? "—",
+    buildingId: l.staff?.buildingId ?? null,
+    startAt: l.startAt,
+    endAt: l.endAt,
+    reason: l.reason,
+    status: l.status,
+    statusText: l.statusText,
+  };
+}
+function toInviteRow(i: DispatchInvitation): DispatchRow {
+  return {
+    id: i.id,
+    staffName: i.staff?.name ?? "—",
+    roleText: i.staff?.roleText ?? "楼长",
+    building: i.building ?? "—",
+    startAt: i.startAt,
+    endAt: i.endAt,
+    reward: i.reward,
+    status: i.status,
+    statusText: i.statusText,
+  };
+}
+const dispTab = ref<"leaves" | "invites">("leaves");
+function switchDispTab(tab: "leaves" | "invites") {
+  dispTab.value = tab;
+  statusFilter.value = "all";
+  page.value = 1;
+}
+const dispatchLeavesConfig: SectionConfig = {
+  title: "调配与请假",
+  eyebrow: "DISPATCH DESK",
+  desc: "楼长请假与跨楼调配邀请，保障楼栋服务覆盖。",
+  loader: async () => (await api.leaveRequests()).map(toLeaveRow),
+  columns: [
+    ["staffName", "楼长"],
+    ["staffNo", "工号"],
+    ["building", "负责楼栋"],
+    ["startAt", "开始时间"],
+    ["endAt", "结束时间"],
+    ["statusText", "请假状态"],
+  ],
+};
+const dispatchInvitesConfig: SectionConfig = {
+  title: "调配与请假",
+  eyebrow: "DISPATCH DESK",
+  desc: "已发出的调配邀请与楼长接受状态，仅待接受可取消。",
+  loader: async () => (await api.dispatchInvitations()).map(toInviteRow),
+  columns: [
+    ["staffName", "目标楼长"],
+    ["roleText", "现任"],
+    ["building", "目标楼栋"],
+    ["startAt", "开始时间"],
+    ["endAt", "结束时间"],
+    ["reward", "奖励"],
+    ["statusText", "状态"],
+  ],
+};
+
+/* ---------- 提成规则（IK8W5Y）：维度通配 * 展示 ---------- */
+function loadRules(): Promise<AdminRow[]> {
+  return Promise.all([api.commissionRules(), ensureBuildings()]).then(
+    ([rules, buildingList]) =>
+      rules.map(
+        (r): RuleRow => ({
+          ...r,
+          buildingName: r.buildingId
+            ? buildingList.find((b) => b.id === r.buildingId)?.name ??
+              r.buildingId
+            : null,
+          weightRange: `${r.weightFrom ?? "*"} - ${r.weightTo ?? "*"} kg`,
+          modeText:
+            r.mode === "instant" ? "即时达" : r.mode === "scheduled" ? "预约达" : "*",
+        }),
+      ),
+  );
+}
 const configs: Record<string, SectionConfig> = {
   orders: {
     title: "订单与履约",
@@ -606,8 +893,8 @@ const configs: Record<string, SectionConfig> = {
   finance: {
     title: "财务结算",
     eyebrow: "FINANCE SETTLEMENT",
-    desc: "月度账单、配送提成和跨期调整。",
-    loader: (query) => api.settlements(query),
+    desc: "月度账单确认、打款与跨期调整（月份可筛选）。",
+    loader: (query) => api.settlements(month.value, query),
     columns: [
       ["staffName", "人员"],
       ["roleText", "角色"],
@@ -617,6 +904,22 @@ const configs: Record<string, SectionConfig> = {
       ["adjustment", "调整"],
       ["payable", "应结"],
       ["status", "状态"],
+    ],
+  },
+  rules: {
+    title: "提成规则",
+    eyebrow: "COMMISSION RULES",
+    desc: "按楼栋/楼层/重量/模式配置提成单价，未命中走兜底。",
+    loader: () => loadRules(),
+    columns: [
+      ["buildingName", "楼栋"],
+      ["floor", "楼层"],
+      ["weightRange", "重量区间"],
+      ["modeText", "模式"],
+      ["price", "单价"],
+      ["version", "版本"],
+      ["status", "状态"],
+      ["effectiveAt", "生效时间"],
     ],
   },
   campuses: {
@@ -668,11 +971,17 @@ const createLabels: Record<string, string> = {
   marketing: "＋ 新建优惠券",
   campuses: "＋ 新建楼栋",
   staff: "＋ 新建员工账号",
+  dispatch: "＋ 邀请调配",
+  rules: "＋ 新建提成规则",
 };
 const section = computed(() => String(route.params.section)),
   config = computed<SectionConfig>(() => {
     if (section.value === "inventory" && invTab.value === "txns")
       return inventoryTxnsConfig;
+    if (section.value === "dispatch")
+      return dispTab.value === "leaves"
+        ? dispatchLeavesConfig
+        : dispatchInvitesConfig;
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
@@ -732,6 +1041,7 @@ watch(
   () => {
     selected.value = undefined;
     invTab.value = "stock";
+    dispTab.value = "leaves";
     page.value = 1;
     load();
   },
@@ -758,6 +1068,9 @@ function display(row: AdminRow, key: string) {
     const product = record.product as { name?: string } | undefined;
     return product?.name ?? "—";
   }
+  if (key === "buildingName") return v ?? "*";
+  if (key === "floor")
+    return v === null || v === undefined || v === "" ? "*" : String(v);
   if (key === "expiresAt")
     return v ? String(v).replace("T", " ").slice(0, 10) : "—";
   if (typeof v === "boolean") return v ? "在线" : "离线";
@@ -773,6 +1086,7 @@ function display(row: AdminRow, key: string) {
       "payable",
       "amount",
       "threshold",
+      "reward",
     ].includes(key)
   )
     return `¥${v}`;
@@ -810,6 +1124,7 @@ function notify(text: string, isError = false) {
 }
 function openDetail(row: AdminRow) {
   confirmDelete.value = false;
+  inviteConfirmCancel.value = "";
   selected.value = { ...row };
   if (section.value === "products") {
     const product = row as Product;
@@ -831,6 +1146,11 @@ async function act(action: string) {
       await api.orderAction(selected.value.id, action);
     else if (section.value === "after-sales")
       await api.reviewAfterSale(selected.value.id, action === "approve");
+    else if (section.value === "finance") {
+      // 账单状态机：pending-review → confirm → pay；条件流转由后端校验
+      if (action === "confirm") await api.confirmSettlement(selected.value.id);
+      else await api.paySettlement(selected.value.id);
+    }
     messageError.value = false;
     message.value = "操作成功，数据已同步";
     selected.value = undefined;
@@ -878,6 +1198,8 @@ function openCreate() {
   } else if (section.value === "marketing") openCouponCreate();
   else if (section.value === "campuses") openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
+  else if (section.value === "dispatch") openInviteForm();
+  else if (section.value === "rules") openRuleCreate();
 }
 function closeCreate() {
   stopScan();
@@ -982,6 +1304,23 @@ const couponPaused = computed(
     String((selected.value as unknown as Record<string, unknown>).status) ===
       "paused",
 );
+function selectedStatus(): string {
+  if (!selected.value) return "";
+  return String(
+    (selected.value as unknown as Record<string, unknown>).status ?? "",
+  );
+}
+const settlementStatus = computed(() =>
+  section.value === "finance" ? selectedStatus() : "",
+);
+const inviteStatus = computed(() =>
+  section.value === "dispatch" && dispTab.value === "invites"
+    ? selectedStatus()
+    : "",
+);
+const ruleActive = computed(
+  () => section.value === "rules" && selectedStatus() === "active",
+);
 </script>
 <template>
   <div class="workspace">
@@ -1004,6 +1343,14 @@ const couponPaused = computed(
           出入库流水
         </button>
       </div>
+      <div v-if="section === 'dispatch'" class="segmented inv-tabs">
+        <button :class="{ active: dispTab === 'leaves' }" @click="switchDispTab('leaves')">
+          请假记录
+        </button>
+        <button :class="{ active: dispTab === 'invites' }" @click="switchDispTab('invites')">
+          调配邀请
+        </button>
+      </div>
       <div class="filter-search">
         <span></span
         ><input
@@ -1024,6 +1371,16 @@ const couponPaused = computed(
         <option value="completed">已完成</option>
         <option value="true">在线</option>
         <option value="false">离线</option>
+      </select>
+      <select
+        v-if="section === 'finance'"
+        v-model="month"
+        class="filter-btn"
+        aria-label="账期筛选"
+      >
+        <option v-for="m in monthOptions" :key="m" :value="m">
+          {{ m }} 账期
+        </option>
       </select>
       <div class="toolbar-spacer"></div>
       <template v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')">
@@ -1085,7 +1442,7 @@ const couponPaused = computed(
                     class="status"
                     :class="{
                       success: String(display(row, col[0])).match(
-                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付/,
+                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付|已接受/,
                       ),
                       warning: String(display(row, col[0])).match(
                         /待|pending|paused|已暂停|复核/,
@@ -1215,6 +1572,44 @@ const couponPaused = computed(
               编辑员工</button
             ><button class="btn danger-btn" @click="removeStaff">
               {{ confirmDelete ? "确认软删除" : "软删除账号" }}
+            </button>
+          </template>
+          <template v-else-if="section === 'finance' && canWriteSection">
+            <button
+              class="btn primary"
+              :disabled="settlementStatus !== 'pending-review'"
+              @click="act('confirm')"
+            >
+              确认账单</button
+            ><button
+              class="btn ghost"
+              :disabled="settlementStatus !== 'confirmed'"
+              @click="act('pay')"
+            >
+              标记打款
+            </button>
+          </template>
+          <template
+            v-else-if="section === 'dispatch' && dispTab === 'leaves' && canWriteSection"
+          >
+            <button class="btn primary" @click="inviteFromSelected">
+              邀请调配（代管该楼）
+            </button>
+          </template>
+          <template
+            v-else-if="section === 'dispatch' && dispTab === 'invites' && canWriteSection"
+          >
+            <button
+              class="btn danger-btn"
+              :disabled="inviteStatus !== 'invited'"
+              @click="cancelInvite"
+            >
+              {{ inviteConfirmCancel ? "确认取消" : "取消邀请" }}
+            </button>
+          </template>
+          <template v-else-if="section === 'rules' && canWriteSection">
+            <button class="btn primary" @click="toggleRule">
+              {{ ruleActive ? "停用规则" : "启用规则" }}
             </button>
           </template>
           <button class="btn ghost" @click="selected = undefined">

@@ -75,21 +75,24 @@ export const PERMISSIONS: Record<
   AdminRole,
   { sections: string[]; writable: string[] }
 > = {
-  admin: { sections: ALL_SECTIONS, writable: ALL_SECTIONS },
-  // 运营：全部板块可见，但结算中心只读（不含结算写操作）。
+  admin: {
+    sections: [...ALL_SECTIONS, "dispatch", "rules"],
+    writable: [...ALL_SECTIONS, "dispatch", "rules"],
+  },
+  // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。
   operations: {
-    sections: ALL_SECTIONS,
-    writable: ALL_SECTIONS.filter((s) => s !== "finance"),
+    sections: [...ALL_SECTIONS, "dispatch", "rules"],
+    writable: [...ALL_SECTIONS.filter((s) => s !== "finance"), "dispatch"],
   },
   // 仓储：工作台 / 商品 / 订单只读 / 出入库。
   warehouse: {
     sections: ["dashboard", "orders", "products", "inventory"],
     writable: ["inventory"],
   },
-  // 财务：工作台 / 订单只读 / 结算中心 / 审计日志。
+  // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
   finance: {
-    sections: ["dashboard", "orders", "finance", "audit"],
-    writable: ["finance"],
+    sections: ["dashboard", "orders", "finance", "rules", "audit"],
+    writable: ["finance", "rules"],
   },
 };
 
