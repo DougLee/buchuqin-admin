@@ -284,6 +284,23 @@ export interface AfterSale {
   order?: Order;
 }
 
+/**
+ * 售后列表扁平化视图行（IK97FJ）：typeText 为类型中文文案
+ * （映射表见 DataPage AFTER_SALE_TYPE_TEXT，未命中 fallback 原值）。
+ */
+export interface AfterSaleRow {
+  id: string;
+  userId: string;
+  orderId: string;
+  type: string;
+  typeText: string;
+  description: string;
+  images: string[];
+  status: string;
+  createdAt: string;
+  order?: Order;
+}
+
 /* ---------- 看板 ---------- */
 
 export interface TrendPoint {
@@ -360,7 +377,8 @@ export type AdminRow =
   /* 扁平化视图行 */
   | LeaveRow
   | DispatchRow
-  | RuleRow;
+  | RuleRow
+  | AfterSaleRow;
 
 /* ---------- 调配与请假 / 提成规则的扁平化视图行 ---------- */
 

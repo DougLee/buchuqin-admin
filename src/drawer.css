@@ -238,6 +238,60 @@
 .drawer-actions.wrap .btn {
   min-width: 120px;
 }
+/* 售后详情（IK97FJ）：整行字段 / 凭证图片 / 大图预览 */
+.drawer-fields .wide {
+  grid-column: 1/-1;
+}
+.drawer-fields .desc-full {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.proof-block {
+  margin-top: 14px;
+}
+.proof-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.proof-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.proof-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: zoom-in;
+}
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: #061d16cc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  backdrop-filter: blur(3px);
+}
+.image-lightbox img {
+  max-width: 88vw;
+  max-height: 88vh;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px #00000060;
+}
+.processed-hint {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
 .form-hint.plain {
   color: var(--muted);
   background: #f2f6f2;

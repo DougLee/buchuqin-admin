@@ -7,6 +7,8 @@ import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
   AdminRow,
   AdminUser,
+  AfterSale,
+  AfterSaleRow,
   BarcodeLookup,
   Building,
   CommissionRule,
@@ -17,6 +19,7 @@ import type {
   LeaveRequest,
   LeaveRow,
   ListQuery,
+  Order,
   PagedResponse,
   Product,
   Room,
@@ -789,6 +792,81 @@ function switchDispTab(tab: "leaves" | "invites") {
   dispTab.value = tab;
   resetStatusFilterAndLoad();
 }
+
+/* ---------- 售后与退款（IK97FJ）：类型文案 / 图片 / 关联订单补全 ---------- */
+/**
+ * 售后类型中文映射：以用户端实际提交值为准
+ * （buchuqin-user-weapp apply.vue：quality/missing/damaged），
+ * 未命中值 fallback 展示原值。
+ */
+const AFTER_SALE_TYPE_TEXT: Record<string, string> = {
+  quality: "质量问题",
+  missing: "商品缺失",
+  damaged: "包装破损",
+  wrong: "错发",
+  other: "其他",
+};
+function toAfterSaleRow(a: AfterSale): AfterSaleRow {
+  return {
+    id: a.id,
+    userId: a.userId,
+    orderId: a.orderId,
+    type: a.type,
+    typeText: AFTER_SALE_TYPE_TEXT[a.type] ?? (a.type || "—"),
+    description: a.description,
+    images: Array.isArray(a.images) ? a.images : [],
+    status: a.status,
+    createdAt: a.createdAt,
+    ...(a.order ? { order: a.order } : {}),
+  };
+}
+/**
+ * 凭证图片地址归一化：COS 绝对地址（http/https/协议相对）原样使用；
+ * 相对路径拼当前源（与 /api 同域，生产环境后台与 API 同站部署）。
+ */
+function resolveImageUrl(src: string): string {
+  if (/^(https?:)?\/\//i.test(src) || src.startsWith("data:")) return src;
+  const origin = window.location.origin;
+  return `${origin}${src.startsWith("/") ? "" : "/"}${src}`;
+}
+const ordersCache = ref<Order[]>([]),
+  afterSaleOrder = ref<Order | null>(null),
+  orderLoading = ref(false),
+  orderError = ref(""),
+  previewImage = ref("");
+/** 关联订单补全：列表行自带 order 时直接用，否则翻页查询订单列表匹配。 */
+async function ensureAfterSaleOrder(row: AfterSaleRow) {
+  afterSaleOrder.value = row.order ?? null;
+  orderError.value = "";
+  previewImage.value = "";
+  if (afterSaleOrder.value) return;
+  orderLoading.value = true;
+  try {
+    if (!ordersCache.value.length)
+      ordersCache.value = await fetchAllPages((query) =>
+        api.orders("all", query),
+      );
+    afterSaleOrder.value =
+      ordersCache.value.find(
+        (o) => o.id === row.orderId || o.orderNo === row.orderId,
+      ) ?? null;
+    if (!afterSaleOrder.value) orderError.value = "未查询到关联订单";
+  } catch {
+    orderError.value = "关联订单查询失败";
+  } finally {
+    orderLoading.value = false;
+  }
+}
+const afterSaleOrderStatus = computed(() => {
+  if (orderLoading.value) return "查询中...";
+  if (afterSaleOrder.value)
+    return afterSaleOrder.value.statusText || afterSaleOrder.value.status;
+  return orderError.value || "—";
+});
+const afterSaleOrderAmount = computed(() =>
+  afterSaleOrder.value ? `¥${fenToYuan(afterSaleOrder.value.payableAmount)}` : "—",
+);
+
 const dispatchLeavesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
@@ -907,13 +985,18 @@ const configs: Record<string, SectionConfig> = {
     title: "售后与退款",
     eyebrow: "AFTER-SALES DESK",
     desc: "集中审核质量投诉、退款与异常凭证。",
-    loader: (query) => api.afterSales(query).then(unwrap),
+    loader: async (query) => {
+      const res = await api.afterSales(query);
+      return { rows: res.items.map(toAfterSaleRow), total: res.total };
+    },
     columns: [
-      ["id", "售后单"],
-      ["type", "类型"],
+      ["id", "售后单号"],
+      ["userId", "用户"],
+      ["orderId", "订单号"],
+      ["typeText", "类型"],
       ["description", "问题描述"],
-      ["status", "状态"],
       ["createdAt", "申请时间"],
+      ["status", "状态"],
     ],
   },
   finance: {
@@ -1098,6 +1181,9 @@ watch(
 );
 const STATUS_TEXT: Record<string, string> = {
   "pending-review": "待复核",
+  pending: "待审核",
+  approved: "已通过",
+  rejected: "已拒绝",
   confirmed: "已确认",
   paid: "已支付",
   active: "启用",
@@ -1187,6 +1273,8 @@ function openDetail(row: AdminRow) {
       stock: Number(product.availableStock ?? product.stock ?? 0),
     };
   }
+  if (section.value === "after-sales")
+    void ensureAfterSaleOrder(row as AfterSaleRow);
 }
 async function act(action: string) {
   if (!selected.value) return;
@@ -1206,7 +1294,12 @@ async function act(action: string) {
       else await api.paySettlement(selected.value.id);
     }
     messageError.value = false;
-    message.value = "操作成功，数据已同步";
+    message.value =
+      section.value === "after-sales"
+        ? action === "approve"
+          ? "已同意退款，订单转入退款流程"
+          : "已拒绝该售后申请"
+        : "操作成功，数据已同步";
     selected.value = undefined;
     await load();
     setTimeout(() => (message.value = ""), 2200);
@@ -1380,6 +1473,9 @@ function selectedStatus(): string {
 const settlementStatus = computed(() =>
   section.value === "finance" ? selectedStatus() : "",
 );
+const afterSaleStatus = computed(() =>
+  section.value === "after-sales" ? selectedStatus() : "",
+);
 const inviteStatus = computed(() =>
   section.value === "dispatch" && dispTab.value === "invites"
     ? selectedStatus()
@@ -1509,7 +1605,7 @@ const ruleActive = computed(
                     class="status"
                     :class="{
                       success: String(display(row, col[0])).match(
-                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付|已接受/,
+                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付|已接受|已通过/,
                       ),
                       warning: String(display(row, col[0])).match(
                         /待|pending|paused|已暂停|复核/,
@@ -1576,7 +1672,7 @@ const ruleActive = computed(
       </div>
     </div>
     <div v-if="selected" class="drawer-mask" @click.self="selected = undefined">
-      <aside class="drawer">
+      <aside class="drawer" :class="{ 'product-create': section === 'after-sales' }">
         <div class="drawer-head">
           <div>
             <p class="eyebrow">RECORD DETAIL</p>
@@ -1584,7 +1680,74 @@ const ruleActive = computed(
           </div>
           <button aria-label="关闭" @click="selected = undefined">×</button>
         </div>
-        <div class="drawer-fields">
+        <!-- 售后详情（IK97FJ）：类型文案 + 凭证图片 + 关联订单 -->
+        <template v-if="section === 'after-sales'">
+          <div class="drawer-fields">
+            <div>
+              <span>售后单号</span><strong>{{ selected.id }}</strong>
+            </div>
+            <div>
+              <span>处理状态</span
+              ><strong
+                ><span
+                  class="status"
+                  :class="{
+                    success: afterSaleStatus === 'approved',
+                    warning: afterSaleStatus === 'pending',
+                  }"
+                  >{{ display(selected, "status") }}</span
+                ></strong
+              >
+            </div>
+            <div>
+              <span>售后类型</span
+              ><strong>{{ (selected as AfterSaleRow).typeText }}</strong>
+            </div>
+            <div>
+              <span>申请时间</span
+              ><strong>{{ display(selected, "createdAt") }}</strong>
+            </div>
+            <div>
+              <span>用户</span
+              ><strong>{{ (selected as AfterSaleRow).userId }}</strong>
+            </div>
+            <div>
+              <span>关联订单号</span
+              ><strong>{{
+                afterSaleOrder?.orderNo || (selected as AfterSaleRow).orderId
+              }}</strong>
+            </div>
+            <div>
+              <span>订单状态</span><strong>{{ afterSaleOrderStatus }}</strong>
+            </div>
+            <div>
+              <span>实付金额</span><strong>{{ afterSaleOrderAmount }}</strong>
+            </div>
+            <div class="wide">
+              <span>问题描述</span
+              ><strong class="desc-full">{{
+                (selected as AfterSaleRow).description || "—"
+              }}</strong>
+            </div>
+          </div>
+          <div
+            v-if="(selected as AfterSaleRow).images?.length"
+            class="proof-block"
+          >
+            <span class="proof-label">问题凭证</span>
+            <div class="proof-grid">
+              <img
+                v-for="(src, i) in (selected as AfterSaleRow).images"
+                :key="i"
+                :src="resolveImageUrl(src)"
+                :alt="`凭证 ${i + 1}`"
+                loading="lazy"
+                @click="previewImage = resolveImageUrl(src)"
+              />
+            </div>
+          </div>
+        </template>
+        <div v-else class="drawer-fields">
           <template v-if="section === 'products' && canWriteSection"
             ><label
               >校园售价<input
@@ -1617,13 +1780,18 @@ const ruleActive = computed(
               标记异常
             </button></template
           >
-          <template v-else-if="section === 'after-sales' && canWriteSection"
-            ><button class="btn primary" @click="act('approve')">
-              审核通过</button
-            ><button class="btn danger-btn" @click="act('reject')">
-              驳回申请
-            </button></template
-          >
+          <template v-else-if="section === 'after-sales' && canWriteSection">
+            <template v-if="afterSaleStatus === 'pending'"
+              ><button class="btn primary" @click="act('approve')">
+                同意退款</button
+              ><button class="btn danger-btn" @click="act('reject')">
+                拒绝售后
+              </button></template
+            >
+            <p v-else class="form-hint plain processed-hint">
+              该申请{{ display(selected, "status") }}，无需重复操作。
+            </p>
+          </template>
           <template v-else-if="section === 'marketing' && canWriteSection">
             <button class="btn primary" @click="toggleCoupon">
               {{ couponPaused ? "启用优惠券" : "暂停发放" }}
@@ -1928,6 +2096,14 @@ const ruleActive = computed(
           ><button class="btn primary" @click="saveProduct">保存并上架</button>
         </div>
       </aside>
+    </div>
+    <!-- 凭证大图预览（IK97FJ） -->
+    <div
+      v-if="previewImage"
+      class="image-lightbox"
+      @click="previewImage = ''"
+    >
+      <img :src="previewImage" alt="凭证大图" />
     </div>
     <div
       v-if="message"
