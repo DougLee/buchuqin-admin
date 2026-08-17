@@ -4,7 +4,7 @@ interface ApiResult<T> {
   data: T;
 }
 let token = localStorage.getItem("adminToken") || "";
-async function request<T>(path: string, options: RequestInit = {}) {
+async function request<T>(path: string, options: RequestInit = {}, retried = false): Promise<T> {
   const response = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
@@ -13,8 +13,14 @@ async function request<T>(path: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
-  const body = (await response.json()) as ApiResult<T>;
-  if (!response.ok) throw new Error(body.message || "请求失败");
+  // token 过期/失效：重新登录一次后重试
+  if (response.status === 401 && !retried && !path.startsWith("/auth/")) {
+    await ensureLogin();
+    return request<T>(path, options, true);
+  }
+  const body = (await response.json().catch(() => null)) as ApiResult<T> | null;
+  if (!response.ok || !body)
+    throw new Error(body?.message || `请求失败（${response.status}）`);
   return body.data;
 }
 export async function ensureLogin() {
