@@ -3,10 +3,26 @@
  * （2026-08-17 curl，契约见 buchuqin-api/docs/MILESTONE_API.md）。
  */
 
-/** 服务端分页参数（透传准备，见 api.ts TODO）。 */
+/** 服务端分页参数。 */
 export interface PageQuery {
   page: number;
   pageSize: number;
+}
+
+/**
+ * 列表请求参数（IK8W5X 契约）：page/pageSize 分页透传；
+ * keyword 随请求发送，后端未实现 keyword 过滤前由前端对当前页兜底（见 DataPage TODO）。
+ */
+export interface ListQuery extends PageQuery {
+  keyword?: string;
+}
+
+/** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
+export interface PagedResponse<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface Campus {

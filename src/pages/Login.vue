@@ -35,10 +35,7 @@ async function submit() {
     applySession(result.user, identity);
     router.push("/");
   } catch (e) {
-    error.value =
-      e instanceof Error
-        ? `${e.message}（演示角色待后端开放时，请先用管理员身份登录）`
-        : "登录失败";
+    error.value = e instanceof Error ? e.message : "登录失败";
   } finally {
     submitting.value = false;
   }
@@ -56,12 +53,12 @@ async function submit() {
           :key="key"
           type="button"
           class="role-card"
-          :class="{ active: selectedRole === key, pending: info.demoPending }"
+          :class="{ active: selectedRole === key }"
           @click="selectedRole = key"
         >
           <strong>{{ info.label }}</strong>
           <small>{{ info.desc }}</small>
-          <em v-if="info.demoPending">演示角色待后端开放</em>
+          <em class="ready">已开放登录</em>
         </button>
       </div>
       <form class="login-form" @submit.prevent="submit">

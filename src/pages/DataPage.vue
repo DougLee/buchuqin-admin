@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { api } from "../api";
+import { api, fetchAllPages } from "../api";
 import { canWrite } from "../session";
 import type {
   AdminRow,
@@ -15,7 +15,8 @@ import type {
   InventoryTxn,
   LeaveRequest,
   LeaveRow,
-  PageQuery,
+  ListQuery,
+  PagedResponse,
   Product,
   Room,
   RuleRow,
@@ -50,8 +51,11 @@ const route = useRoute(),
   });
 const statusFilter = ref("all"),
   page = ref(1),
-  pageSize = 10,
-  serverMode = ref(false);
+  pageSize = ref(10),
+  total = ref(0),
+  jumpTo = ref<number | "">(""),
+  keywordTimer = ref<ReturnType<typeof setTimeout>>();
+const PAGE_SIZES = [10, 20, 50];
 let cameraStream: MediaStream | undefined;
 
 /* ---------- 通用表单抽屉（新建/编辑：优惠券、楼栋、员工、库存操作） ---------- */
@@ -122,14 +126,14 @@ async function submitForm() {
 /* ---------- 楼栋 / 寝室 ---------- */
 const buildings = ref<Building[]>([]);
 async function ensureBuildings() {
-  if (!buildings.value.length) buildings.value = await api.buildings();
+  if (!buildings.value.length) buildings.value = await fetchAllPages(api.buildings);
   return buildings.value;
 }
 function buildingOptions() {
   return buildings.value.map((b) => ({ value: b.id, label: b.name }));
 }
 async function refreshBuildings() {
-  buildings.value = await api.buildings();
+  buildings.value = await fetchAllPages(api.buildings);
 }
 function buildingPayload(d: Record<string, FormValue>) {
   return {
@@ -224,11 +228,12 @@ async function openRooms(building: Building) {
   await loadRooms();
 }
 async function loadRooms() {
-  if (!roomsBuilding.value) return;
+  const building = roomsBuilding.value;
+  if (!building) return;
   roomsLoading.value = true;
   roomError.value = "";
   try {
-    rooms.value = await api.rooms(roomsBuilding.value.id);
+    rooms.value = await fetchAllPages((query) => api.rooms(building.id, query));
   } catch (error) {
     roomError.value = error instanceof Error ? error.message : "加载寝室失败";
   } finally {
@@ -418,7 +423,7 @@ async function openIssue(coupon: Coupon) {
   manualUserIds.value = "";
   usersLoading.value = true;
   try {
-    users.value = await api.adminUsers();
+    users.value = await fetchAllPages(api.adminUsers);
   } catch {
     usersError.value =
       "用户列表接口暂不可用（等待后端提供），可在下方手工粘贴用户 ID";
@@ -465,7 +470,7 @@ const staffCache = ref<Staff[]>([]),
   inviteConfirmCancel = ref("");
 async function ensureManagers() {
   if (!staffCache.value.length)
-    staffCache.value = (await api.staff()).filter(
+    staffCache.value = (await fetchAllPages(api.staff)).filter(
       (s) => s.role === "building-manager" && s.status !== "deleted",
     );
   return staffCache.value;
@@ -645,7 +650,8 @@ async function toggleRule() {
 /* ---------- 库存：出入库操作 + 流水 ---------- */
 const productsCache = ref<Product[]>([]);
 async function ensureProducts() {
-  if (!productsCache.value.length) productsCache.value = await api.products();
+  if (!productsCache.value.length)
+    productsCache.value = await fetchAllPages(api.products);
   return productsCache.value;
 }
 function productOptions() {
@@ -695,10 +701,14 @@ function openStockForm(kind: "stock-in" | "adjust") {
   );
 }
 const invTab = ref("stock");
+/** 状态筛选重置为 all；值有变化时由 statusFilter watcher 接管重载，避免重复请求。 */
+function resetStatusFilterAndLoad() {
+  if (statusFilter.value === "all") resetAndLoad();
+  else statusFilter.value = "all";
+}
 function switchInvTab(tab: string) {
   invTab.value = tab;
-  statusFilter.value = "all";
-  page.value = 1;
+  resetStatusFilterAndLoad();
 }
 /* 财务结算：账期筛选（month=YYYY-MM，后端 B2 契约）。 */
 const monthOptions = computed(() => {
@@ -710,23 +720,29 @@ const monthOptions = computed(() => {
 });
 const month = ref(monthOptions.value[0]);
 watch(month, () => {
-  if (section.value === "finance") {
-    page.value = 1;
-    void load();
-  }
+  if (section.value === "finance") resetAndLoad();
 });
+/** 各板块表格统一返回：当前页行 + 服务端总数。 */
+interface PageRows {
+  rows: AdminRow[];
+  total: number;
+}
+/** 分页响应拆包（items → rows + total）。 */
+function unwrap<T extends AdminRow>(res: PagedResponse<T>): PageRows {
+  return { rows: res.items, total: res.total };
+}
 interface SectionConfig {
   title: string;
   eyebrow: string;
   desc: string;
-  loader: (query?: PageQuery) => Promise<AdminRow[]>;
+  loader: (query: ListQuery) => Promise<PageRows>;
   columns: [string, string][];
 }
 const inventoryTxnsConfig: SectionConfig = {
   title: "库存与批次",
   eyebrow: "WAREHOUSE INVENTORY",
   desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-  loader: (query) => api.inventoryTxns(undefined, query),
+  loader: (query) => api.inventoryTxns(undefined, query).then(unwrap),
   columns: [
     ["createdAt", "时间"],
     ["type", "类型"],
@@ -768,14 +784,16 @@ function toInviteRow(i: DispatchInvitation): DispatchRow {
 const dispTab = ref<"leaves" | "invites">("leaves");
 function switchDispTab(tab: "leaves" | "invites") {
   dispTab.value = tab;
-  statusFilter.value = "all";
-  page.value = 1;
+  resetStatusFilterAndLoad();
 }
 const dispatchLeavesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
   desc: "楼长请假与跨楼调配邀请，保障楼栋服务覆盖。",
-  loader: async () => (await api.leaveRequests()).map(toLeaveRow),
+  loader: async (query) => {
+    const res = await api.leaveRequests(query);
+    return { rows: res.items.map(toLeaveRow), total: res.total };
+  },
   columns: [
     ["staffName", "楼长"],
     ["staffNo", "工号"],
@@ -789,7 +807,10 @@ const dispatchInvitesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
   desc: "已发出的调配邀请与楼长接受状态，仅待接受可取消。",
-  loader: async () => (await api.dispatchInvitations()).map(toInviteRow),
+  loader: async (query) => {
+    const res = await api.dispatchInvitations(query);
+    return { rows: res.items.map(toInviteRow), total: res.total };
+  },
   columns: [
     ["staffName", "目标楼长"],
     ["roleText", "现任"],
@@ -802,10 +823,10 @@ const dispatchInvitesConfig: SectionConfig = {
 };
 
 /* ---------- 提成规则（IK8W5Y）：维度通配 * 展示 ---------- */
-function loadRules(): Promise<AdminRow[]> {
-  return Promise.all([api.commissionRules(), ensureBuildings()]).then(
-    ([rules, buildingList]) =>
-      rules.map(
+function loadRules(query: ListQuery): Promise<PageRows> {
+  return Promise.all([api.commissionRules(query), ensureBuildings()]).then(
+    ([res, buildingList]) => ({
+      rows: res.items.map(
         (r): RuleRow => ({
           ...r,
           buildingName: r.buildingId
@@ -817,6 +838,8 @@ function loadRules(): Promise<AdminRow[]> {
             r.mode === "instant" ? "即时达" : r.mode === "scheduled" ? "预约达" : "*",
         }),
       ),
+      total: res.total,
+    }),
   );
 }
 const configs: Record<string, SectionConfig> = {
@@ -824,7 +847,7 @@ const configs: Record<string, SectionConfig> = {
     title: "订单与履约",
     eyebrow: "ORDER CONTROL",
     desc: "监控订单全生命周期与两段配送进度。",
-    loader: (query) => api.orders("all", query),
+    loader: (query) => api.orders("all", query).then(unwrap),
     columns: [
       ["orderNo", "订单编号"],
       ["statusText", "当前状态"],
@@ -837,7 +860,7 @@ const configs: Record<string, SectionConfig> = {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
     desc: "维护商品资料、校园售价与销售状态。",
-    loader: (query) => api.products(query),
+    loader: (query) => api.products(query).then(unwrap),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -851,7 +874,7 @@ const configs: Record<string, SectionConfig> = {
     title: "库存与批次",
     eyebrow: "WAREHOUSE INVENTORY",
     desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-    loader: (query) => api.inventory(query),
+    loader: (query) => api.inventory(query).then(unwrap),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -866,7 +889,7 @@ const configs: Record<string, SectionConfig> = {
     title: "履约人员",
     eyebrow: "TEAM PERFORMANCE",
     desc: "楼长与配送员账号状态、绩效和服务范围。",
-    loader: () => api.staff(),
+    loader: (query) => api.staff(query).then(unwrap),
     columns: [
       ["staffNo", "工号"],
       ["name", "姓名"],
@@ -881,7 +904,7 @@ const configs: Record<string, SectionConfig> = {
     title: "售后与退款",
     eyebrow: "AFTER-SALES DESK",
     desc: "集中审核质量投诉、退款与异常凭证。",
-    loader: () => api.afterSales(),
+    loader: (query) => api.afterSales(query).then(unwrap),
     columns: [
       ["id", "售后单"],
       ["type", "类型"],
@@ -894,7 +917,7 @@ const configs: Record<string, SectionConfig> = {
     title: "财务结算",
     eyebrow: "FINANCE SETTLEMENT",
     desc: "月度账单确认、打款与跨期调整（月份可筛选）。",
-    loader: (query) => api.settlements(month.value, query),
+    loader: (query) => api.settlements(month.value, query).then(unwrap),
     columns: [
       ["staffName", "人员"],
       ["roleText", "角色"],
@@ -910,7 +933,7 @@ const configs: Record<string, SectionConfig> = {
     title: "提成规则",
     eyebrow: "COMMISSION RULES",
     desc: "按楼栋/楼层/重量/模式配置提成单价，未命中走兜底。",
-    loader: () => loadRules(),
+    loader: (query) => loadRules(query),
     columns: [
       ["buildingName", "楼栋"],
       ["floor", "楼层"],
@@ -926,7 +949,7 @@ const configs: Record<string, SectionConfig> = {
     title: "校园与组织",
     eyebrow: "CAMPUS NETWORK",
     desc: "管理楼栋、寝室与员工账号的组织服务网络。",
-    loader: () => api.buildings(),
+    loader: (query) => api.buildings(query).then(unwrap),
     columns: [
       ["name", "楼栋"],
       ["floors", "楼层"],
@@ -940,7 +963,7 @@ const configs: Record<string, SectionConfig> = {
     title: "营销活动",
     eyebrow: "GROWTH CAMPAIGNS",
     desc: "配置优惠券预算、领取门槛与核销效果。",
-    loader: () => api.coupons(),
+    loader: (query) => api.coupons(query).then(unwrap),
     columns: [
       ["name", "优惠券"],
       ["amount", "面额"],
@@ -956,7 +979,7 @@ const configs: Record<string, SectionConfig> = {
     title: "审计日志",
     eyebrow: "AUDIT TRAIL",
     desc: "追踪关键状态、金额与权限变更。",
-    loader: () => api.audits(),
+    loader: (query) => api.audits(query).then(unwrap),
     columns: [
       ["createdAt", "时间"],
       ["operator", "操作人"],
@@ -989,6 +1012,9 @@ const section = computed(() => String(route.params.section)),
     () => Boolean(createLabels[section.value]) && canWriteSection.value,
   ),
   filtered = computed(() =>
+    // 服务端分页：rows 即当前页。
+    // TODO(keyword)：keyword 已随请求发送，但后端列表尚未实现 keyword 过滤前，
+    // 这里对「当前页」做兜底过滤（仅能过滤到本页数据，命中数不改变 total）。
     rows.value.filter((row) => {
       const record = row as unknown as Record<string, unknown>;
       return (
@@ -1003,47 +1029,68 @@ const section = computed(() => String(route.params.section)),
     }),
   ),
   totalPages = computed(() =>
-    Math.max(1, Math.ceil(filtered.value.length / pageSize)),
-  ),
-  paged = computed(() =>
-    filtered.value.slice((page.value - 1) * pageSize, page.value * pageSize),
+    Math.max(1, Math.ceil(total.value / pageSize.value)),
   );
 async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    rows.value = await config.value.loader(
-      serverMode.value ? { page: page.value, pageSize } : undefined,
-    );
+    const result = await config.value.loader({
+      page: page.value,
+      pageSize: pageSize.value,
+      keyword: keyword.value.trim() || undefined,
+    });
+    rows.value = result.rows;
+    total.value = result.total;
   } catch (error) {
     rows.value = [];
+    total.value = 0;
     loadError.value = error instanceof Error ? error.message : "加载失败";
   } finally {
     loading.value = false;
   }
 }
+/** 重置到第 1 页并加载（页码变化由 [page, pageSize] watcher 接管，避免重复请求）。 */
+function resetAndLoad() {
+  if (page.value === 1) void load();
+  else page.value = 1;
+}
+/** 页码跳转：输入越界时收敛到 [1, totalPages]。 */
+function goJump() {
+  const target = Math.trunc(Number(jumpTo.value));
+  jumpTo.value = "";
+  if (!Number.isFinite(target) || target < 1) return;
+  page.value = Math.min(target, totalPages.value);
+}
 onMounted(load);
-watch(serverMode, () => {
-  page.value = 1;
+watch([page, pageSize], ([nextPage, nextSize], [prevPage, prevSize]) => {
+  // 每页条数变化时先回到第 1 页再请求（本回合仅触发一次加载）
+  if (nextSize !== prevSize && nextPage !== 1) {
+    page.value = 1;
+    return;
+  }
   void load();
 });
 watch(
   () => route.query.q,
   (value) => {
     keyword.value = String(value ?? "");
-    page.value = 1;
   },
   { immediate: true },
 );
-watch([keyword, statusFilter], () => (page.value = 1));
+/* 关键词搜索：防抖后随请求发送（服务端分页下每次输入都要重新取数） */
+watch(keyword, () => {
+  if (keywordTimer.value) clearTimeout(keywordTimer.value);
+  keywordTimer.value = setTimeout(resetAndLoad, 350);
+});
+watch(statusFilter, () => resetAndLoad());
 watch(
   () => route.params.section,
   () => {
     selected.value = undefined;
     invTab.value = "stock";
     dispTab.value = "leaves";
-    page.value = 1;
-    load();
+    resetAndLoad();
   },
 );
 const STATUS_TEXT: Record<string, string> = {
@@ -1161,6 +1208,7 @@ async function act(action: string) {
   }
 }
 function exportData() {
+  // 服务端分页下仅导出「当前页」筛选后的行；全量导出需后端导出接口或翻页聚合（TODO）
   const csv = [
     config.value.columns.map((c) => c[1]),
     ...filtered.value.map((row) =>
@@ -1400,7 +1448,7 @@ const ruleActive = computed(
     <div class="data-panel">
       <div class="data-summary">
         <div>
-          <strong>{{ filtered.length }}</strong
+          <strong>{{ total }}</strong
           ><span> 条记录</span>
         </div>
         <p>
@@ -1425,12 +1473,12 @@ const ruleActive = computed(
               </td>
             </tr>
             <template v-else>
-              <tr v-if="!paged.length">
+              <tr v-if="!filtered.length">
                 <td :colspan="config.columns.length + 1" class="empty-cell">
                   {{ loadError ? "加载失败，请重试" : "暂无数据" }}
                 </td>
               </tr>
-              <tr v-for="row in paged" :key="rowKey(row)">
+              <tr v-for="row in filtered" :key="rowKey(row)">
                 <td v-for="col in config.columns" :key="col[0]">
                   <span
                     v-if="col[0] === 'type' && section === 'inventory' && invTab === 'txns'"
@@ -1472,28 +1520,39 @@ const ruleActive = computed(
       </div>
       <div class="pagination">
         <span
-          >第 {{ page }} / {{ totalPages }} 页，共 {{ filtered.length }} 条</span
+          >第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</span
         >
         <div class="pager-right">
-          <label
-            class="page-mode"
-            title="后端列表接口暂未支持分页参数，当前回退前端分页（见 api.ts TODO）"
-          >
-            分页模式
-            <span class="segmented">
-              <button :class="{ active: !serverMode }" @click="serverMode = false">
-                前端
-              </button>
-              <button :class="{ active: serverMode }" @click="serverMode = true">
-                服务端
-              </button>
-            </span>
+          <label class="page-mode"
+            >每页
+            <select
+              v-model.number="pageSize"
+              aria-label="每页条数"
+              @change="page = 1"
+            >
+              <option v-for="size in PAGE_SIZES" :key="size" :value="size">
+                {{ size }} 条
+              </option>
+            </select>
           </label>
           <div>
             <button :disabled="page === 1" @click="page--">←</button
             ><button class="active">{{ page }}</button
             ><button :disabled="page === totalPages" @click="page++">→</button>
           </div>
+          <label class="page-mode"
+            >跳至
+            <input
+              v-model.number="jumpTo"
+              class="page-jump"
+              type="number"
+              min="1"
+              :max="totalPages"
+              aria-label="页码跳转"
+              @keyup.enter="goJump"
+            />
+            页<button @click="goJump">GO</button>
+          </label>
         </div>
       </div>
     </div>

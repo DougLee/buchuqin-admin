@@ -884,11 +884,20 @@ td {
   gap: 8px;
   font-size: 11px;
   color: var(--muted);
-  cursor: help;
 }
-.page-mode .segmented button {
-  height: 24px;
-  padding: 0 10px;
+.page-mode select,
+.page-mode input {
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: #153628;
+  font-size: 11px;
+  padding: 0 6px;
+}
+.page-mode input {
+  width: 52px;
+  text-align: center;
 }
 @keyframes pulse {
   to {
@@ -1017,12 +1026,12 @@ td {
   font-size: 10px;
   color: #a95c20;
 }
+.role-card em.ready {
+  color: var(--brand);
+}
 .role-card.active {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px #159c5518;
-}
-.role-card.pending {
-  background: #fbfaf6;
 }
 .login-form {
   text-align: left;

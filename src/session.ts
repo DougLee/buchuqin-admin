@@ -14,38 +14,32 @@ export interface SessionUser {
 }
 
 /**
- * 登录身份映射（写全，后端开放对应演示别名即生效）。
- * 2026-08-17 curl 实测 /auth/test-login：仅 admin 可用；
- * operations / warehouse / finance 返回 404「测试账号不存在」，
- * 登录页对 demoPending 角色标注「演示角色待后端开放」。
+ * 登录身份映射：operations / warehouse / finance 三个演示别名由后端 API-3 开放
+ * （IK8W5W），登录页角色卡展示「已开放登录」提示。
  */
 export const ROLE_IDENTITIES: Record<
   AdminRole,
-  { identity: string; label: string; desc: string; demoPending: boolean }
+  { identity: string; label: string; desc: string }
 > = {
   admin: {
     identity: "admin",
     label: "管理员",
     desc: "全部板块与写操作",
-    demoPending: false,
   },
   operations: {
     identity: "operations",
     label: "运营",
     desc: "全部板块（结算操作除外）",
-    demoPending: true,
   },
   warehouse: {
     identity: "warehouse",
     label: "仓储",
     desc: "工作台 / 商品 / 订单只读 / 出入库",
-    demoPending: true,
   },
   finance: {
     identity: "finance",
     label: "财务",
     desc: "工作台 / 订单只读 / 结算 / 提成规则",
-    demoPending: true,
   },
 };
 

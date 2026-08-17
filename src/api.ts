@@ -12,7 +12,9 @@ import type {
   DispatchInvitation,
   InventoryTxn,
   LeaveRequest,
+  ListQuery,
   Order,
+  PagedResponse,
   PageQuery,
   Product,
   Room,
@@ -39,12 +41,38 @@ export function clearToken() {
 }
 
 /**
- * TODO(后端分页)：列表接口透传 page/pageSize query；api 仓列表接口尚未实现分页参数，
- * 服务端会忽略未知 query 并返回全量——前端当前回退内存分页（DataPage 的
- * filtered/paged 计算保持不变），后端分页落地后把「服务端模式」开关置为默认即可生效。
+ * 列表统一透传 page/pageSize/keyword query（IK8W5X 契约：所有列表响应
+ * 为 { items, page, pageSize, total }，前端直接服务端分页）。
  */
-function paginationQuery(query?: PageQuery): string {
-  return query ? `page=${query.page}&pageSize=${query.pageSize}` : "";
+function listQuery(query?: ListQuery): string {
+  if (!query) return "";
+  return [
+    `page=${query.page}`,
+    `pageSize=${query.pageSize}`,
+    query.keyword ? `keyword=${encodeURIComponent(query.keyword)}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
+}
+
+/**
+ * 翻页取全量：下拉选项 / 抽屉列表等需要完整数据的场景使用。
+ * maxPages 防失控（默认 50 页 x pageSize 条）。
+ */
+export async function fetchAllPages<T>(
+  fetchPage: (query: PageQuery) => Promise<PagedResponse<T>>,
+  pageSize = 100,
+  maxPages = 50,
+): Promise<T[]> {
+  const first = await fetchPage({ page: 1, pageSize });
+  const items = [...first.items];
+  const size = first.pageSize || pageSize;
+  const totalPages = Math.max(1, Math.ceil(first.total / size));
+  for (let p = 2; p <= Math.min(totalPages, maxPages); p++) {
+    const next = await fetchPage({ page: p, pageSize });
+    items.push(...next.items);
+  }
+  return items;
 }
 
 function withQuery(...parts: (string | undefined)[]): string {
@@ -101,8 +129,10 @@ export async function ensureLogin() {
 
 export const api = {
   dashboard: () => request<DashboardData>("/admin/dashboard"),
-  products: (query?: PageQuery) =>
-    request<Product[]>(`/admin/products${withQuery(paginationQuery(query))}`),
+  products: (query?: ListQuery) =>
+    request<PagedResponse<Product>>(
+      `/admin/products${withQuery(listQuery(query))}`,
+    ),
   lookupBarcode: (barcode: string) =>
     request<BarcodeLookup>("/admin/products/barcode/lookup", {
       method: "POST",
@@ -118,11 +148,13 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  inventory: (query?: PageQuery) =>
-    request<Product[]>(`/admin/inventory${withQuery(paginationQuery(query))}`),
-  inventoryTxns: (productId?: string, query?: PageQuery) =>
-    request<InventoryTxn[]>(
-      `/admin/inventory/txns${withQuery(productId ? `productId=${productId}` : "", paginationQuery(query))}`,
+  inventory: (query?: ListQuery) =>
+    request<PagedResponse<Product>>(
+      `/admin/inventory${withQuery(listQuery(query))}`,
+    ),
+  inventoryTxns: (productId?: string, query?: ListQuery) =>
+    request<PagedResponse<InventoryTxn>>(
+      `/admin/inventory/txns${withQuery(productId ? `productId=${productId}` : "", listQuery(query))}`,
     ),
   stockIn: (data: { productId: string; quantity: number; reason: string }) =>
     request<InventoryTxn>("/admin/inventory/stock-in", {
@@ -134,13 +166,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  orders: (status = "all", query?: PageQuery) =>
-    request<Order[]>(
-      `/admin/orders${withQuery(`status=${status}`, paginationQuery(query))}`,
+  orders: (status = "all", query?: ListQuery) =>
+    request<PagedResponse<Order>>(
+      `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
     ),
   orderAction: (id: string, action: string) =>
     request<Order>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
-  staff: () => request<Staff[]>("/admin/staff"),
+  staff: (query?: ListQuery) =>
+    request<PagedResponse<Staff>>(`/admin/staff${withQuery(listQuery(query))}`),
   createStaff: (data: Record<string, unknown>) =>
     request<Staff>("/admin/staff", {
       method: "POST",
@@ -153,17 +186,20 @@ export const api = {
     }),
   deleteStaff: (id: string) =>
     request<Staff>(`/admin/staff/${id}`, { method: "DELETE" }),
-  afterSales: () => request<AfterSale[]>("/admin/after-sales"),
+  afterSales: (query?: ListQuery) =>
+    request<PagedResponse<AfterSale>>(
+      `/admin/after-sales${withQuery(listQuery(query))}`,
+    ),
   reviewAfterSale: (id: string, approved: boolean) =>
     request<AfterSale>(`/admin/after-sales/${id}/review`, {
       method: "POST",
       body: JSON.stringify({ approved }),
     }),
-  settlements: (month?: string, query?: PageQuery) =>
-    request<Settlement[]>(
+  settlements: (month?: string, query?: ListQuery) =>
+    request<PagedResponse<Settlement>>(
       `/admin/settlements${withQuery(
         month ? `month=${month}` : "",
-        paginationQuery(query),
+        listQuery(query),
       )}`,
     ),
   confirmSettlement: (id: string) =>
@@ -172,9 +208,14 @@ export const api = {
     }),
   paySettlement: (id: string) =>
     request<Settlement>(`/admin/settlements/${id}/pay`, { method: "POST" }),
-  leaveRequests: () => request<LeaveRequest[]>("/admin/leave-requests"),
-  dispatchInvitations: () =>
-    request<DispatchInvitation[]>("/admin/dispatch-invitations"),
+  leaveRequests: (query?: ListQuery) =>
+    request<PagedResponse<LeaveRequest>>(
+      `/admin/leave-requests${withQuery(listQuery(query))}`,
+    ),
+  dispatchInvitations: (query?: ListQuery) =>
+    request<PagedResponse<DispatchInvitation>>(
+      `/admin/dispatch-invitations${withQuery(listQuery(query))}`,
+    ),
   createDispatchInvitation: (data: {
     targetStaffId: string;
     buildingId: string;
@@ -190,9 +231,9 @@ export const api = {
     request<DispatchInvitation>(`/admin/dispatch-invitations/${id}/cancel`, {
       method: "POST",
     }),
-  commissionRules: (query?: PageQuery) =>
-    request<CommissionRule[]>(
-      `/admin/commission-rules${withQuery(paginationQuery(query))}`,
+  commissionRules: (query?: ListQuery) =>
+    request<PagedResponse<CommissionRule>>(
+      `/admin/commission-rules${withQuery(listQuery(query))}`,
     ),
   createCommissionRule: (data: {
     buildingId?: string;
@@ -215,8 +256,14 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  campuses: () => request<Campus[]>("/admin/campuses"),
-  buildings: () => request<Building[]>("/admin/buildings"),
+  campuses: (query?: ListQuery) =>
+    request<PagedResponse<Campus>>(
+      `/admin/campuses${withQuery(listQuery(query))}`,
+    ),
+  buildings: (query?: ListQuery) =>
+    request<PagedResponse<Building>>(
+      `/admin/buildings${withQuery(listQuery(query))}`,
+    ),
   createBuilding: (data: Record<string, unknown>) =>
     request<Building>("/admin/buildings", {
       method: "POST",
@@ -229,8 +276,10 @@ export const api = {
     }),
   deleteBuilding: (id: string) =>
     request<Building>(`/admin/buildings/${id}`, { method: "DELETE" }),
-  rooms: (buildingId: string) =>
-    request<Room[]>(`/admin/buildings/${buildingId}/rooms`),
+  rooms: (buildingId: string, query?: ListQuery) =>
+    request<PagedResponse<Room>>(
+      `/admin/buildings/${buildingId}/rooms${withQuery(listQuery(query))}`,
+    ),
   createRoom: (buildingId: string, data: { floor: number; roomNo: string }) =>
     request<Room>(`/admin/buildings/${buildingId}/rooms`, {
       method: "POST",
@@ -240,7 +289,10 @@ export const api = {
     request<Room>(`/admin/buildings/${buildingId}/rooms/${roomId}`, {
       method: "DELETE",
     }),
-  coupons: () => request<Coupon[]>("/admin/coupons"),
+  coupons: (query?: ListQuery) =>
+    request<PagedResponse<Coupon>>(
+      `/admin/coupons${withQuery(listQuery(query))}`,
+    ),
   createCoupon: (data: {
     name: string;
     amount: number;
@@ -262,6 +314,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userIds }),
     }),
-  adminUsers: () => request<AdminUser[]>("/admin/users"),
-  audits: () => request<AuditLog[]>("/admin/audit-logs"),
+  adminUsers: (query?: ListQuery) =>
+    request<PagedResponse<AdminUser>>(
+      `/admin/users${withQuery(listQuery(query))}`,
+    ),
+  audits: (query?: ListQuery) =>
+    request<PagedResponse<AuditLog>>(
+      `/admin/audit-logs${withQuery(listQuery(query))}`,
+    ),
 };
