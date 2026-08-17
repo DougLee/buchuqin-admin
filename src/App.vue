@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
+import { clearToken } from "./api";
+import { canSee, clearSession, roleLabel, sessionUser } from "./session";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
@@ -15,6 +17,11 @@ function search() {
       ? "/orders"
       : "/staff";
   router.push({ path, query: { q: value } });
+}
+function logout() {
+  clearSession();
+  clearToken();
+  router.push("/login");
 }
 const groups = [
   {
@@ -48,6 +55,17 @@ const groups = [
     ],
   },
 ];
+/** 按 PRD §2.2 权限矩阵过滤侧边栏板块。 */
+const visibleGroups = computed(() =>
+  groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        canSee(item[0] === "/" ? "dashboard" : item[0].slice(1)),
+      ),
+    }))
+    .filter((group) => group.items.length),
+);
 </script>
 <template>
   <div class="shell" :class="{ collapsed }">
@@ -57,7 +75,7 @@ const groups = [
         <div class="brand-copy"><b>不出寝</b><small>OPERATIONS</small></div>
       </div>
       <nav>
-        <section v-for="group in groups" :key="group.label">
+        <section v-for="group in visibleGroups" :key="group.label">
           <p>{{ group.label }}</p>
           <RouterLink
             v-for="item in group.items"
@@ -70,8 +88,14 @@ const groups = [
         </section>
       </nav>
       <div class="operator">
-        <div class="avatar">管</div>
-        <div><b>平台管理员</b><small>湖北工业大学</small></div>
+        <div class="avatar">{{
+          (sessionUser?.nickname || roleLabel).slice(0, 1)
+        }}</div>
+        <div>
+          <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
+          <small>{{ roleLabel }} · 湖北工业大学</small>
+        </div>
+        <button class="logout-btn" @click="logout">登出</button>
       </div>
     </aside>
     <main>
