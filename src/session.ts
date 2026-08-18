@@ -134,13 +134,12 @@ export function canWrite(section: string): boolean {
   );
 }
 
-/** 登录成功后落地会话（role 来自 test-login 返回的 user/claims）。 */
-export function applySession(user: SessionUser, identity: string) {
+/** 登录成功后落地会话（role 来自 admin-login 返回的账号角色）。 */
+export function applySession(user: SessionUser) {
   role.value = isBackendRole(user.role) ? user.role : null;
   sessionUser.value = user;
   localStorage.setItem("adminRole", role.value ?? "");
   localStorage.setItem("adminUser", JSON.stringify(user));
-  localStorage.setItem("adminIdentity", identity);
 }
 
 export function clearSession() {

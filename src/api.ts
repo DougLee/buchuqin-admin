@@ -80,11 +80,7 @@ function withQuery(...parts: (string | undefined)[]): string {
   return query ? `?${query}` : "";
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  retried = false,
-): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
@@ -93,17 +89,12 @@ async function request<T>(
       ...options.headers,
     },
   });
-  // token 过期/失效：用会话身份重登一次后重试；重登失败（演示别名未开放等）清理会话并回登录页
-  if (response.status === 401 && !retried && !path.startsWith("/auth/")) {
-    try {
-      await ensureLogin();
-    } catch (error) {
-      clearSession();
-      token = "";
-      window.location.hash = "#/login";
-      throw error;
-    }
-    return request<T>(path, options, true);
+  // token 过期/失效：无静默重登（真实密码不在前端保存），清会话回登录页
+  if (response.status === 401 && !path.startsWith("/auth/")) {
+    clearSession();
+    token = "";
+    window.location.hash = "#/login";
+    throw new Error("登录已失效，请重新登录");
   }
   const body = (await response.json().catch(() => null)) as ApiResult<T> | null;
   if (!response.ok || !body)
@@ -111,20 +102,18 @@ async function request<T>(
   return body.data;
 }
 
-/** 指定身份走 test-login（支持角色别名或具体 staffNo / staff id）。 */
-export async function login(identity: string): Promise<LoginResult> {
-  const result = await request<LoginResult>("/auth/test-login", {
+/** 后台账号密码登录（IK9JHP：test-login 演示通道已下线）。 */
+export async function login(
+  username: string,
+  password: string,
+): Promise<LoginResult> {
+  const result = await request<LoginResult>("/auth/admin-login", {
     method: "POST",
-    body: JSON.stringify({ identity }),
+    body: JSON.stringify({ username, password }),
   });
   token = result.token;
   localStorage.setItem("adminToken", token);
   return result;
-}
-
-/** 401 自愈：按登录时保存的身份重登（默认 admin）。 */
-export async function ensureLogin() {
-  await login(localStorage.getItem("adminIdentity") || "admin");
 }
 
 export const api = {

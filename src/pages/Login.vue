@@ -2,37 +2,28 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { login } from "../api";
-import {
-  applySession,
-  isBackendRole,
-  ROLE_IDENTITIES,
-  type AdminRole,
-} from "../session";
+import { applySession, isBackendRole } from "../session";
 
 const router = useRouter(),
-  selectedRole = ref<AdminRole>("admin"),
   username = ref(""),
   password = ref(""),
   error = ref(""),
   submitting = ref(false);
 
-const roles = Object.entries(ROLE_IDENTITIES) as [
-  AdminRole,
-  (typeof ROLE_IDENTITIES)[AdminRole],
-][];
-
 async function submit() {
   error.value = "";
-  // username 可填具体工号（后端支持 staffNo/staff id 登录），留空则用所选身份别名
-  const identity = username.value.trim() || ROLE_IDENTITIES[selectedRole.value].identity;
+  if (!username.value.trim() || !password.value) {
+    error.value = "请输入账号和密码";
+    return;
+  }
   submitting.value = true;
   try {
-    const result = await login(identity);
+    const result = await login(username.value.trim(), password.value);
     if (!isBackendRole(result.user.role)) {
-      error.value = `该账号无后台访问权限（角色：${result.user.role}），请改用后台角色登录`;
+      error.value = `该账号无后台访问权限（角色：${result.user.role}）`;
       return;
     }
-    applySession(result.user, identity);
+    applySession(result.user);
     router.push("/");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "登录失败";
@@ -46,27 +37,13 @@ async function submit() {
     <div class="login-card">
       <div class="brand-mark big"><span></span></div>
       <h1>不出寝 · 运营后台</h1>
-      <p class="login-sub">选择后台角色并登录（演示通道 test-login）</p>
-      <div class="role-grid">
-        <button
-          v-for="[key, info] in roles"
-          :key="key"
-          type="button"
-          class="role-card"
-          :class="{ active: selectedRole === key }"
-          @click="selectedRole = key"
-        >
-          <strong>{{ info.label }}</strong>
-          <small>{{ info.desc }}</small>
-          <em class="ready">已开放登录</em>
-        </button>
-      </div>
+      <p class="login-sub">使用后台账号登录</p>
       <form class="login-form" @submit.prevent="submit">
         <label
-          >用户名（可选工号）
+          >账号
           <input
             v-model.trim="username"
-            placeholder="留空使用所选身份；也可填工号如 BM-HBUT-005"
+            placeholder="后台账号"
             autocomplete="username"
         /></label>
         <label
@@ -74,7 +51,7 @@ async function submit() {
           <input
             v-model="password"
             type="password"
-            placeholder="演示通道无需密码，任意填写"
+            placeholder="密码"
             autocomplete="current-password"
         /></label>
         <p v-if="error" class="form-hint">{{ error }}</p>
