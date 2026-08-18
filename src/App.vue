@@ -19,11 +19,14 @@ function search() {
   router.push({ path, query: { q: value } });
 }
 function logout() {
+  userMenuOpen.value = false;
   clearSession();
   clearToken();
   router.push("/login");
 }
 /* 自助改密（IK9KWO）：任意后台角色可用 */
+/* 右上角用户菜单：改密/登出入口 */
+const userMenuOpen = ref(false);
 const pwdOpen = ref(false),
   oldPassword = ref(""),
   newPassword = ref(""),
@@ -120,22 +123,24 @@ const visibleGroups = computed(() =>
         </section>
       </nav>
       <div class="operator">
-        <div class="avatar">{{
-          (sessionUser?.nickname || roleLabel).slice(0, 1)
-        }}</div>
-        <div>
-          <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
-          <small>{{ roleLabel }} · 湖北工业大学</small>
+        <div class="operator-head">
+          <div class="avatar">{{
+            (sessionUser?.nickname || roleLabel).slice(0, 1)
+          }}</div>
+          <div class="operator-meta">
+            <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
+            <small>{{ roleLabel }}</small>
+          </div>
         </div>
-        <button class="logout-btn" @click="pwdOpen = true">改密</button>
-        <button class="logout-btn" @click="logout">登出</button>
       </div>
     </aside>
     <main>
       <header>
         <button
           class="icon-button"
-          aria-label="折叠菜单"
+          :aria-pressed="collapsed"
+          :aria-label="collapsed ? '展开菜单' : '折叠菜单'"
+          :title="collapsed ? '展开菜单' : '折叠菜单'"
           @click="collapsed = !collapsed"
         >
           <span></span><span></span><span></span>
@@ -160,6 +165,40 @@ const visibleGroups = computed(() =>
           >
             <span></span><i>2</i>
           </button>
+          <div class="user-menu-wrap">
+            <button
+              class="user-chip"
+              type="button"
+              aria-haspopup="menu"
+              :aria-expanded="userMenuOpen"
+              @click="userMenuOpen = !userMenuOpen"
+            >
+              <span class="avatar">{{
+                (sessionUser?.nickname || roleLabel).slice(0, 1)
+              }}</span>
+              <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
+              <AppIcon name="chevron" />
+            </button>
+            <template v-if="userMenuOpen">
+              <div class="menu-backdrop" @click="userMenuOpen = false"></div>
+              <div class="user-menu" role="menu">
+                <p class="user-menu-head">
+                  <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
+                  <small>{{ roleLabel }}</small>
+                </p>
+                <button
+                  class="menu-item"
+                  role="menuitem"
+                  @click="userMenuOpen = false; pwdOpen = true"
+                >
+                  <AppIcon name="password" />修改密码
+                </button>
+                <button class="menu-item danger" role="menuitem" @click="logout">
+                  <AppIcon name="logout" />退出登录
+                </button>
+              </div>
+            </template>
+          </div>
         </div>
       </header>
       <RouterView />

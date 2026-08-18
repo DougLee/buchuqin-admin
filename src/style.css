@@ -31,6 +31,11 @@ a {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
+  transition: grid-template-columns 0.22s ease;
+}
+/* 折叠态（顶栏汉堡钮）：侧栏收成图标栏，文字全隐藏 */
+.shell.collapsed {
+  grid-template-columns: 84px minmax(0, 1fr);
 }
 .shell aside {
   position: sticky;
@@ -42,6 +47,7 @@ a {
   display: flex;
   flex-direction: column;
   z-index: 20;
+  overflow: hidden;
 }
 .brand {
   display: flex;
@@ -137,48 +143,77 @@ a {
   border-radius: 99px;
   padding: 2px 6px;
 }
+/* 折叠态导航：隐藏分组标题/文字/徽标，图标居中 */
+.shell.collapsed .brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.shell.collapsed .brand-copy,
+.shell.collapsed nav p,
+.shell.collapsed nav a span,
+.shell.collapsed nav a i {
+  display: none;
+}
+.shell.collapsed nav a {
+  justify-content: center;
+  padding: 0;
+}
+.shell.collapsed nav a.active:before {
+  left: -8px;
+}
 .operator {
   margin-top: auto;
+  padding: 14px 4px 0;
+  border-top: 1px solid #ffffff18;
+}
+.operator-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 8px 0;
-  border-top: 1px solid #ffffff18;
+  min-width: 0;
+  padding: 0 4px;
 }
-.logout-btn {
-  margin-left: auto;
-  border: 1px solid #ffffff2b;
-  background: transparent;
-  color: #b9cfc3;
-  border-radius: 8px;
-  padding: 5px 9px;
-  font-size: 11px;
+.operator-meta {
+  min-width: 0;
 }
-.logout-btn:hover {
-  background: #ffffff14;
+.operator-meta b,
+.operator-meta small {
+  display: block;
+}
+.operator-meta b {
+  font-size: 13px;
   color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.operator-meta small {
+  font-size: 10px;
+  color: #89aa9a;
+  margin-top: 3px;
+}
+/* 折叠态操作员区：仅头像居中 */
+.shell.collapsed .operator {
+  padding-left: 0;
+  padding-right: 0;
+}
+.shell.collapsed .operator-head {
+  justify-content: center;
+}
+.shell.collapsed .operator-meta {
+  display: none;
 }
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 11px;
   background: #ffffff15;
   color: var(--lime);
   display: grid;
   place-items: center;
   font-weight: 800;
-}
-.operator b,
-.operator small {
-  display: block;
-}
-.operator b {
-  font-size: 13px;
-}
-.operator small {
-  font-size: 10px;
-  color: #89aa9a;
-  margin-top: 3px;
+  flex: none;
 }
 .shell main {
   min-width: 0;
@@ -201,6 +236,16 @@ a {
   width: 40px;
   height: 40px;
   padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.icon-button:hover {
+  background: #159c551a;
+}
+.icon-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 .icon-button span {
   display: block;
@@ -209,6 +254,17 @@ a {
   background: #355147;
   margin: 4px;
   border-radius: 3px;
+  transition: width 0.22s ease, background 0.22s ease;
+}
+/* 折叠态汉堡三线变成指向右侧的展开箭头 */
+.icon-button[aria-pressed="true"] span:first-child {
+  width: 10px;
+}
+.icon-button[aria-pressed="true"] span:last-child {
+  width: 10px;
+}
+.icon-button[aria-pressed="true"] span {
+  background: var(--brand);
 }
 .campus-select {
   display: flex;
@@ -244,6 +300,120 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+/* ---------- 右上角用户菜单（改密/登出） ---------- */
+.user-menu-wrap {
+  position: relative;
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.user-chip:hover {
+  border-color: #bfd6c8;
+  box-shadow: 0 2px 10px #0a2a1e14;
+}
+.user-chip .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #e7f4ec;
+  color: #0e5a40;
+  font-size: 13px;
+}
+.user-chip b {
+  font-size: 13px;
+  color: #1d3a2d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.user-chip svg {
+  width: 14px;
+  height: 14px;
+  color: #7d9186;
+  transition: transform 0.2s ease;
+}
+.user-chip[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 224px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px #0a2a1e26;
+  overflow: hidden;
+  z-index: 50;
+}
+.user-menu-head {
+  margin: 0;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--line);
+}
+.user-menu-head b {
+  display: block;
+  font-size: 13px;
+  color: #1d3a2d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu-head small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #7d9186;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  color: #355147;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+.menu-item svg {
+  width: 16px;
+  height: 16px;
+  color: #6d8579;
+}
+.menu-item:hover {
+  background: #f3f8f5;
+  color: #0e5a40;
+}
+.menu-item.danger {
+  color: #b3413b;
+}
+.menu-item.danger svg {
+  color: #c9766f;
+}
+.menu-item.danger:hover {
+  background: #fdf2f1;
+  color: #99352f;
 }
 .search {
   width: 260px;

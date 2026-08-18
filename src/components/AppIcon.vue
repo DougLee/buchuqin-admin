@@ -17,6 +17,10 @@ const paths: Record<string, string> = {
   rules: "M3 17L17 3l4 4L7 21H3zM9 12l3 3M13 8l3 3",
   accounts:
     "M8 11a4 4 0 100-8 4 4 0 000 8zM2 21v-1a6 6 0 016-6h1a6 6 0 016 6v1M17 8l4 4m0-4l-4 4",
+  password:
+    "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4",
+  logout: "M18.36 6.64a9 9 0 11-12.73 0M12 2v10",
+  chevron: "M6 9l6 6 6-6",
 };
 </script>
 <template>
