@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 /** 后台角色，口径与后端 admin.controller authorize 一致（admin/operations/warehouse/finance）。 */
 export type AdminRole = "admin" | "operations" | "warehouse" | "finance";
 
-/** test-login 返回的 user/claims。 */
+/** admin-login 返回的 user/claims。 */
 export interface SessionUser {
   id: string;
   campusId: string;
@@ -12,36 +12,6 @@ export interface SessionUser {
   phone?: string;
   avatar?: string;
 }
-
-/**
- * 登录身份映射：operations / warehouse / finance 三个演示别名由后端 API-3 开放
- * （IK8W5W），登录页角色卡展示「已开放登录」提示。
- */
-export const ROLE_IDENTITIES: Record<
-  AdminRole,
-  { identity: string; label: string; desc: string }
-> = {
-  admin: {
-    identity: "admin",
-    label: "管理员",
-    desc: "全部板块与写操作",
-  },
-  operations: {
-    identity: "operations",
-    label: "运营",
-    desc: "全部板块（结算操作除外）",
-  },
-  warehouse: {
-    identity: "warehouse",
-    label: "仓储",
-    desc: "工作台 / 商品 / 订单只读 / 出入库",
-  },
-  finance: {
-    identity: "finance",
-    label: "财务",
-    desc: "工作台 / 订单只读 / 结算 / 提成规则",
-  },
-};
 
 export const ROLE_LABELS: Record<AdminRole, string> = {
   admin: "管理员",
@@ -154,7 +124,7 @@ export function applySession(user: SessionUser) {
 export function clearSession() {
   role.value = null;
   sessionUser.value = null;
-  ["adminToken", "adminRole", "adminUser", "adminIdentity"].forEach((key) =>
+  ["adminToken", "adminRole", "adminUser"].forEach((key) =>
     localStorage.removeItem(key),
   );
 }
