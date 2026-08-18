@@ -64,24 +64,33 @@ const ALL_SECTIONS = [
   "audit",
 ];
 
-/** PRD §2.2 权限矩阵：sections=侧边栏可见板块，writable=可执行写操作的板块。 */
+/** PRD §2.2 + ADR-0004 签字权限矩阵：sections=侧边栏可见板块，writable=可执行写操作的板块。
+ *  口径与后端 buchuqin-api src/admin/permissions.ts 一致，改动需两侧同步。
+ *  售后板块（IK9JHQ）全角色只读留档，不在任何 writable 里。 */
 export const PERMISSIONS: Record<
   AdminRole,
   { sections: string[]; writable: string[] }
 > = {
   admin: {
     sections: [...ALL_SECTIONS, "dispatch", "rules"],
-    writable: [...ALL_SECTIONS, "dispatch", "rules"],
+    writable: [
+      ...ALL_SECTIONS.filter((s) => s !== "after-sales"),
+      "dispatch",
+      "rules",
+    ],
   },
   // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。
   operations: {
     sections: [...ALL_SECTIONS, "dispatch", "rules"],
-    writable: [...ALL_SECTIONS.filter((s) => s !== "finance"), "dispatch"],
+    writable: [
+      ...ALL_SECTIONS.filter((s) => s !== "finance" && s !== "after-sales"),
+      "dispatch",
+    ],
   },
-  // 仓储：工作台 / 商品 / 订单只读 / 出入库。
+  // 仓储：工作台 / 商品（读写）/ 订单只读 / 出入库。
   warehouse: {
     sections: ["dashboard", "orders", "products", "inventory"],
-    writable: ["inventory"],
+    writable: ["inventory", "products"],
   },
   // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
   finance: {
