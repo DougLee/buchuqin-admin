@@ -39,16 +39,19 @@ async function submit() {
       <h1>不出寝 · 运营后台</h1>
       <p class="login-sub">使用后台账号登录</p>
       <form class="login-form" @submit.prevent="submit">
-        <label
+        <label for="login-username"
           >账号
           <input
+            id="login-username"
             v-model.trim="username"
             placeholder="后台账号"
             autocomplete="username"
+            autofocus
         /></label>
-        <label
+        <label for="login-password"
           >密码
           <input
+            id="login-password"
             v-model="password"
             type="password"
             placeholder="密码"
@@ -60,8 +63,7 @@ async function submit() {
         </button>
       </form>
       <p class="login-foot">
-        权限矩阵：仓储（工作台/商品/订单只读/出入库）· 运营（全部除结算操作）·
-        财务（结算与审计）· 管理员（全部）
+        仅限授权员工使用 · 账号由管理员分配，忘记密码请联系管理员重置
       </p>
     </div>
   </div>

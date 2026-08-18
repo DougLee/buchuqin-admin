@@ -46,6 +46,8 @@ async function submitPassword() {
     pwdSaving.value = false;
   }
 }
+/* 登录页不走后台外壳：无侧边栏/顶栏，只渲染登录卡片（RouterView 即 Login） */
+const isLogin = computed(() => route.path === "/login");
 const groups = [
   {
     label: "运营中心",
@@ -97,7 +99,8 @@ const visibleGroups = computed(() =>
 );
 </script>
 <template>
-  <div class="shell" :class="{ collapsed }">
+  <RouterView v-if="isLogin" />
+  <div v-else class="shell" :class="{ collapsed }">
     <aside>
       <div class="brand">
         <div class="brand-mark"><span></span></div>

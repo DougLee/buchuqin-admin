@@ -992,47 +992,6 @@ td {
   color: var(--muted);
   font-size: 12px;
 }
-.role-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.role-card {
-  position: relative;
-  text-align: left;
-  border: 1px solid var(--line);
-  background: #fff;
-  border-radius: 13px;
-  padding: 13px 14px;
-  transition: 0.15s;
-}
-.role-card strong {
-  display: block;
-  font-size: 14px;
-  color: #153628;
-}
-.role-card small {
-  display: block;
-  margin-top: 5px;
-  font-size: 10px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-.role-card em {
-  display: block;
-  margin-top: 6px;
-  font-style: normal;
-  font-size: 10px;
-  color: #a95c20;
-}
-.role-card em.ready {
-  color: var(--brand);
-}
-.role-card.active {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px #159c5518;
-}
 .login-form {
   text-align: left;
 }
