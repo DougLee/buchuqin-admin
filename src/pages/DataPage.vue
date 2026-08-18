@@ -1286,20 +1286,13 @@ async function act(action: string) {
       });
     else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
-    else if (section.value === "after-sales")
-      await api.reviewAfterSale(selected.value.id, action === "approve");
     else if (section.value === "finance") {
       // 账单状态机：pending-review → confirm → pay；条件流转由后端校验
       if (action === "confirm") await api.confirmSettlement(selected.value.id);
       else await api.paySettlement(selected.value.id);
     }
     messageError.value = false;
-    message.value =
-      section.value === "after-sales"
-        ? action === "approve"
-          ? "已同意退款，订单转入退款流程"
-          : "已拒绝该售后申请"
-        : "操作成功，数据已同步";
+    message.value = "操作成功，数据已同步";
     selected.value = undefined;
     await load();
     setTimeout(() => (message.value = ""), 2200);
@@ -1780,16 +1773,9 @@ const ruleActive = computed(
               标记异常
             </button></template
           >
-          <template v-else-if="section === 'after-sales' && canWriteSection">
-            <template v-if="afterSaleStatus === 'pending'"
-              ><button class="btn primary" @click="act('approve')">
-                同意退款</button
-              ><button class="btn danger-btn" @click="act('reject')">
-                拒绝售后
-              </button></template
-            >
-            <p v-else class="form-hint plain processed-hint">
-              该申请{{ display(selected, "status") }}，无需重复操作。
+          <template v-else-if="section === 'after-sales'">
+            <p class="form-hint plain processed-hint">
+              试点期售后由客服人工处理（不退款），本页仅留档查看。
             </p>
           </template>
           <template v-else-if="section === 'marketing' && canWriteSection">

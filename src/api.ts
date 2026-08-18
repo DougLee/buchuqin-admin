@@ -180,11 +180,6 @@ export const api = {
     request<PagedResponse<AfterSale>>(
       `/admin/after-sales${withQuery(listQuery(query))}`,
     ),
-  reviewAfterSale: (id: string, approved: boolean) =>
-    request<AfterSale>(`/admin/after-sales/${id}/review`, {
-      method: "POST",
-      body: JSON.stringify({ approved }),
-    }),
   settlements: (month?: string, query?: ListQuery) =>
     request<PagedResponse<Settlement>>(
       `/admin/settlements${withQuery(
