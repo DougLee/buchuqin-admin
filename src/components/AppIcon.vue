@@ -15,6 +15,8 @@ const paths: Record<string, string> = {
   audit: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5",
   dispatch: "M4 7h11M14 4l3 3-3 3M20 17H9M10 14l-3 3 3 3",
   rules: "M3 17L17 3l4 4L7 21H3zM9 12l3 3M13 8l3 3",
+  accounts:
+    "M8 11a4 4 0 100-8 4 4 0 000 8zM2 21v-1a6 6 0 016-6h1a6 6 0 016 6v1M17 8l4 4m0-4l-4 4",
 };
 </script>
 <template>

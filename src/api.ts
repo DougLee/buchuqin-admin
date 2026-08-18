@@ -1,5 +1,6 @@
 import { clearSession, type SessionUser } from "./session";
 import type {
+  AdminAccount,
   AdminUser,
   AfterSale,
   AuditLog,
@@ -311,4 +312,35 @@ export const api = {
     request<PagedResponse<AuditLog>>(
       `/admin/audit-logs${withQuery(listQuery(query))}`,
     ),
+  /* 后台账号管理（IK9KWO）：仅 admin 角色可用，后端矩阵兜底 */
+  adminAccounts: (query?: ListQuery) =>
+    request<PagedResponse<AdminAccount>>(
+      `/admin/accounts${withQuery(listQuery(query))}`,
+    ),
+  createAccount: (data: {
+    username: string;
+    password: string;
+    nickname?: string;
+    role: string;
+  }) =>
+    request<AdminAccount>("/admin/accounts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateAccount: (
+    id: string,
+    data: { nickname?: string; role?: string; password?: string },
+  ) =>
+    request<AdminAccount>(`/admin/accounts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteAccount: (id: string) =>
+    request(`/admin/accounts/${id}`, { method: "DELETE" }),
+  /** 自助改密（当前登录账号） */
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ oldPassword, newPassword }),
+    }),
 };

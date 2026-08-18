@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
-import { clearToken } from "./api";
+import { api, clearToken } from "./api";
 import { canSee, clearSession, roleLabel, sessionUser } from "./session";
 const route = useRoute(),
   router = useRouter(),
@@ -22,6 +22,29 @@ function logout() {
   clearSession();
   clearToken();
   router.push("/login");
+}
+/* 自助改密（IK9KWO）：任意后台角色可用 */
+const pwdOpen = ref(false),
+  oldPassword = ref(""),
+  newPassword = ref(""),
+  pwdError = ref(""),
+  pwdSaving = ref(false);
+async function submitPassword() {
+  pwdError.value = "";
+  if (newPassword.value.length < 8) {
+    pwdError.value = "新密码至少 8 位";
+    return;
+  }
+  pwdSaving.value = true;
+  try {
+    await api.changePassword(oldPassword.value, newPassword.value);
+    pwdOpen.value = false;
+    oldPassword.value = newPassword.value = "";
+  } catch (error) {
+    pwdError.value = error instanceof Error ? error.message : "修改失败";
+  } finally {
+    pwdSaving.value = false;
+  }
 }
 const groups = [
   {
@@ -55,6 +78,10 @@ const groups = [
       ["/rules", "rules", "提成规则"],
       ["/audit", "audit", "审计日志"],
     ],
+  },
+  {
+    label: "系统",
+    items: [["/accounts", "accounts", "账号管理"]],
   },
 ];
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块。 */
@@ -97,6 +124,7 @@ const visibleGroups = computed(() =>
           <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
           <small>{{ roleLabel }} · 湖北工业大学</small>
         </div>
+        <button class="logout-btn" @click="pwdOpen = true">改密</button>
         <button class="logout-btn" @click="logout">登出</button>
       </div>
     </aside>
@@ -133,5 +161,34 @@ const visibleGroups = computed(() =>
       </header>
       <RouterView />
     </main>
+    <!-- 自助改密弹窗 -->
+    <div v-if="pwdOpen" class="modal-mask" @click.self="pwdOpen = false">
+      <form class="login-card pwd-card" @submit.prevent="submitPassword">
+        <h2>修改密码</h2>
+        <label
+          >原密码
+          <input
+            v-model="oldPassword"
+            type="password"
+            autocomplete="current-password"
+        /></label>
+        <label
+          >新密码（至少 8 位）
+          <input
+            v-model="newPassword"
+            type="password"
+            autocomplete="new-password"
+        /></label>
+        <p v-if="pwdError" class="form-hint">{{ pwdError }}</p>
+        <div class="drawer-actions">
+          <button class="btn primary" type="submit" :disabled="pwdSaving">
+            {{ pwdSaving ? "提交中..." : "确认修改" }}
+          </button>
+          <button class="btn ghost" type="button" @click="pwdOpen = false">
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>

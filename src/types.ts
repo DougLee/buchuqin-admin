@@ -266,6 +266,18 @@ export interface AuditLog {
   createdAt: string;
 }
 
+/** 后台账号（IK9KWO）：后端不下发 passwordHash。 */
+export interface AdminAccount {
+  id: string;
+  username: string;
+  nickname: string;
+  role: string;
+  campusId: string;
+  createdAt: string;
+}
+/** 账号管理板块表格行：附角色中文文案。 */
+export type AccountRow = AdminAccount & { roleText: string };
+
 export interface AdminUser {
   id: string;
   nickname: string;
@@ -378,7 +390,8 @@ export type AdminRow =
   | LeaveRow
   | DispatchRow
   | RuleRow
-  | AfterSaleRow;
+  | AfterSaleRow
+  | AccountRow;
 
 /* ---------- 调配与请假 / 提成规则的扁平化视图行 ---------- */
 

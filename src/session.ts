@@ -42,11 +42,12 @@ export const PERMISSIONS: Record<
   { sections: string[]; writable: string[] }
 > = {
   admin: {
-    sections: [...ALL_SECTIONS, "dispatch", "rules"],
+    sections: [...ALL_SECTIONS, "dispatch", "rules", "accounts"],
     writable: [
       ...ALL_SECTIONS.filter((s) => s !== "after-sales"),
       "dispatch",
       "rules",
+      "accounts",
     ],
   },
   // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。

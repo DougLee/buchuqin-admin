@@ -2,9 +2,10 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, fetchAllPages } from "../api";
-import { canWrite } from "../session";
+import { canWrite, ROLE_LABELS, type AdminRole } from "../session";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
+  AccountRow,
   AdminRow,
   AdminUser,
   AfterSale,
@@ -67,7 +68,7 @@ type FormValue = string | number | boolean;
 interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "date" | "datetime" | "select" | "checkbox";
+  type?: "text" | "number" | "date" | "datetime" | "select" | "checkbox" | "password";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
@@ -584,6 +585,94 @@ async function cancelInvite() {
 }
 
 /* ---------- 提成规则：新建 + 启停 ---------- */
+/* ---------- 后台账号（IK9KWO）：超管维护运营/仓储/财务账号 ---------- */
+const ACCOUNT_ROLE_OPTIONS = [
+  { value: "operations", label: "运营" },
+  { value: "warehouse", label: "仓储" },
+  { value: "finance", label: "财务" },
+  { value: "admin", label: "管理员" },
+];
+function openAccountCreate() {
+  openForm(
+    {
+      eyebrow: "NEW ADMIN ACCOUNT",
+      title: "新建后台账号",
+      submit: "创建账号",
+      done: "后台账号已创建",
+      fields: [
+        { key: "username", label: "账号", placeholder: "3-20 位字母/数字/下划线" },
+        { key: "password", label: "初始密码", type: "password", placeholder: "至少 8 位" },
+        { key: "nickname", label: "昵称", placeholder: "如：仓储小王" },
+        { key: "role", label: "角色", type: "select", options: () => ACCOUNT_ROLE_OPTIONS },
+      ],
+      save: async (d) =>
+        void (await api.createAccount({
+          username: String(d.username || "").trim(),
+          password: String(d.password || ""),
+          nickname: String(d.nickname || "").trim(),
+          role: String(d.role || ""),
+        })),
+    },
+    { username: "", password: "", nickname: "", role: "operations" },
+  );
+}
+function openAccountEdit(row: AdminRow) {
+  const account = row as AccountRow;
+  selected.value = undefined;
+  openForm(
+    {
+      eyebrow: "EDIT ADMIN ACCOUNT",
+      title: `编辑账号 ${account.username}`,
+      submit: "保存修改",
+      done: "账号已更新",
+      fields: [
+        { key: "nickname", label: "昵称" },
+        { key: "role", label: "角色", type: "select", options: () => ACCOUNT_ROLE_OPTIONS },
+      ],
+      save: async (d) =>
+        void (await api.updateAccount(account.id, {
+          nickname: String(d.nickname || "").trim(),
+          role: String(d.role || ""),
+        })),
+    },
+    { nickname: account.nickname, role: account.role },
+  );
+}
+function openAccountResetPassword(row: AdminRow) {
+  const account = row as AccountRow;
+  selected.value = undefined;
+  openForm(
+    {
+      eyebrow: "RESET PASSWORD",
+      title: `重置密码 ${account.username}`,
+      submit: "重置密码",
+      done: "密码已重置",
+      fields: [
+        { key: "password", label: "新密码", type: "password", placeholder: "至少 8 位" },
+      ],
+      save: async (d) =>
+        void (await api.updateAccount(account.id, {
+          password: String(d.password || ""),
+        })),
+    },
+    { password: "" },
+  );
+}
+async function removeAccount() {
+  if (!selected.value) return;
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  try {
+    await api.deleteAccount(selected.value.id);
+    notify("后台账号已删除");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
 function openRuleCreate() {
   void ensureBuildings();
   openForm(
@@ -1074,6 +1163,25 @@ const configs: Record<string, SectionConfig> = {
       ["entityId", "对象 ID"],
     ],
   },
+  accounts: {
+    title: "账号管理",
+    eyebrow: "ADMIN ACCOUNTS",
+    desc: "后台账号的创建、角色分配与密码重置（仅超管）。",
+    loader: (query) =>
+      api.adminAccounts(query).then((res) => ({
+        total: res.total,
+        rows: res.items.map((x) => ({
+          ...x,
+          roleText: ROLE_LABELS[x.role as AdminRole] ?? x.role,
+        })),
+      })),
+    columns: [
+      ["username", "账号"],
+      ["nickname", "昵称"],
+      ["roleText", "角色"],
+      ["createdAt", "创建时间"],
+    ],
+  },
 };
 const createLabels: Record<string, string> = {
   products: "＋ 新建记录",
@@ -1082,6 +1190,7 @@ const createLabels: Record<string, string> = {
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
   rules: "＋ 新建提成规则",
+  accounts: "＋ 新建后台账号",
 };
 const section = computed(() => String(route.params.section)),
   config = computed<SectionConfig>(() => {
@@ -1341,6 +1450,7 @@ function openCreate() {
   else if (section.value === "staff") openStaffCreate();
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
+  else if (section.value === "accounts") openAccountCreate();
 }
 function closeCreate() {
   stopScan();
@@ -1804,6 +1914,15 @@ const ruleActive = computed(
               编辑员工</button
             ><button class="btn danger-btn" @click="removeStaff">
               {{ confirmDelete ? "确认软删除" : "软删除账号" }}
+            </button>
+          </template>
+          <template v-else-if="section === 'accounts' && canWriteSection">
+            <button class="btn primary" @click="openAccountEdit(selected)">
+              编辑账号</button
+            ><button class="btn ghost" @click="openAccountResetPassword(selected)">
+              重置密码</button
+            ><button class="btn danger-btn" @click="removeAccount">
+              {{ confirmDelete ? "确认删除" : "删除账号" }}
             </button>
           </template>
           <template v-else-if="section === 'finance' && canWriteSection">
