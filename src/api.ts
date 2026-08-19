@@ -7,6 +7,7 @@ import type {
   BarcodeLookup,
   Building,
   Campus,
+  Category,
   CommissionRule,
   Coupon,
   DashboardData,
@@ -253,6 +254,20 @@ export const api = {
     request<PagedResponse<Building>>(
       `/admin/buildings${withQuery(listQuery(query))}`,
     ),
+  /** 商品类别（全局字典非分页，直接返回数组；列表带 productCount）。 */
+  adminCategories: () => request<Category[]>("/admin/categories"),
+  adminCreateCategory: (data: { name: string; sort?: number }) =>
+    request<Category>("/admin/categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  adminUpdateCategory: (id: string, data: { name?: string; sort?: number }) =>
+    request<Category>(`/admin/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  adminDeleteCategory: (id: string) =>
+    request<void>(`/admin/categories/${id}`, { method: "DELETE" }),
   createBuilding: (data: Record<string, unknown>) =>
     request<Building>("/admin/buildings", {
       method: "POST",

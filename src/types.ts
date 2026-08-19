@@ -40,6 +40,14 @@ export interface Campus {
   users: number;
 }
 
+/** 商品类别（全局字典，2026-08-19 类别管理）。productCount 为关联商品数。 */
+export interface Category {
+  id: string;
+  name: string;
+  sort: number;
+  productCount?: number;
+}
+
 export interface Product {
   id: string;
   barcode: string | null;

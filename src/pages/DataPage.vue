@@ -12,6 +12,7 @@ import type {
   AfterSaleRow,
   BarcodeLookup,
   Building,
+  Category,
   CommissionRule,
   Coupon,
   DispatchInvitation,
@@ -1242,6 +1243,77 @@ async function load() {
     loading.value = false;
   }
 }
+/**
+ * 商品类别管理（2026-08-19 grilling）：全局字典 name 唯一 + sort 升序；
+ * 有关联商品拒绝删除（提示先转移）。商品表单的分类下拉从这里动态取
+ * （原硬编码 4 个 option，与小程序端实际类别割裂）。
+ */
+const categories = ref<Category[]>([]),
+  showCategoryPanel = ref(false),
+  categoryForm = ref({ name: "", sort: 0 }),
+  categoryBusy = ref(false),
+  categoryEditing = ref("");
+async function loadCategories() {
+  try {
+    categories.value = await api.adminCategories();
+    // 商品表单/编辑里 categoryId 若已不在字典（历史数据），归一到第一项避免空选
+    const ids = new Set(categories.value.map((c) => c.id));
+    if (productForm.value.categoryId && !ids.has(productForm.value.categoryId))
+      productForm.value.categoryId = categories.value[0]?.id ?? "";
+  } catch {
+    /* 类别面板失败不阻塞商品列表 */
+  }
+}
+watch(
+  section,
+  (s) => {
+    if (s === "products") void loadCategories();
+  },
+  { immediate: true },
+);
+async function submitCategory() {
+  const name = categoryForm.value.name.trim();
+  if (!name || categoryBusy.value) return;
+  categoryBusy.value = true;
+  try {
+    await api.adminCreateCategory({ name, sort: categoryForm.value.sort });
+    notify("类别已创建");
+    categoryForm.value = { name: "", sort: 0 };
+    await loadCategories();
+  } catch {
+    /* request 层已 toast 重名等错误 */
+  } finally {
+    categoryBusy.value = false;
+  }
+}
+async function saveCategory(row: Category) {
+  if (categoryBusy.value) return;
+  categoryBusy.value = true;
+  categoryEditing.value = "";
+  try {
+    await api.adminUpdateCategory(row.id, { name: row.name, sort: row.sort });
+    notify("类别已更新");
+    await loadCategories();
+  } catch {
+    await loadCategories(); // 失败回滚显示
+  } finally {
+    categoryBusy.value = false;
+  }
+}
+async function removeCategory(row: Category) {
+  if (categoryBusy.value) return;
+  if (!window.confirm(`删除类别「${row.name}」？`)) return;
+  categoryBusy.value = true;
+  try {
+    await api.adminDeleteCategory(row.id);
+    notify("类别已删除");
+    await loadCategories();
+  } catch {
+    await loadCategories();
+  } finally {
+    categoryBusy.value = false;
+  }
+}
 /** 重置到第 1 页并加载（页码变化由 [page, pageSize] watcher 接管，避免重复请求）。 */
 function resetAndLoad() {
   if (page.value === 1) void load();
@@ -1316,6 +1388,11 @@ const MONEY_KEYS = [
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
+  if (key === "categoryId")
+    // 类别字典 id → 名称（商品列表/抽屉展示）
+    return (
+      categories.value.find((c) => c.id === v)?.name ?? String(v ?? "—")
+    );
   if (key === "hasElevator") return record.hasElevator ? "有电梯" : "无电梯";
   if (key === "gender")
     return (
@@ -1678,6 +1755,73 @@ const ruleActive = computed(
         </button>
       </template>
       <button class="btn ghost" @click="exportData">导出数据</button>
+    </div>
+    <div v-if="section === 'products' && canWriteSection" class="category-panel">
+      <button
+        class="btn ghost category-panel__toggle"
+        :aria-expanded="showCategoryPanel"
+        @click="showCategoryPanel = !showCategoryPanel"
+      >
+        {{ showCategoryPanel ? "收起类别管理" : "类别管理" }}（{{ categories.length }}）
+      </button>
+      <div v-if="showCategoryPanel" class="category-panel__body">
+        <p class="form-hint plain">
+          类别为全部门店字典；排序数字越小越靠前（小程序分类 tab 顺序）；
+          下有商品的类别需先转移商品才能删除。
+        </p>
+        <div class="category-row category-row--head">
+          <span>名称</span><span>排序</span><span>商品数</span><span></span>
+        </div>
+        <div v-for="c in categories" :key="c.id" class="category-row">
+          <input v-model.trim="c.name" aria-label="类别名称" />
+          <input
+            v-model.number="c.sort"
+            type="number"
+            aria-label="类别排序"
+          />
+          <span class="category-row__count">{{ c.productCount ?? 0 }}</span>
+          <span class="category-row__ops">
+            <button
+              class="btn ghost"
+              :disabled="categoryBusy"
+              @click="saveCategory(c)"
+            >
+              保存
+            </button>
+            <button
+              class="btn ghost danger-text"
+              :disabled="categoryBusy"
+              @click="removeCategory(c)"
+            >
+              删除
+            </button>
+          </span>
+        </div>
+        <div class="category-row category-row--new">
+          <input
+            v-model.trim="categoryForm.name"
+            placeholder="新类别名称"
+            aria-label="新类别名称"
+            @keyup.enter="submitCategory"
+          />
+          <input
+            v-model.number="categoryForm.sort"
+            type="number"
+            placeholder="0"
+            aria-label="新类别排序"
+          />
+          <span></span>
+          <span class="category-row__ops">
+            <button
+              class="btn primary"
+              :disabled="categoryBusy || !categoryForm.name"
+              @click="submitCategory"
+            >
+              新增类别
+            </button>
+          </span>
+        </div>
+      </div>
     </div>
     <div v-if="loadError" class="load-error">
       <span>加载失败：{{ loadError }}</span>
@@ -2176,10 +2320,10 @@ const ruleActive = computed(
           /></label>
           <label
             >分类<select v-model="productForm.categoryId">
-              <option value="snack">零食饮料</option>
-              <option value="daily">日用品</option>
-              <option value="instant">方便速食</option>
-              <option value="fruit">水果</option>
+              <!-- 类别字典动态拉取（2026-08-19 类别管理），原 4 个硬编码 option 已废 -->
+              <option v-for="c in categories" :key="c.id" :value="c.id">
+                {{ c.name }}
+              </option>
             </select></label
           >
           <label>标签<input v-model.trim="productForm.tag" /></label>
