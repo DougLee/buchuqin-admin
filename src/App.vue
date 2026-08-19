@@ -135,8 +135,7 @@ const visibleGroups = computed(() =>
             :key="item[0]"
             :to="item[0]"
             :class="{ active: route.path === item[0] }"
-            ><AppIcon :name="item[1]" /><span>{{ item[2] }}</span
-            ><i v-if="item[0] === '/after-sales'">2</i></RouterLink
+            ><AppIcon :name="item[1]" /><span>{{ item[2] }}</span></RouterLink
           >
         </section>
       </nav>
@@ -170,7 +169,7 @@ const visibleGroups = computed(() =>
             aria-label="查看待处理售后"
             @click="router.push('/after-sales')"
           >
-            <span></span><i>2</i>
+            <span></span>
           </button>
           <div class="user-menu-wrap">
             <button
