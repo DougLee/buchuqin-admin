@@ -1,5 +1,4 @@
 :root {
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: #12241c;
   background: #f3f6f3;
   font-synthesis: none;
@@ -18,6 +17,11 @@
 body {
   margin: 0;
   min-width: 320px;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 字体渲染平滑：深底浅字的关键——避免 WebKit 把字加粗发糊 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "tnum" 1, "cv05" 1;
 }
 button,
 input {
@@ -77,82 +81,112 @@ a {
   display: block;
 }
 .brand-copy b {
-  font-size: 20px;
-  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #f2f7f2;
 }
 .brand-copy small {
   font-size: 9px;
-  letter-spacing: 2.5px;
+  font-weight: 600;
+  letter-spacing: 3px;
   color: var(--lime);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 .shell nav {
-  padding-top: 14px;
+  padding-top: 10px;
   overflow-y: auto;
 }
 .shell nav section {
-  margin-bottom: 18px;
+  margin-bottom: 6px;
 }
-/* 分组标题 = 手风琴开关（IK9RTU）：原静态 p 升级为可点击按钮 */
+/* 分组标题 = 手风琴开关（IK9RTU）：原静态 p 升级为可点击按钮。
+   小标签用大写字距 + 半透明，与下方菜单项拉开层级，这是"高级感"的主来源。 */
 .shell nav .group-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: calc(100% - 24px);
-  margin: 10px 12px;
-  padding: 0;
+  margin: 16px 12px 4px;
+  padding: 0 2px;
   background: none;
   border: none;
   font-size: 10px;
-  letter-spacing: 1.6px;
-  color: #7fa393;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #6b8a7a;
   cursor: pointer;
+  transition: color 0.2s;
 }
 .shell nav .group-head .group-arrow {
   margin-left: auto;
   font-style: normal;
+  font-size: 12px;
   line-height: 1;
-  transition: transform 0.2s;
+  color: #55705f;
+  transition: transform 0.25s, color 0.2s;
 }
 .shell nav .group-head[aria-expanded="false"] .group-arrow {
   transform: rotate(-90deg);
 }
 .shell nav .group-head:hover {
-  color: #b9cfc3;
+  color: #cfe4d6;
 }
+.shell nav .group-head:hover .group-arrow {
+  color: #cfe4d6;
+}
+/* 菜单项：字号微收、行高放宽、默认字色提亮一档（深绿底上 #b9cfc3 太闷）。
+   图标与文字垂直居中对齐，整体更"排印"。 */
 .shell nav a {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 44px;
+  gap: 11px;
+  min-height: 42px;
+  margin: 1px 8px;
   padding: 0 12px;
-  border-radius: 11px;
-  color: #b9cfc3;
+  border-radius: 9px;
+  color: #a8c2b2;
   text-decoration: none;
-  font-size: 14px;
-  transition: 0.2s;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  transition: background 0.18s, color 0.18s;
 }
 .shell nav a svg {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
+  flex: none;
+  opacity: 0.85;
+  transition: opacity 0.18s;
 }
 .shell nav a:hover {
-  background: #ffffff0c;
-  color: #fff;
+  background: #ffffff0a;
+  color: #eef5f0;
 }
+.shell nav a:hover svg {
+  opacity: 1;
+}
+/* 激活态：药丸底 + 亮字 + 图标全亮 + 左侧 lime 短指示条（手风琴改动后曾被遮，现归位） */
 .shell nav a.active {
-  background: #ffffff12;
-  color: #fff;
-  font-weight: 700;
+  background: linear-gradient(90deg, #b9f2271f, #b9f2270d);
+  color: #eaf7e0;
+  font-weight: 600;
+}
+.shell nav a.active svg {
+  opacity: 1;
+  color: var(--lime);
 }
 .shell nav a.active:before {
   content: "";
   position: absolute;
-  left: -16px;
-  width: 4px;
-  height: 24px;
-  border-radius: 0 4px 4px 0;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
   background: var(--lime);
 }
 .shell nav a i {
@@ -179,8 +213,9 @@ a {
 .shell.collapsed nav a {
   justify-content: center;
   padding: 0;
+  margin: 1px 8px;
 }
-.shell.collapsed nav a.active:before {
+.shell.collapsed nav a:before {
   left: -8px;
 }
 .avatar {
