@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
@@ -27,6 +27,24 @@ function logout() {
 /* 自助改密（IK9KWO）：任意后台角色可用 */
 /* 右上角用户菜单：改密/登出入口 */
 const userMenuOpen = ref(false);
+/* 点空白关闭：header 的 backdrop-filter 会把 fixed 遮罩困在顶栏盒子里，
+   所以用 document 级监听代替遮罩层；Esc 也可关 */
+function onDocClick(event: MouseEvent) {
+  if (!userMenuOpen.value) return;
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest?.(".user-menu-wrap")) userMenuOpen.value = false;
+}
+function onDocKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") userMenuOpen.value = false;
+}
+onMounted(() => {
+  document.addEventListener("click", onDocClick);
+  document.addEventListener("keydown", onDocKeydown);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("click", onDocClick);
+  document.removeEventListener("keydown", onDocKeydown);
+});
 const pwdOpen = ref(false),
   oldPassword = ref(""),
   newPassword = ref(""),
@@ -122,17 +140,6 @@ const visibleGroups = computed(() =>
           >
         </section>
       </nav>
-      <div class="operator">
-        <div class="operator-head">
-          <div class="avatar">{{
-            (sessionUser?.nickname || roleLabel).slice(0, 1)
-          }}</div>
-          <div class="operator-meta">
-            <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
-            <small>{{ roleLabel }}</small>
-          </div>
-        </div>
-      </div>
     </aside>
     <main>
       <header>
@@ -180,7 +187,6 @@ const visibleGroups = computed(() =>
               <AppIcon name="chevron" />
             </button>
             <template v-if="userMenuOpen">
-              <div class="menu-backdrop" @click="userMenuOpen = false"></div>
               <div class="user-menu" role="menu">
                 <p class="user-menu-head">
                   <b>{{ sessionUser?.nickname || "平台管理员" }}</b>
