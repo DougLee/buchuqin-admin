@@ -95,6 +95,8 @@ interface FieldDef {
   optionalLabel?: string;
   /** 条件显隐（IK9U3Y）：按当前表单值判断，如角色=配送员时隐藏绑定楼栋。 */
   visible?: (data: Record<string, FormValue>) => boolean;
+  /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
+  folder?: string;
 }
 interface FormMeta {
   eyebrow: string;
@@ -1026,6 +1028,14 @@ const BANNER_CONTENT_FIELD: FieldDef = {
   placeholder:
     "每行一段文案；https:// 开头的行会渲染为图片（可粘贴 COS 图链）。\n留空 = Banner 不可点击。",
 };
+/** Banner 背景图（IK9VBI）：落 COS app/ 目录（小程序素材），商品图/类别图仍走 uploads/。 */
+const BANNER_IMAGE_FIELD: FieldDef = {
+  key: "image",
+  label: "背景图（选填，存 app/ 目录供小程序直连）",
+  type: "image",
+  wide: true,
+  folder: "app",
+};
 function openBannerCreate() {
   openForm(
     {
@@ -1048,7 +1058,7 @@ function openBannerCreate() {
           ],
         },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
-        { key: "image", label: "背景图（选填）", type: "image", wide: true },
+        BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
       ],
       save: async (d) => {
@@ -1083,7 +1093,7 @@ function openBannerEdit(row: AdminRow) {
           ],
         },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
-        { key: "image", label: "背景图（选填）", type: "image", wide: true },
+        BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
         {
           key: "status",
@@ -2607,6 +2617,7 @@ async function outbound() {
               <span class="field-label">{{ field.label }}</span>
               <ImageUploadField
                 :model-value="String(formData[field.key] ?? '')"
+                :folder="field.folder"
                 @update:model-value="formData[field.key] = $event"
               />
             </div>

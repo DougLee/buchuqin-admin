@@ -5,8 +5,9 @@ import { resolveImageUrl } from "../utils/image";
 /**
  * COS 图片上传字段（IK9RWX，ADR-0003）：上传按钮 + URL 手输兜底 + 缩略预览。
  * v-model 绑定 URL 字符串；商品头图 / 类别图 / Banner 图三处复用。
+ * folder=app 时落 COS app/ 目录（Banner 背景图等小程序素材，IK9VBI）。
  */
-const props = defineProps<{ modelValue: string }>();
+const props = defineProps<{ modelValue: string; folder?: string }>();
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
 }>();
@@ -21,7 +22,7 @@ async function onPick(event: Event) {
   uploading.value = true;
   error.value = "";
   try {
-    emit("update:modelValue", await uploadImage(file));
+    emit("update:modelValue", await uploadImage(file, props.folder));
   } catch (err) {
     error.value = err instanceof Error ? err.message : "上传失败";
   } finally {

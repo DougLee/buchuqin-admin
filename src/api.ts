@@ -124,10 +124,12 @@ export async function login(
  * （其写死 JSON Content-Type，会破坏 FormData 边界），单独走 fetch，
  * 鉴权与 401 清会话行为保持一致。返回公网 URL 直接落业务字段。
  */
-export async function uploadImage(file: File): Promise<string> {
+/** folder=app：小程序静态素材（Banner 背景图）落 COS app/ 目录（IK9VBI）；缺省 uploads/。 */
+export async function uploadImage(file: File, folder?: string): Promise<string> {
   const form = new FormData();
   form.append("file", file);
-  const response = await fetch("/api/v1/files/images", {
+  const response = await fetch(
+    `/api/v1/files/images${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
