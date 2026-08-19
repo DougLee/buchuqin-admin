@@ -162,10 +162,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  /** price 为整数分（表单元输入经 yuanToFen 转换后提交）；image 为 COS URL（IK9RWX 改图）。 */
+  /** price 为整数分（表单元输入经 yuanToFen 转换后提交）；image 为 COS URL（IK9RWX 改图）；
+   *  images/location 为详情多图与库位（IK9SNS/IK9U40）。 */
   updateProduct: (
     id: string,
-    data: { price: number; stock: number; image?: string },
+    data: {
+      price: number;
+      stock: number;
+      image?: string;
+      location?: string;
+      images?: string[];
+    },
   ) =>
     request<Product>(`/admin/products/${id}`, {
       method: "PATCH",
@@ -370,6 +377,26 @@ export const api = {
     }),
   deleteBanner: (id: string) =>
     request<Banner>(`/admin/banners/${id}`, { method: "DELETE" }),
+  /** 配送费/起送门槛配置（IK9SO6）：金额整数分，校园维度即时生效。 */
+  deliveryConfig: () =>
+    request<{
+      deliveryFeeInstant: number;
+      deliveryFeeScheduled: number;
+      deliveryThreshold: number;
+    }>("/admin/delivery-config"),
+  updateDeliveryConfig: (data: {
+    deliveryFeeInstant: number;
+    deliveryFeeScheduled: number;
+    deliveryThreshold: number;
+  }) =>
+    request<{
+      deliveryFeeInstant: number;
+      deliveryFeeScheduled: number;
+      deliveryThreshold: number;
+    }>("/admin/delivery-config", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   adminUsers: (query?: ListQuery) =>
     request<PagedResponse<AdminUser>>(
       `/admin/users${withQuery(listQuery(query))}`,

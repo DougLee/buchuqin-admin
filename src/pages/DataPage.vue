@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, fetchAllPages } from "../api";
 import ImageUploadField from "../components/ImageUploadField.vue";
+import ProductImagesField from "../components/ProductImagesField.vue";
 import { canWrite, ROLE_LABELS, type AdminRole } from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fenToYuan, yuanToFen } from "../utils/money";
@@ -46,7 +47,7 @@ const route = useRoute(),
   video = ref<HTMLVideoElement>(),
   scanError = ref(""),
   confirmDelete = ref(false),
-  productEdit = ref({ price: 0, stock: 0, image: "" }),
+  productEdit = ref({ price: 0, stock: 0, image: "", location: "", images: [] as string[] }),
   productForm = ref({
     barcode: "",
     name: "",
@@ -57,6 +58,7 @@ const route = useRoute(),
     stock: 0,
     tag: "新品",
     image: "",
+    location: "",
     weight: 0,
   });
 const statusFilter = ref("all"),
@@ -82,7 +84,8 @@ interface FieldDef {
     | "select"
     | "checkbox"
     | "password"
-    | "image";
+    | "image"
+    | "textarea";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
@@ -90,6 +93,8 @@ interface FieldDef {
   step?: number;
   optional?: boolean;
   optionalLabel?: string;
+  /** 条件显隐（IK9U3Y）：按当前表单值判断，如角色=配送员时隐藏绑定楼栋。 */
+  visible?: (data: Record<string, FormValue>) => boolean;
 }
 interface FormMeta {
   eyebrow: string;
@@ -110,6 +115,13 @@ function openForm(meta: FormMeta, initial: Record<string, FormValue>) {
   formError.value = "";
   formOpen.value = true;
 }
+/** 条件字段过滤（IK9U3Y）：visible 不满足的字段不渲染也不参与提交。 */
+const visibleFields = computed(
+  () =>
+    formMeta.value?.fields.filter(
+      (field) => !field.visible || field.visible(formData.value),
+    ) ?? [],
+);
 function fieldOptions(field: FieldDef) {
   const options = [...(field.options?.() ?? [])];
   const current = formData.value[field.key];
@@ -182,6 +194,44 @@ function openBuildingCreate() {
       save: async (d) => void (await api.createBuilding(buildingPayload(d))),
     },
     { name: "", floors: 6, gender: "mixed", hasElevator: true },
+  );
+}
+/* ---------- 配送费配置（IK9SO6）：校园维度即时/预约达运费与起送门槛 ---------- */
+async function openDeliveryConfig() {
+  let initial = { instant: 4, scheduled: 2, threshold: 10 };
+  try {
+    const config = await api.deliveryConfig();
+    initial = {
+      instant: Number(fenToYuan(config.deliveryFeeInstant)),
+      scheduled: Number(fenToYuan(config.deliveryFeeScheduled)),
+      threshold: Number(fenToYuan(config.deliveryThreshold)),
+    };
+  } catch {
+    // 读取失败不阻塞表单，保存时以后端校验为准
+  }
+  openForm(
+    {
+      eyebrow: "DELIVERY PRICING",
+      title: "配送费与起送门槛",
+      submit: "保存配置",
+      done: "配送配置已更新，用户端结算即时生效",
+      fields: [
+        { key: "instant", label: "即时达配送费（元）", type: "number", min: 0, step: 0.01 },
+        { key: "scheduled", label: "预约达配送费（元）", type: "number", min: 0, step: 0.01 },
+        { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+      ],
+      save: async (d) => {
+        if ([d.instant, d.scheduled, d.threshold].some((v) => Number(v) < 0))
+          throw new Error("金额不能为负");
+        // 表单输元，提交统一转分（IK8W5K）
+        void (await api.updateDeliveryConfig({
+          deliveryFeeInstant: yuanToFen(d.instant),
+          deliveryFeeScheduled: yuanToFen(d.scheduled),
+          deliveryThreshold: yuanToFen(d.threshold),
+        }));
+      },
+    },
+    initial,
   );
 }
 function openBuildingEdit(row: Building) {
@@ -307,9 +357,21 @@ function staffPayload(d: Record<string, FormValue>) {
     staffNo: String(d.staffNo || "").trim(),
     status: String(d.status || "online"),
   };
-  if (d.buildingId) payload.buildingId = d.buildingId;
+  // IK9U3Y：楼栋仅楼长角色携带；骑手不绑楼栋（后端同样校验）
+  if (d.role === "building-manager" && d.buildingId)
+    payload.buildingId = d.buildingId;
   return payload;
 }
+/** IK9U3Y：绑定楼栋仅楼长可见——配送员系统派单、不绑特定楼栋。 */
+const STAFF_BUILDING_FIELD: FieldDef = {
+  key: "buildingId",
+  label: "绑定楼栋（楼长必选，一楼一在职楼长）",
+  type: "select",
+  wide: true,
+  optional: true,
+  options: buildingOptions,
+  visible: (d) => d.role === "building-manager",
+};
 function openStaffCreate() {
   void ensureBuildings();
   openForm(
@@ -322,7 +384,7 @@ function openStaffCreate() {
         { key: "name", label: "姓名", placeholder: "真实姓名" },
         { key: "staffNo", label: "工号", placeholder: "例如：BM-006" },
         { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
-        { key: "buildingId", label: "绑定楼栋（配送员可不绑）", type: "select", wide: true, optional: true, options: buildingOptions },
+        STAFF_BUILDING_FIELD,
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
           { value: "offline", label: "离线" },
@@ -346,7 +408,7 @@ function openStaffEdit(row: Staff) {
         { key: "name", label: "姓名" },
         { key: "staffNo", label: "工号" },
         { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
-        { key: "buildingId", label: "绑定楼栋（配送员可不绑）", type: "select", wide: true, optional: true, options: buildingOptions },
+        STAFF_BUILDING_FIELD,
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
           { value: "offline", label: "离线" },
@@ -861,6 +923,37 @@ const inventoryTxnsConfig: SectionConfig = {
     ["operator", "操作人"],
   ],
 };
+/**
+ * 拣货出库（IK9U3Z 反馈#7）：拣货 3 状态机归商品仓储板块管理，
+ * 订单履约板块只跟踪订单状态、不做出库动作。
+ */
+const inventoryPickingConfig: SectionConfig = {
+  title: "拣货出库",
+  eyebrow: "PICK & PACK",
+  desc: "按库位指引拣货复核，确认出库后订单进入一级配送。",
+  loader: (query) =>
+    api.orders("picking", query).then((res) => ({
+      rows: res.items.map((o) => {
+        const names = (o.items ?? [])
+          .map((line) => line.product?.name ?? "")
+          .filter(Boolean);
+        return {
+          ...o,
+          itemsText: names.length
+            ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
+            : "—",
+        };
+      }),
+      total: res.total,
+    })),
+  columns: [
+    ["orderNo", "订单编号"],
+    ["itemsText", "商品"],
+    ["totalQuantity", "件数"],
+    ["payableAmount", "实付金额"],
+    ["createdAt", "下单时间"],
+  ],
+};
 
 /* ---------- 调配与请假（IK8W5Y）：请假楼长 + 调配邀请 ---------- */
 function toLeaveRow(l: LeaveRequest): LeaveRow {
@@ -915,9 +1008,21 @@ function bannerPayload(d: Record<string, FormValue>) {
     badge: String(d.badge || "").trim(),
     color: String(d.color || "green").trim(),
     ...(d.image ? { image: String(d.image) } : {}),
+    // IK9SNN：图文详情多行文本；空串语义清空（Banner 回到不可点）
+    content: String(d.content ?? "").trim(),
     sort: Number(d.sort ?? 0),
   };
 }
+/** Banner 图文详情字段（IK9SNO）：每行一段文案，https:// 行在用户端渲染为图片。 */
+const BANNER_CONTENT_FIELD: FieldDef = {
+  key: "content",
+  label: "图文详情（用户端点击 Banner 进入，选填）",
+  type: "textarea",
+  wide: true,
+  optional: true,
+  placeholder:
+    "每行一段文案；https:// 开头的行会渲染为图片（可粘贴 COS 图链）。\n留空 = Banner 不可点击。",
+};
 function openBannerCreate() {
   openForm(
     {
@@ -941,13 +1046,14 @@ function openBannerCreate() {
         },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         { key: "image", label: "背景图（选填）", type: "image", wide: true },
+        BANNER_CONTENT_FIELD,
       ],
       save: async (d) => {
         if (!String(d.title || "").trim()) throw new Error("请填写标题");
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", sort: 0, image: "" },
+    { title: "", subtitle: "", badge: "", color: "green", sort: 0, image: "", content: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -975,6 +1081,7 @@ function openBannerEdit(row: AdminRow) {
         },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         { key: "image", label: "背景图（选填）", type: "image", wide: true },
+        BANNER_CONTENT_FIELD,
         {
           key: "status",
           label: "状态",
@@ -1000,6 +1107,7 @@ function openBannerEdit(row: AdminRow) {
       color: record.color,
       sort: Number(record.sort ?? 0),
       image: record.image ?? "",
+      content: record.content ?? "",
       status: record.status,
     },
   );
@@ -1183,6 +1291,7 @@ const configs: Record<string, SectionConfig> = {
       ["categoryId", "分类"],
       ["price", "售价"],
       ["availableStock", "可售库存"],
+      ["location", "库位"],
       ["status", "状态"],
     ],
   },
@@ -1222,6 +1331,7 @@ const configs: Record<string, SectionConfig> = {
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
+      ["location", "库位"],
       ["batchNo", "批次"],
       ["actualStock", "实际"],
       ["lockedStock", "锁定"],
@@ -1361,13 +1471,21 @@ const configs: Record<string, SectionConfig> = {
 const bannerConfig: SectionConfig = {
   title: "首页 Banner",
   eyebrow: "HOME BANNERS",
-  desc: "维护小程序首页轮播帧；改图改文案保存后小程序即见。",
-  loader: (query) => api.banners(query).then(unwrap),
+  desc: "维护小程序首页轮播帧与图文详情；改图改文案保存后小程序即见。",
+  loader: (query) =>
+    api.banners(query).then((res) => ({
+      rows: res.items.map((b) => ({
+        ...b,
+        contentText: b.content ? `${b.content.length} 字` : "—",
+      })),
+      total: res.total,
+    })),
   columns: [
     ["image", "图片"],
     ["title", "标题"],
     ["badge", "角标"],
     ["color", "主题色"],
+    ["contentText", "图文详情"],
     ["sort", "排序"],
     ["status", "状态"],
   ],
@@ -1387,6 +1505,8 @@ const section = computed(() => String(route.params.section)),
   config = computed<SectionConfig>(() => {
     if (section.value === "inventory" && invTab.value === "txns")
       return inventoryTxnsConfig;
+    if (section.value === "inventory" && invTab.value === "picking")
+      return inventoryPickingConfig;
     if (section.value === "dispatch")
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
@@ -1629,6 +1749,10 @@ function display(row: AdminRow, key: string) {
     return product?.name ?? "—";
   }
   if (key === "buildingName") return v ?? "*";
+  // 库位（IK9U40）：空 = 未配置
+  if (key === "location") return v ? String(v) : "—";
+  // Banner 图文详情列（IK9SNO）
+  if (key === "contentText") return v ? String(v) : "—";
   if (key === "floor")
     return v === null || v === undefined || v === "" ? "*" : String(v);
   if (key === "expiresAt")
@@ -1680,6 +1804,9 @@ function openDetail(row: AdminRow) {
       stock: Number(product.availableStock ?? product.stock ?? 0),
       // 头图（IK9RWX）：编辑抽屉可上传替换，留空 = 不改图
       image: product.image || "",
+      // 库位（IK9U40）/详情多图（IK9SNS）
+      location: product.location ?? "",
+      images: Array.isArray(product.images) ? [...product.images] : [],
     };
   }
   if (section.value === "after-sales")
@@ -1696,6 +1823,10 @@ async function act(action: string) {
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
           : {}),
+        // 库位（IK9U40）：空串语义清空回退默认
+        location: productEdit.value.location.trim(),
+        // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
+        images: productEdit.value.images.filter(Boolean),
       });
     else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
@@ -1770,6 +1901,7 @@ function openCreate() {
       stock: 0,
       tag: "新品",
       image: "",
+      location: "",
       weight: 0,
     };
   } else if (section.value === "categories") openCategoryCreate();
@@ -1820,6 +1952,7 @@ async function lookup() {
       stock: found.stock ?? productForm.value.stock,
       tag: found.tag ?? productForm.value.tag,
       image: found.image ?? productForm.value.image,
+      location: found.location ?? productForm.value.location,
       weight: found.weight ?? productForm.value.weight,
     };
     scanError.value = result.found
@@ -1916,6 +2049,37 @@ const inviteStatus = computed(() =>
 const ruleActive = computed(
   () => section.value === "rules" && selectedStatus() === "active",
 );
+/** 订单履约（IK9U3Z）：拣货中订单的出库动作已移交「商品仓储 · 拣货出库」。 */
+const orderInPicking = computed(
+  () => section.value === "orders" && selectedStatus() === "picking",
+);
+/** 拣货出库抽屉的拣货清单（含商品库位指引，IK9U40）。 */
+const pickingItems = computed(() => {
+  const order = selected.value as unknown as Order | undefined;
+  if (
+    section.value !== "inventory" ||
+    invTab.value !== "picking" ||
+    !order?.items
+  )
+    return [];
+  return order.items.map((line) => ({
+    name: line.product?.name ?? "未知商品",
+    quantity: line.quantity,
+    location: line.product?.location ?? "",
+  }));
+});
+/** 确认出库（IK9U3Z）：picking → waiting-first-mile，与原订单推进同接口。 */
+async function outbound() {
+  if (!selected.value) return;
+  try {
+    await api.orderAction(selected.value.id, "advance");
+    notify("已出库，订单等待一级配送接单");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "出库失败", true);
+  }
+}
 </script>
 <template>
   <div class="workspace">
@@ -1925,9 +2089,19 @@ const ruleActive = computed(
         <h1>{{ config.title }}</h1>
         <p>{{ config.desc }}</p>
       </div>
-      <button v-if="canCreate" class="btn primary" @click="openCreate">
-        {{ createLabel || "＋ 新建记录" }}
-      </button>
+      <div class="head-actions">
+        <!-- 配送费配置（IK9SO6）：校园组织板块的独立入口 -->
+        <button
+          v-if="section === 'campuses' && canWrite('campuses')"
+          class="btn ghost"
+          @click="openDeliveryConfig"
+        >
+          配送费配置
+        </button>
+        <button v-if="canCreate" class="btn primary" @click="openCreate">
+          {{ createLabel || "＋ 新建记录" }}
+        </button>
+      </div>
     </div>
     <div class="toolbar">
       <div v-if="section === 'inventory'" class="segmented inv-tabs">
@@ -1936,6 +2110,12 @@ const ruleActive = computed(
         </button>
         <button :class="{ active: invTab === 'txns' }" @click="switchInvTab('txns')">
           出入库流水
+        </button>
+        <button
+          :class="{ active: invTab === 'picking' }"
+          @click="switchInvTab('picking')"
+        >
+          拣货出库
         </button>
       </div>
       <div v-if="section === 'dispatch'" class="segmented inv-tabs">
@@ -1965,6 +2145,7 @@ const ruleActive = computed(
       <select
         v-if="
           !(section === 'inventory' && invTab === 'txns') &&
+          !(section === 'inventory' && invTab === 'picking') &&
           !(section === 'marketing' && mktTab === 'banners')
         "
         v-model="statusFilter"
@@ -2209,9 +2390,21 @@ const ruleActive = computed(
                 v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
+            ><!-- 库位（IK9U40）：区域代码+序号，拣货出库按此指引找货 -->
+            <label
+              >库位<input
+                v-model.trim="productEdit.location"
+                type="text"
+                maxlength="20"
+                placeholder="如：冷A-03" /></label
             ><div class="wide product-image-edit">
               <span class="field-label">商品头图（换新图后小程序即见）</span>
               <ImageUploadField v-model="productEdit.image" />
+            </div>
+            <!-- 详情多图（IK9SNS）：小程序商品详情页轮播，可排序 -->
+            <div class="wide product-image-edit">
+              <span class="field-label">详情多图（用户端详情页轮播，可排序）</span>
+              <ProductImagesField v-model="productEdit.images" />
             </div></template
           >
           <div v-for="col in config.columns" :key="col[0]">
@@ -2221,12 +2414,31 @@ const ruleActive = computed(
               >{{ txnQuantity(selected) }}</strong
             ><strong v-else>{{ display(selected, col[0]) }}</strong>
           </div>
+          <!-- 拣货清单（IK9U40）：库位指引找货，新单起快照携带库位 -->
+          <div
+            v-if="section === 'inventory' && invTab === 'picking' && pickingItems.length"
+            class="wide pick-list-wrap"
+          >
+            <span class="field-label">拣货清单（按库位找货）</span>
+            <ul class="pick-list">
+              <li v-for="(line, i) in pickingItems" :key="i">
+                <em v-if="line.location" class="pick-loc">{{ line.location }}</em>
+                <span>{{ line.name }} ×{{ line.quantity }}</span>
+              </li>
+            </ul>
+          </div>
         </div>
         <div class="drawer-actions wrap">
           <template v-if="section === 'products' && canWriteSection">
             <button class="btn primary" @click="act('save')">
               保存商品调整</button
           ></template>
+          <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」 -->
+          <template v-else-if="section === 'orders' && canWriteSection && orderInPicking"
+            ><p class="form-hint plain processed-hint">
+              拣货/出库操作已归入「商品仓储 · 拣货出库」，本页仅跟踪订单状态。
+            </p></template
+          >
           <template v-else-if="section === 'orders' && canWriteSection"
             ><button class="btn primary" @click="act('advance')">
               推进履约</button
@@ -2234,6 +2446,14 @@ const ruleActive = computed(
               标记异常
             </button></template
           >
+          <!-- 确认出库（IK9U3Z）：拣货完成 → 等待一级配送 -->
+          <template
+            v-else-if="
+              section === 'inventory' && invTab === 'picking' && canWriteSection
+            "
+          >
+            <button class="btn primary" @click="outbound">确认出库</button>
+          </template>
           <template v-else-if="section === 'after-sales'">
             <p class="form-hint plain processed-hint">
               试点期售后由客服人工处理（不退款），本页仅留档查看。
@@ -2353,7 +2573,7 @@ const ruleActive = computed(
           <button aria-label="关闭" @click="formOpen = false">×</button>
         </div>
         <div class="product-form">
-          <template v-for="field in formMeta?.fields" :key="field.key">
+          <template v-for="field in visibleFields" :key="field.key">
             <label v-if="field.type === 'checkbox'" :class="{ wide: field.wide }">
               <span class="checkbox-row">
                 <input
@@ -2385,6 +2605,18 @@ const ruleActive = computed(
                 :model-value="String(formData[field.key] ?? '')"
                 @update:model-value="formData[field.key] = $event"
               />
+            </div>
+            <!-- 长文本（IK9SNN Banner 图文）：每行一段，https 行渲染为图 -->
+            <div v-else-if="field.type === 'textarea'" :class="{ wide: field.wide }">
+              <span class="field-label">{{ field.label }}</span>
+              <textarea
+                :value="String(formData[field.key] ?? '')"
+                rows="6"
+                :placeholder="field.placeholder"
+                @input="
+                  formData[field.key] = ($event.target as HTMLTextAreaElement).value
+                "
+              ></textarea>
             </div>
             <label v-else :class="{ wide: field.wide }"
               >{{ field.label
@@ -2570,6 +2802,13 @@ const ruleActive = computed(
               type="number"
               min="0"
               step="0.001"
+          /></label>
+          <!-- 库位（IK9U40）：区域代码+序号，拣货出库按此指引 -->
+          <label
+            >库位<input
+              v-model.trim="productForm.location"
+              maxlength="20"
+              placeholder="如：冷A-03"
           /></label>
           <div class="wide product-image-edit">
             <span class="field-label">商品头图（上传到 COS，小程序即见）</span>

@@ -455,3 +455,58 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- 2026-08 验收批次（IK9SNS/IK9U3Z/IK9U40） ---------- */
+/* 表单长文本（Banner 图文详情 IK9SNO） */
+.product-form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 9px 11px;
+  border: 1px solid #d8e1dc;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+}
+/* 页头动作组（配送费配置 + 新建并排，IK9SO6） */
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* 拣货清单（IK9U40）：库位徽标 + 品名行 */
+.pick-list-wrap {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+.pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.pick-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #f6faf7;
+  border: 1px solid #e2eae5;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.pick-loc {
+  font-style: normal;
+  font-weight: 700;
+  color: #2c6350;
+  background: #e3f0ea;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  flex: none;
+}

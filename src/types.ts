@@ -65,6 +65,10 @@ export interface Product {
   sales: number;
   tag: string;
   image: string;
+  /** 详情多图（IK9SNS）：COS URL 数组，顺序即详情页轮播顺序；空回退头图。 */
+  images?: string[] | null;
+  /** 库位（IK9U40）：区域代码+序号（如 冷A-03），拣货指引。 */
+  location?: string;
   weight: number;
   status: string;
   skuNo: string;
@@ -143,6 +147,8 @@ export interface Banner {
   badge: string;
   color: string;
   image: string | null;
+  /** 图文详情（IK9SNN）：多行文本，https:// 行渲染为图；空 = 不可点。 */
+  content?: string | null;
   sort: number;
   status: string;
 }
