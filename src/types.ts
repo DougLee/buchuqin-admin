@@ -253,6 +253,8 @@ export interface LeaveRequest {
   startAt: string;
   endAt: string;
   reason: string;
+  /** 请假期间调配方式（IK9U4B）：self=自己联系代班，platform=平台派单。 */
+  dispatchMode?: string;
   status: string;
   statusText: string;
   createdAt: string;
@@ -442,6 +444,8 @@ export interface LeaveRow {
   startAt: string;
   endAt: string;
   reason: string;
+  /** 调配方式文案（IK9U4B）。 */
+  dispatchModeText: string;
   status: string;
   statusText: string;
 }

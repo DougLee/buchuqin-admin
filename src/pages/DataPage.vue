@@ -966,6 +966,9 @@ function toLeaveRow(l: LeaveRequest): LeaveRow {
     startAt: l.startAt,
     endAt: l.endAt,
     reason: l.reason,
+    // IK9U4B：调配方式供后台审核核对（self=自己联系代班，platform=平台派单）
+    dispatchModeText:
+      l.dispatchMode === "self" ? "自己联系代班" : "平台自动派单",
     status: l.status,
     statusText: l.statusText,
   };
@@ -1224,6 +1227,7 @@ const dispatchLeavesConfig: SectionConfig = {
     ["building", "负责楼栋"],
     ["startAt", "开始时间"],
     ["endAt", "结束时间"],
+    ["dispatchModeText", "调配方式"],
     ["statusText", "请假状态"],
   ],
 };
