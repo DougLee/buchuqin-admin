@@ -926,66 +926,6 @@ td {
 .toolbar-spacer {
   flex: 1;
 }
-/* 商品类别管理卡片（2026-08-19：商品板块内嵌，全局字典 CRUD） */
-.category-panel {
-  margin: 0 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-}
-.category-panel__toggle {
-  width: 100%;
-  border: none;
-  border-radius: 12px;
-  justify-content: flex-start;
-  padding: 12px 16px;
-}
-.category-panel__body {
-  padding: 4px 16px 16px;
-  border-top: 1px dashed var(--line);
-}
-.category-row {
-  display: grid;
-  grid-template-columns: 1fr 90px 70px auto;
-  gap: 10px;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-.category-row:last-child {
-  border-bottom: none;
-}
-.category-row--head {
-  color: var(--muted, #7c8a83);
-  font-size: 12px;
-  font-weight: 600;
-}
-.category-row--new {
-  padding-top: 10px;
-}
-.category-row input {
-  height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-.category-row__count {
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.category-row__ops {
-  display: flex;
-  gap: 6px;
-}
-.category-row__ops .btn {
-  height: 32px;
-  padding: 0 12px;
-  font-size: 12px;
-}
-.danger-text {
-  color: #c2410c;
-}
 .data-panel {
   overflow: hidden;
 }

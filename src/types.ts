@@ -399,7 +399,16 @@ export type AdminRow =
   | DispatchRow
   | RuleRow
   | AfterSaleRow
-  | AccountRow;
+  | AccountRow
+  | CategoryRow;
+
+/* 类别字典表格行（name/sort 全局字典 + 派生商品数） */
+export interface CategoryRow {
+  id: string;
+  name: string;
+  sort: number;
+  productCount: number;
+}
 
 /* ---------- 调配与请假 / 提成规则的扁平化视图行 ---------- */
 

@@ -26,6 +26,7 @@ const ALL_SECTIONS = [
   "orders",
   "after-sales",
   "products",
+  "categories",
   "inventory",
   "staff",
   "campuses",
@@ -58,10 +59,10 @@ export const PERMISSIONS: Record<
       "dispatch",
     ],
   },
-  // 仓储：工作台 / 商品（读写）/ 订单只读 / 出入库。
+  // 仓储：工作台 / 商品与类别（读写）/ 订单只读 / 出入库。
   warehouse: {
-    sections: ["dashboard", "orders", "products", "inventory"],
-    writable: ["inventory", "products"],
+    sections: ["dashboard", "orders", "products", "categories", "inventory"],
+    writable: ["inventory", "products", "categories"],
   },
   // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
   finance: {

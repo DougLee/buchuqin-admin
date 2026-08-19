@@ -82,6 +82,7 @@ const groups = [
     label: "商品仓储",
     items: [
       ["/products", "products", "商品管理"],
+      ["/categories", "categories", "商品类别"],
       ["/inventory", "inventory", "库存与批次"],
     ],
   },
