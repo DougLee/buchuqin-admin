@@ -93,11 +93,32 @@ a {
 .shell nav section {
   margin-bottom: 18px;
 }
-.shell nav p {
+/* 分组标题 = 手风琴开关（IK9RTU）：原静态 p 升级为可点击按钮 */
+.shell nav .group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 24px);
+  margin: 10px 12px;
+  padding: 0;
+  background: none;
+  border: none;
   font-size: 10px;
   letter-spacing: 1.6px;
   color: #7fa393;
-  margin: 10px 12px;
+  cursor: pointer;
+}
+.shell nav .group-head .group-arrow {
+  margin-left: auto;
+  font-style: normal;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+.shell nav .group-head[aria-expanded="false"] .group-arrow {
+  transform: rotate(-90deg);
+}
+.shell nav .group-head:hover {
+  color: #b9cfc3;
 }
 .shell nav a {
   position: relative;
@@ -150,7 +171,7 @@ a {
   padding-right: 0;
 }
 .shell.collapsed .brand-copy,
-.shell.collapsed nav p,
+.shell.collapsed nav .group-head,
 .shell.collapsed nav a span,
 .shell.collapsed nav a i {
   display: none;

@@ -2,7 +2,9 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, fetchAllPages } from "../api";
+import ImageUploadField from "../components/ImageUploadField.vue";
 import { canWrite, ROLE_LABELS, type AdminRole } from "../session";
+import { resolveImageUrl } from "../utils/image";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
   AccountRow,
@@ -11,6 +13,7 @@ import type {
   AfterSale,
   AfterSaleRow,
   BarcodeLookup,
+  Banner,
   Building,
   Category,
   CategoryRow,
@@ -43,7 +46,7 @@ const route = useRoute(),
   video = ref<HTMLVideoElement>(),
   scanError = ref(""),
   confirmDelete = ref(false),
-  productEdit = ref({ price: 0, stock: 0 }),
+  productEdit = ref({ price: 0, stock: 0, image: "" }),
   productForm = ref({
     barcode: "",
     name: "",
@@ -71,7 +74,15 @@ type FormValue = string | number | boolean;
 interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "date" | "datetime" | "select" | "checkbox" | "password";
+  type?:
+    | "text"
+    | "number"
+    | "date"
+    | "datetime"
+    | "select"
+    | "checkbox"
+    | "password"
+    | "image";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
@@ -885,6 +896,147 @@ function switchDispTab(tab: "leaves" | "invites") {
   resetStatusFilterAndLoad();
 }
 
+/* ---------- Banner 管理（IK9RX2）：营销板块第二个 tab，校园维度 ---------- */
+const mktTab = ref<"coupons" | "banners">("coupons");
+function switchMktTab(tab: "coupons" | "banners") {
+  mktTab.value = tab;
+  resetStatusFilterAndLoad();
+}
+/** Banner 主题色展示：预置键转中文，自定义 hex 原样。 */
+const BANNER_COLOR_TEXT: Record<string, string> = {
+  green: "绿色",
+  orange: "橙色",
+  dark: "深色",
+};
+function bannerPayload(d: Record<string, FormValue>) {
+  return {
+    title: String(d.title || "").trim(),
+    subtitle: String(d.subtitle || "").trim(),
+    badge: String(d.badge || "").trim(),
+    color: String(d.color || "green").trim(),
+    ...(d.image ? { image: String(d.image) } : {}),
+    sort: Number(d.sort ?? 0),
+  };
+}
+function openBannerCreate() {
+  openForm(
+    {
+      eyebrow: "NEW BANNER",
+      title: "新建 Banner",
+      submit: "保存并启用",
+      done: "Banner 已创建",
+      fields: [
+        { key: "title", label: "标题", placeholder: "例如：今日爆款" },
+        { key: "subtitle", label: "副标题", placeholder: "例如：零食饮料 寝室直达" },
+        { key: "badge", label: "角标文案", placeholder: "例如：最快 30 分钟到寝" },
+        {
+          key: "color",
+          label: "主题色",
+          type: "select",
+          options: () => [
+            { value: "green", label: "绿色" },
+            { value: "orange", label: "橙色" },
+            { value: "dark", label: "深色" },
+          ],
+        },
+        { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        { key: "image", label: "背景图（选填）", type: "image", wide: true },
+      ],
+      save: async (d) => {
+        if (!String(d.title || "").trim()) throw new Error("请填写标题");
+        void (await api.createBanner(bannerPayload(d)));
+      },
+    },
+    { title: "", subtitle: "", badge: "", color: "green", sort: 0, image: "" },
+  );
+}
+function openBannerEdit(row: AdminRow) {
+  selected.value = undefined;
+  const record = row as unknown as Banner;
+  openForm(
+    {
+      eyebrow: "EDIT BANNER",
+      title: "编辑 Banner",
+      submit: "保存修改",
+      done: "Banner 已更新",
+      fields: [
+        { key: "title", label: "标题" },
+        { key: "subtitle", label: "副标题" },
+        { key: "badge", label: "角标文案" },
+        {
+          key: "color",
+          label: "主题色",
+          type: "select",
+          options: () => [
+            { value: "green", label: "绿色" },
+            { value: "orange", label: "橙色" },
+            { value: "dark", label: "深色" },
+          ],
+        },
+        { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        { key: "image", label: "背景图（选填）", type: "image", wide: true },
+        {
+          key: "status",
+          label: "状态",
+          type: "select",
+          options: () => [
+            { value: "active", label: "启用" },
+            { value: "hidden", label: "隐藏" },
+          ],
+        },
+      ],
+      save: async (d) => {
+        if (!String(d.title || "").trim()) throw new Error("请填写标题");
+        void (await api.updateBanner(record.id, {
+          ...bannerPayload(d),
+          status: String(d.status || "active"),
+        }));
+      },
+    },
+    {
+      title: record.title,
+      subtitle: record.subtitle,
+      badge: record.badge,
+      color: record.color,
+      sort: Number(record.sort ?? 0),
+      image: record.image ?? "",
+      status: record.status,
+    },
+  );
+}
+async function removeBannerRow() {
+  if (!selected.value) return;
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  try {
+    await api.deleteBanner(selected.value.id);
+    notify("Banner 已删除");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    confirmDelete.value = false;
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+const bannerHidden = computed(
+  () => (selected.value as Banner | undefined)?.status === "hidden",
+);
+async function toggleBanner() {
+  if (!selected.value) return;
+  const banner = selected.value as Banner;
+  const next = banner.status === "hidden" ? "active" : "hidden";
+  try {
+    await api.updateBanner(banner.id, { status: next });
+    notify(next === "hidden" ? "Banner 已隐藏" : "Banner 已重新启用");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+
 /* ---------- 售后与退款（IK97FJ）：类型文案 / 图片 / 关联订单补全 ---------- */
 /**
  * 售后类型中文映射：以用户端实际提交值为准
@@ -911,15 +1063,6 @@ function toAfterSaleRow(a: AfterSale): AfterSaleRow {
     createdAt: a.createdAt,
     ...(a.order ? { order: a.order } : {}),
   };
-}
-/**
- * 凭证图片地址归一化：COS 绝对地址（http/https/协议相对）原样使用；
- * 相对路径拼当前源（与 /api 同域，生产环境后台与 API 同站部署）。
- */
-function resolveImageUrl(src: string): string {
-  if (/^(https?:)?\/\//i.test(src) || src.startsWith("data:")) return src;
-  const origin = window.location.origin;
-  return `${origin}${src.startsWith("/") ? "" : "/"}${src}`;
 }
 const ordersCache = ref<Order[]>([]),
   afterSaleOrder = ref<Order | null>(null),
@@ -1059,11 +1202,13 @@ const configs: Record<string, SectionConfig> = {
           id: c.id,
           name: c.name,
           sort: c.sort,
+          image: c.image ?? "",
           productCount: c.productCount ?? 0,
         }));
       return { rows: pageRows, total: hit.length };
     },
     columns: [
+      ["image", "图片"],
       ["name", "类别名称"],
       ["sort", "排序"],
       ["productCount", "商品数"],
@@ -1212,10 +1357,26 @@ const configs: Record<string, SectionConfig> = {
     ],
   },
 };
+/** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。 */
+const bannerConfig: SectionConfig = {
+  title: "首页 Banner",
+  eyebrow: "HOME BANNERS",
+  desc: "维护小程序首页轮播帧；改图改文案保存后小程序即见。",
+  loader: (query) => api.banners(query).then(unwrap),
+  columns: [
+    ["image", "图片"],
+    ["title", "标题"],
+    ["badge", "角标"],
+    ["color", "主题色"],
+    ["sort", "排序"],
+    ["status", "状态"],
+  ],
+};
 const createLabels: Record<string, string> = {
   products: "＋ 新建记录",
   categories: "＋ 新建类别",
   marketing: "＋ 新建优惠券",
+  banners: "＋ 新建 Banner",
   campuses: "＋ 新建楼栋",
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
@@ -1230,11 +1391,20 @@ const section = computed(() => String(route.params.section)),
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
         : dispatchInvitesConfig;
+    if (section.value === "marketing" && mktTab.value === "banners")
+      return bannerConfig;
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
+  /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner）。 */
+  createLabel = computed(
+    () =>
+      (section.value === "marketing" && mktTab.value === "banners"
+        ? createLabels.banners
+        : createLabels[section.value]) ?? "",
+  ),
   canCreate = computed(
-    () => Boolean(createLabels[section.value]) && canWriteSection.value,
+    () => Boolean(createLabel.value) && canWriteSection.value,
   ),
   filtered = computed(() =>
     // 服务端分页 + 服务端 keyword 过滤（IK8W5X 契约收尾）：rows 即命中当前页；
@@ -1305,19 +1475,27 @@ function openCategoryCreate() {
       fields: [
         { key: "name", label: "类别名称", placeholder: "如：饮料" },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        // 类别头图（IK9RX0）：小程序分类 tab 图标，无图时前端回退文字样式
+        { key: "image", label: "类别图片", type: "image", wide: true },
       ],
       save: async (d) =>
         void (await api.adminCreateCategory({
           name: String(d.name ?? "").trim(),
           sort: Number(d.sort ?? 0),
+          ...(d.image ? { image: String(d.image) } : {}),
         })),
     },
-    { name: "", sort: (categories.value.length + 1) * 10 },
+    { name: "", sort: (categories.value.length + 1) * 10, image: "" },
   );
 }
 function openCategoryEdit(row: AdminRow) {
   selected.value = undefined;
-  const record = row as unknown as { id: string; name: string; sort: number };
+  const record = row as unknown as {
+    id: string;
+    name: string;
+    sort: number;
+    image?: string;
+  };
   openForm(
     {
       eyebrow: "EDIT CATEGORY",
@@ -1327,14 +1505,16 @@ function openCategoryEdit(row: AdminRow) {
       fields: [
         { key: "name", label: "类别名称" },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        { key: "image", label: "类别图片", type: "image", wide: true },
       ],
       save: async (d) =>
         void (await api.adminUpdateCategory(record.id, {
           name: String(d.name ?? "").trim(),
           sort: Number(d.sort ?? 0),
+          ...(d.image ? { image: String(d.image) } : {}),
         })),
     },
-    { name: record.name, sort: Number(record.sort ?? 0) },
+    { name: record.name, sort: Number(record.sort ?? 0), image: record.image ?? "" },
   );
 }
 async function removeCategoryRow() {
@@ -1393,6 +1573,7 @@ watch(
     selected.value = undefined;
     invTab.value = "stock";
     dispTab.value = "leaves";
+    mktTab.value = "coupons";
     resetAndLoad();
   },
 );
@@ -1406,6 +1587,7 @@ const STATUS_TEXT: Record<string, string> = {
   active: "启用",
   paused: "已暂停",
   disabled: "已停用",
+  hidden: "已隐藏",
 };
 /** 金额字段（契约：整数分），统一经 fenToYuan 展示为 ¥xx.xx。 */
 const MONEY_KEYS = [
@@ -1433,6 +1615,9 @@ function display(row: AdminRow, key: string) {
       categories.value.find((c) => c.id === v)?.name ?? String(v ?? "—")
     );
   if (key === "hasElevator") return record.hasElevator ? "有电梯" : "无电梯";
+  if (key === "color" && section.value === "marketing")
+    // Banner 主题色：预置键转中文，自定义 hex 原样
+    return BANNER_COLOR_TEXT[String(v)] ?? String(v ?? "—");
   if (key === "gender")
     return (
       ({ male: "男生", female: "女生", mixed: "混合" } as Record<string, string>)[
@@ -1493,6 +1678,8 @@ function openDetail(row: AdminRow) {
       // 接口价格为分，编辑框以元展示
       price: Number(fenToYuan(product.price)),
       stock: Number(product.availableStock ?? product.stock ?? 0),
+      // 头图（IK9RWX）：编辑抽屉可上传替换，留空 = 不改图
+      image: product.image || "",
     };
   }
   if (section.value === "after-sales")
@@ -1505,6 +1692,10 @@ async function act(action: string) {
       await api.updateProduct(selected.value.id, {
         price: yuanToFen(productEdit.value.price),
         stock: Number(productEdit.value.stock),
+        // 头图仅在填了 URL 时提交（DTO 校验 http(s)，空串跳过 = 保持原图）
+        ...(productEdit.value.image.trim()
+          ? { image: productEdit.value.image.trim() }
+          : {}),
       });
     else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
@@ -1582,7 +1773,8 @@ function openCreate() {
       weight: 0,
     };
   } else if (section.value === "categories") openCategoryCreate();
-  else if (section.value === "marketing") openCouponCreate();
+  else if (section.value === "marketing")
+    mktTab.value === "banners" ? openBannerCreate() : openCouponCreate();
   else if (section.value === "campuses") openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
   else if (section.value === "dispatch") openInviteForm();
@@ -1734,7 +1926,7 @@ const ruleActive = computed(
         <p>{{ config.desc }}</p>
       </div>
       <button v-if="canCreate" class="btn primary" @click="openCreate">
-        {{ createLabels[section] || "＋ 新建记录" }}
+        {{ createLabel || "＋ 新建记录" }}
       </button>
     </div>
     <div class="toolbar">
@@ -1754,6 +1946,14 @@ const ruleActive = computed(
           调配邀请
         </button>
       </div>
+      <div v-if="section === 'marketing'" class="segmented inv-tabs">
+        <button :class="{ active: mktTab === 'coupons' }" @click="switchMktTab('coupons')">
+          优惠券
+        </button>
+        <button :class="{ active: mktTab === 'banners' }" @click="switchMktTab('banners')">
+          首页 Banner
+        </button>
+      </div>
       <div class="filter-search">
         <span></span
         ><input
@@ -1763,7 +1963,10 @@ const ruleActive = computed(
         />
       </div>
       <select
-        v-if="!(section === 'inventory' && invTab === 'txns')"
+        v-if="
+          !(section === 'inventory' && invTab === 'txns') &&
+          !(section === 'marketing' && mktTab === 'banners')
+        "
         v-model="statusFilter"
         class="filter-btn"
         aria-label="状态筛选"
@@ -1857,7 +2060,14 @@ const ruleActive = computed(
                   ><span
                     v-else-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'"
                     >{{ txnQuantity(row) }}</span
-                  ><span v-else>{{ display(row, col[0]) }}</span>
+                  ><!-- 图片列（IK9RX0 类别图）：有图缩略预览，无图占位 -->
+                  <img
+                    v-else-if="col[0] === 'image' && display(row, 'image') !== '—'"
+                    class="cell-thumb"
+                    :src="resolveImageUrl(String(display(row, 'image')))"
+                    alt="类别图"
+                    loading="lazy"
+                  /><span v-else>{{ display(row, col[0]) }}</span>
                 </td>
                 <td>
                   <button
@@ -1999,7 +2209,11 @@ const ruleActive = computed(
                 v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
-          ></template>
+            ><div class="wide product-image-edit">
+              <span class="field-label">商品头图（换新图后小程序即见）</span>
+              <ImageUploadField v-model="productEdit.image" />
+            </div></template
+          >
           <div v-for="col in config.columns" :key="col[0]">
             <span>{{ col[1] }}</span
             ><strong
@@ -2026,12 +2240,27 @@ const ruleActive = computed(
             </p>
           </template>
           <template v-else-if="section === 'marketing' && canWriteSection">
-            <button class="btn primary" @click="toggleCoupon">
-              {{ couponPaused ? "启用优惠券" : "暂停发放" }}
-            </button>
-            <button class="btn ghost" @click="openIssue(selected as Coupon)">
-              定向发放
-            </button>
+            <!-- 优惠券 tab -->
+            <template v-if="mktTab === 'coupons'">
+              <button class="btn primary" @click="toggleCoupon">
+                {{ couponPaused ? "启用优惠券" : "暂停发放" }}
+              </button>
+              <button class="btn ghost" @click="openIssue(selected as Coupon)">
+                定向发放
+              </button>
+            </template>
+            <!-- Banner tab（IK9RX2） -->
+            <template v-else>
+              <button class="btn primary" @click="openBannerEdit(selected)">
+                编辑 Banner
+              </button>
+              <button class="btn ghost" @click="toggleBanner">
+                {{ bannerHidden ? "启用 Banner" : "隐藏 Banner" }}
+              </button>
+              <button class="btn danger-btn" @click="removeBannerRow">
+                {{ confirmDelete ? "确认删除" : "删除 Banner" }}
+              </button>
+            </template>
           </template>
           <template v-else-if="section === 'categories' && canWriteSection"
             ><button class="btn primary" @click="openCategoryEdit(selected)">
@@ -2149,6 +2378,14 @@ const ruleActive = computed(
                 </option>
               </select></label
             >
+            <!-- 图片字段（IK9RWX 上传基建）：COS 上传 + URL 兜底，类别图/Banner 图复用 -->
+            <div v-else-if="field.type === 'image'" :class="{ wide: field.wide }">
+              <span class="field-label">{{ field.label }}</span>
+              <ImageUploadField
+                :model-value="String(formData[field.key] ?? '')"
+                @update:model-value="formData[field.key] = $event"
+              />
+            </div>
             <label v-else :class="{ wide: field.wide }"
               >{{ field.label
               }}<input
@@ -2334,11 +2571,10 @@ const ruleActive = computed(
               min="0"
               step="0.001"
           /></label>
-          <label class="wide"
-            >商品图片 URL<input
-              v-model.trim="productForm.image"
-              placeholder="后续可替换为对象存储上传"
-          /></label>
+          <div class="wide product-image-edit">
+            <span class="field-label">商品头图（上传到 COS，小程序即见）</span>
+            <ImageUploadField v-model="productForm.image" />
+          </div>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="closeCreate">取消</button

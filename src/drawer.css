@@ -246,6 +246,16 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 图片上传字段（IK9RWX）：label 风格标题 + 整行占位（商品/类别/Banner 共用） */
+.product-form .field-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.product-image-edit {
+  display: grid;
+  gap: 8px;
+}
 .proof-block {
   margin-top: 14px;
 }

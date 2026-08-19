@@ -4,6 +4,7 @@ import type {
   AdminUser,
   AfterSale,
   AuditLog,
+  Banner,
   BarcodeLookup,
   Building,
   Campus,
@@ -118,6 +119,33 @@ export async function login(
   return result;
 }
 
+/**
+ * COS 图片上传（IK9RWX，ADR-0003）：multipart 不可复用通用 request
+ * （其写死 JSON Content-Type，会破坏 FormData 边界），单独走 fetch，
+ * 鉴权与 401 清会话行为保持一致。返回公网 URL 直接落业务字段。
+ */
+export async function uploadImage(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/v1/files/images", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+  if (response.status === 401) {
+    clearSession();
+    token = "";
+    window.location.hash = "#/login";
+    throw new Error("登录已失效，请重新登录");
+  }
+  const body = (await response.json().catch(() => null)) as ApiResult<{
+    url: string;
+  }> | null;
+  if (!response.ok || !body)
+    throw new Error(body?.message || `上传失败（${response.status}）`);
+  return body.data.url;
+}
+
 export const api = {
   dashboard: () => request<DashboardData>("/admin/dashboard"),
   products: (query?: ListQuery) =>
@@ -134,8 +162,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  /** price 为整数分（表单元输入经 yuanToFen 转换后提交）。 */
-  updateProduct: (id: string, data: { price: number; stock: number }) =>
+  /** price 为整数分（表单元输入经 yuanToFen 转换后提交）；image 为 COS URL（IK9RWX 改图）。 */
+  updateProduct: (
+    id: string,
+    data: { price: number; stock: number; image?: string },
+  ) =>
     request<Product>(`/admin/products/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -256,12 +287,15 @@ export const api = {
     ),
   /** 商品类别（全局字典非分页，直接返回数组；列表带 productCount）。 */
   adminCategories: () => request<Category[]>("/admin/categories"),
-  adminCreateCategory: (data: { name: string; sort?: number }) =>
+  adminCreateCategory: (data: { name: string; sort?: number; image?: string }) =>
     request<Category>("/admin/categories", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  adminUpdateCategory: (id: string, data: { name?: string; sort?: number }) =>
+  adminUpdateCategory: (
+    id: string,
+    data: { name?: string; sort?: number; image?: string },
+  ) =>
     request<Category>(`/admin/categories/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -319,6 +353,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userIds }),
     }),
+  /** 首页 Banner（IK9RX2）：营销活动板块内 tab 管理。 */
+  banners: (query?: ListQuery) =>
+    request<PagedResponse<Banner>>(
+      `/admin/banners${withQuery(listQuery(query))}`,
+    ),
+  createBanner: (data: Record<string, unknown>) =>
+    request<Banner>("/admin/banners", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateBanner: (id: string, data: Record<string, unknown>) =>
+    request<Banner>(`/admin/banners/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteBanner: (id: string) =>
+    request<Banner>(`/admin/banners/${id}`, { method: "DELETE" }),
   adminUsers: (query?: ListQuery) =>
     request<PagedResponse<AdminUser>>(
       `/admin/users${withQuery(listQuery(query))}`,

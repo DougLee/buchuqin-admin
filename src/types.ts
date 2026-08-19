@@ -40,11 +40,12 @@ export interface Campus {
   users: number;
 }
 
-/** 商品类别（全局字典，2026-08-19 类别管理）。productCount 为关联商品数。 */
+/** 商品类别（全局字典，2026-08-19 类别管理）。productCount 为关联商品数，image 为类别图（IK9RX0）。 */
 export interface Category {
   id: string;
   name: string;
   sort: number;
+  image: string;
   productCount?: number;
 }
 
@@ -133,6 +134,18 @@ export interface Staff {
   buildingRef?: Building;
 }
 
+/** 首页 Banner（IK9RX2）：后台管理视图，color 为预置主题键或自定义 hex。 */
+export interface Banner {
+  id: string;
+  campusId: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  color: string;
+  image: string | null;
+  sort: number;
+  status: string;
+}
 export interface Coupon {
   id: string;
   campusId: string;
@@ -383,6 +396,7 @@ export type AdminRow =
   | Order
   | Staff
   | Coupon
+  | Banner
   | Building
   | Room
   | InventoryTxn
@@ -402,11 +416,12 @@ export type AdminRow =
   | AccountRow
   | CategoryRow;
 
-/* 类别字典表格行（name/sort 全局字典 + 派生商品数） */
+/* 类别字典表格行（name/sort 全局字典 + 派生商品数 + 类别图 IK9RX0） */
 export interface CategoryRow {
   id: string;
   name: string;
   sort: number;
+  image: string;
   productCount: number;
 }
 
