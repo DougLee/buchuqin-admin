@@ -55,6 +55,7 @@ const route = useRoute(),
     weight: 0,
   });
 const statusFilter = ref("all"),
+  exporting = ref(false),
   page = ref(1),
   pageSize = ref(10),
   total = ref(0),
@@ -1207,19 +1208,15 @@ const section = computed(() => String(route.params.section)),
     () => Boolean(createLabels[section.value]) && canWriteSection.value,
   ),
   filtered = computed(() =>
-    // 服务端分页：rows 即当前页。
-    // TODO(keyword)：keyword 已随请求发送，但后端列表尚未实现 keyword 过滤前，
-    // 这里对「当前页」做兜底过滤（仅能过滤到本页数据，命中数不改变 total）。
+    // 服务端分页 + 服务端 keyword 过滤（IK8W5X 契约收尾）：rows 即命中当前页；
+    // 前端仅保留状态 tab 的展示级筛选。
     rows.value.filter((row) => {
       const record = row as unknown as Record<string, unknown>;
       return (
-        JSON.stringify(row)
-          .toLowerCase()
-          .includes(keyword.value.toLowerCase()) &&
-        (statusFilter.value === "all" ||
-          [record.status, record.statusText, String(record.online ?? "")].some(
-            (value) => String(value ?? "").includes(statusFilter.value),
-          ))
+        statusFilter.value === "all" ||
+        [record.status, record.statusText, String(record.online ?? "")].some(
+          (value) => String(value ?? "").includes(statusFilter.value),
+        )
       );
     }),
   ),
@@ -1409,11 +1406,28 @@ async function act(action: string) {
     notify(error instanceof Error ? error.message : "操作失败", true);
   }
 }
-function exportData() {
-  // 服务端分页下仅导出「当前页」筛选后的行；全量导出需后端导出接口或翻页聚合（TODO）
+async function exportData() {
+  // 翻页聚合全量导出：当前关键词命中的所有行（fetchAllPages 上限 50 页 × 100 行）
+  exporting.value = true;
+  try {
+  const all = await fetchAllPages(
+    (query) =>
+      config.value
+        .loader({
+          ...query,
+          keyword: keyword.value.trim() || undefined,
+        })
+        .then((r) => ({
+          items: r.rows,
+          total: r.total,
+          page: query.page,
+          pageSize: query.pageSize,
+        })),
+    100,
+  );
   const csv = [
     config.value.columns.map((c) => c[1]),
-    ...filtered.value.map((row) =>
+    ...all.map((row) =>
       config.value.columns.map((c) =>
         c[0] === "quantity" && section.value === "inventory"
           ? txnQuantity(row)
@@ -1424,10 +1438,16 @@ function exportData() {
     .map((line) => line.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
     .join("\n");
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
   a.download = `${config.value.title}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+  notify(`已导出 ${all.length} 行（当前筛选条件）`);
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "导出失败", true);
+  } finally {
+    exporting.value = false;
+  }
 }
 function openCreate() {
   if (section.value === "products") {
