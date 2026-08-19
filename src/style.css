@@ -111,18 +111,17 @@ a {
   padding: 0 2px;
   background: none;
   border: none;
-  font-size: 10px;
+  font-size: 13.5px;
   font-weight: 600;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  color: #6b8a7a;
+  letter-spacing: 1px;
+  color: #7e968a;
   cursor: pointer;
   transition: color 0.2s;
 }
 .shell nav .group-head .group-arrow {
   margin-left: auto;
   font-style: normal;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
   color: #55705f;
   transition: transform 0.25s, color 0.2s;
