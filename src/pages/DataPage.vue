@@ -1609,8 +1609,9 @@ function openCategoryCreate() {
       fields: [
         { key: "name", label: "类别名称", placeholder: "如：饮料" },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
-        // 类别头图（IK9RX0）：小程序分类 tab 图标，无图时前端回退文字样式
-        { key: "image", label: "类别图片", type: "image", wide: true },
+        // 类别头图（IK9RX0）：小程序分类 tab 图标，无图时前端回退文字样式；
+        // 落 COS app/category/（IK9VBM）
+        { key: "image", label: "类别图片", type: "image", wide: true, folder: "app/category" },
       ],
       save: async (d) =>
         void (await api.adminCreateCategory({
@@ -1639,7 +1640,7 @@ function openCategoryEdit(row: AdminRow) {
       fields: [
         { key: "name", label: "类别名称" },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
-        { key: "image", label: "类别图片", type: "image", wide: true },
+        { key: "image", label: "类别图片", type: "image", wide: true, folder: "app/category" },
       ],
       save: async (d) =>
         void (await api.adminUpdateCategory(record.id, {
@@ -2413,12 +2414,12 @@ async function outbound() {
                 placeholder="如：冷A-03" /></label
             ><div class="wide product-image-edit">
               <span class="field-label">商品头图（换新图后小程序即见）</span>
-              <ImageUploadField v-model="productEdit.image" />
+              <ImageUploadField v-model="productEdit.image" folder="app/product" />
             </div>
-            <!-- 详情多图（IK9SNS）：小程序商品详情页轮播，可排序 -->
+            <!-- 详情多图（IK9SNS）：小程序商品详情页轮播，可排序，与头图同目录 -->
             <div class="wide product-image-edit">
               <span class="field-label">详情多图（用户端详情页轮播，可排序）</span>
-              <ProductImagesField v-model="productEdit.images" />
+              <ProductImagesField v-model="productEdit.images" folder="app/product" />
             </div></template
           >
           <div v-for="col in config.columns" :key="col[0]">
@@ -2826,8 +2827,8 @@ async function outbound() {
               placeholder="如：冷A-03"
           /></label>
           <div class="wide product-image-edit">
-            <span class="field-label">商品头图（上传到 COS，小程序即见）</span>
-            <ImageUploadField v-model="productForm.image" />
+            <span class="field-label">商品头图（上传到 COS app/product，小程序即见）</span>
+            <ImageUploadField v-model="productForm.image" folder="app/product" />
           </div>
         </div>
         <div class="drawer-actions">

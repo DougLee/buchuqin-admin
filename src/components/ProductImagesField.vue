@@ -5,8 +5,9 @@ import { resolveImageUrl } from "../utils/image";
 /**
  * 商品详情多图（IK9SNS）：v-model 绑定 URL 数组（顺序即小程序详情页轮播顺序）。
  * 追加走 COS 上传；每张可上移/下移/删除，上限 9 张。
+ * folder 缺省 uploads/，商品素材传 app/product（IK9VBM）。
  */
-const props = defineProps<{ modelValue: string[] }>();
+const props = defineProps<{ modelValue: string[]; folder?: string }>();
 const emit = defineEmits<{
   (e: "update:modelValue", value: string[]): void;
 }>();
@@ -25,7 +26,7 @@ async function onPick(event: Event) {
   uploading.value = true;
   error.value = "";
   try {
-    mutate([...props.modelValue, await uploadImage(file)]);
+    mutate([...props.modelValue, await uploadImage(file, props.folder)]);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "上传失败";
   } finally {
