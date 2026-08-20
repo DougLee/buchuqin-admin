@@ -1008,6 +1008,15 @@ td {
 .table-wrap {
   overflow-x: auto;
 }
+/* 表格图片列（类别图/Banner 图）：统一缩略，原图尺寸裸奔会把行撑爆 */
+.cell-thumb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e4ebe6;
+}
 .more {
   border: 0;
   background: #eef3ef;
