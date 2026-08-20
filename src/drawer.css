@@ -124,7 +124,7 @@
 .product-create {
   width: min(560px, 96vw);
   overflow-y: auto;
-  padding-bottom: 100px;
+  padding-bottom: 140px;
 }
 .scan-panel {
   margin-top: 20px;
@@ -509,4 +509,50 @@
   padding: 2px 8px;
   font-size: 12px;
   flex: none;
+}
+/* IKA0UT：列表内联操作按钮（出库/改状态）+ 手动改状态弹窗 */
+.row-actions {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.btn.mini {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+.status-dialog {
+  width: min(440px, 92vw);
+}
+/* IKA0UW：编辑抽屉原信息摘要块，改前原值一眼可读 */
+.origin-summary {
+  grid-column: 1/-1;
+  background: #f2f8f3;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+}
+.origin-summary span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.origin-summary strong {
+  font-size: 13px;
+}
+/* IKA0UW：编辑/新建抽屉内容较长时在抽屉内滚动，底部按钮不再遮挡末尾字段 */
+.drawer:not(.product-create) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.drawer-fields {
+  overflow-y: auto;
+  padding-bottom: 96px;
+  flex: 1;
 }

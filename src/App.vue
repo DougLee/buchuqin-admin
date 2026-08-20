@@ -79,11 +79,15 @@ const groups = [
     ],
   },
   {
-    label: "商品仓储",
+    label: "仓储中心",
     items: [
       ["/products", "products", "商品管理"],
       ["/categories", "categories", "商品类别"],
-      ["/inventory", "inventory", "库存与批次"],
+      ["/inventory", "inventory", "库存总览"],
+      // IKA0V2：仓库订单/出入库流水独立入口；IKA0VG：库位管理
+      ["/warehouse-orders", "warehouse-orders", "仓库订单"],
+      ["/inventory-txns", "inventory-txns", "出入库流水"],
+      ["/locations", "locations", "库位管理"],
     ],
   },
   {

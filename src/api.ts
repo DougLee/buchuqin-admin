@@ -173,6 +173,7 @@ export const api = {
       stock: number;
       image?: string;
       location?: string;
+      locationCode?: string;
       images?: string[];
     },
   ) =>
@@ -204,6 +205,34 @@ export const api = {
     ),
   orderAction: (id: string, action: string) =>
     request<Order>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
+  /** 手动改订单状态（IKA0UT）：原因进审计日志。 */
+  updateOrderStatus: (id: string, status: string, reason: string) =>
+    request<Order>(`/admin/orders/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status, reason }),
+    }),
+  /* ---------- 库位管理（IKA0VG） ---------- */
+  adminLocations: () =>
+    request<Array<{ id: string; name: string; note: string; sort: number; createdAt: string }>>(
+      "/admin/locations",
+    ),
+  createLocation: (data: { name: string; note?: string; sort?: number }) =>
+    request<{ id: string }>("/admin/locations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateLocation: (
+    id: string,
+    data: { name?: string; note?: string; sort?: number },
+  ) =>
+    request<{ id: string }>(`/admin/locations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteLocation: (id: string) =>
+    request<{ id: string }>(`/admin/locations/${id}`, {
+      method: "DELETE",
+    }),
   staff: (query?: ListQuery) =>
     request<PagedResponse<Staff>>(`/admin/staff${withQuery(listQuery(query))}`),
   createStaff: (data: Record<string, unknown>) =>

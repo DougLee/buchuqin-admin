@@ -47,7 +47,14 @@ const route = useRoute(),
   video = ref<HTMLVideoElement>(),
   scanError = ref(""),
   confirmDelete = ref(false),
-  productEdit = ref({ price: 0, stock: 0, image: "", location: "", images: [] as string[] }),
+  productEdit = ref({
+    price: 0,
+    stock: 0,
+    image: "",
+    location: "",
+    locationCode: "",
+    images: [] as string[],
+  }),
   productForm = ref({
     barcode: "",
     name: "",
@@ -59,6 +66,8 @@ const route = useRoute(),
     tag: "新品",
     image: "",
     location: "",
+    locationCode: "",
+    images: [] as string[],
     weight: 0,
   });
 const statusFilter = ref("all"),
@@ -873,15 +882,10 @@ function openStockForm(kind: "stock-in" | "adjust") {
       : { productId: "", delta: 1, reason: "" },
   );
 }
-const invTab = ref("stock");
 /** 状态筛选重置为 all；值有变化时由 statusFilter watcher 接管重载，避免重复请求。 */
 function resetStatusFilterAndLoad() {
   if (statusFilter.value === "all") resetAndLoad();
   else statusFilter.value = "all";
-}
-function switchInvTab(tab: string) {
-  invTab.value = tab;
-  resetStatusFilterAndLoad();
 }
 /* 财务结算：账期筛选（month=YYYY-MM，后端 B2 契约）。 */
 const monthOptions = computed(() => {
@@ -911,31 +915,54 @@ interface SectionConfig {
   loader: (query: ListQuery) => Promise<PageRows>;
   columns: [string, string][];
 }
+/* ---------- 仓储板块拆分（IKA0V2）：流水/仓库订单独立菜单入口 ---------- */
 const inventoryTxnsConfig: SectionConfig = {
-  title: "库存与批次",
-  eyebrow: "WAREHOUSE INVENTORY",
-  desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-  loader: (query) => api.inventoryTxns(undefined, query).then(unwrap),
+  title: "出入库流水",
+  eyebrow: "INVENTORY LEDGER",
+  desc: "采购入库、盘点调整与订单出库的全部流水记录。",
+  loader: (query) =>
+    api.inventoryTxns(undefined, query).then((res) => ({
+      rows: res.items.map(toTxnRow),
+      total: res.total,
+    })),
   columns: [
     ["createdAt", "时间"],
-    ["type", "类型"],
+    ["typeText", "类型"],
     ["product", "商品"],
     ["quantity", "数量"],
     ["reason", "原因"],
     ["operator", "操作人"],
   ],
 };
+/** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
+const TXN_TYPE_TEXT: Record<string, string> = {
+  "stock-in": "采购入库",
+  adjust: "盘点调整",
+  out: "订单出库",
+};
+function toTxnRow(t: InventoryTxn): AdminRow {
+  return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
+}
 /**
- * 拣货出库（IK9U3Z 反馈#7）：拣货 3 状态机归商品仓储板块管理，
- * 订单履约板块只跟踪订单状态、不做出库动作。
+ * 仓库订单（IKA0UQ，IK9U3Z 出库动作延续）：待出库订单（paid+picking 历史单）
+ * 按库位指引拣货复核，确认出库后一步转「待配送」，库存不二次扣（支付已扣）。
  */
-const inventoryPickingConfig: SectionConfig = {
-  title: "拣货出库",
-  eyebrow: "PICK & PACK",
-  desc: "按库位指引拣货复核，确认出库后订单进入一级配送。",
-  loader: (query) =>
-    api.orders("picking", query).then((res) => ({
-      rows: res.items.map((o) => {
+const warehouseOrdersConfig: SectionConfig = {
+  title: "仓库订单",
+  eyebrow: "WAREHOUSE OUTBOUND",
+  desc: "待出库订单按库位拣货复核，确认出库后转待配送，配送员即可接单。",
+  loader: async (query) => {
+    // paid（主链路）+ picking（历史单）合并，按下单时间倒序。
+    const [paid, picking] = await Promise.all([
+      api.orders("paid", query),
+      api.orders("picking", query),
+    ]);
+    const rows = [...paid.items, ...picking.items]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .map((o) => {
         const names = (o.items ?? [])
           .map((line) => line.product?.name ?? "")
           .filter(Boolean);
@@ -945,9 +972,9 @@ const inventoryPickingConfig: SectionConfig = {
             ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
             : "—",
         };
-      }),
-      total: res.total,
-    })),
+      });
+    return { rows, total: rows.length };
+  },
   columns: [
     ["orderNo", "订单编号"],
     ["itemsText", "商品"],
@@ -1298,14 +1325,25 @@ const configs: Record<string, SectionConfig> = {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
     desc: "维护商品资料、校园售价与销售状态。",
-    loader: (query) => api.products(query).then(unwrap),
+    loader: (query) =>
+      api.products(query).then((res) => ({
+        rows: res.items.map((p) => ({
+          ...p,
+          // 库位展示（IKA0VG）：区域-编号拼接，空 = 未配置
+          locationText:
+            [p.location, (p as Product & { locationCode?: string }).locationCode]
+              .filter(Boolean)
+              .join("-") || "",
+        })),
+        total: res.total,
+      })),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
       ["categoryId", "分类"],
       ["price", "售价"],
       ["availableStock", "可售库存"],
-      ["location", "库位"],
+      ["locationText", "库位"],
       ["status", "状态"],
     ],
   },
@@ -1338,19 +1376,49 @@ const configs: Record<string, SectionConfig> = {
     ],
   },
   inventory: {
-    title: "库存与批次",
+    // IKA0VB 去批次：批次/有效期列移除；IKA0V2 流水与拣货出库拆独立菜单。
+    title: "库存总览",
     eyebrow: "WAREHOUSE INVENTORY",
     desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
-    loader: (query) => api.inventory(query).then(unwrap),
+    loader: (query) =>
+      api.inventory(query).then((res) => ({
+        rows: res.items.map((p) => ({
+          ...p,
+          locationText:
+            [p.location, (p as Product & { locationCode?: string }).locationCode]
+              .filter(Boolean)
+              .join("-") || "",
+        })),
+        total: res.total,
+      })),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
-      ["location", "库位"],
-      ["batchNo", "批次"],
+      ["locationText", "库位"],
       ["actualStock", "实际"],
       ["lockedStock", "锁定"],
       ["availableStock", "可售"],
-      ["expiryDate", "有效期"],
+    ],
+  },
+  "warehouse-orders": warehouseOrdersConfig,
+  "inventory-txns": inventoryTxnsConfig,
+  /* 库位管理（IKA0VG）：字典 CRUD，商品表单下拉消费 */
+  locations: {
+    title: "库位管理",
+    eyebrow: "STORAGE LOCATIONS",
+    desc: "维护仓库库位区域字典，商品编辑时下拉选择，拣货按库位找货。",
+    loader: async () => {
+      const all = await ensureLocations();
+      return {
+        rows: all.map((l) => ({ ...l }) as unknown as AdminRow),
+        total: all.length,
+      };
+    },
+    columns: [
+      ["name", "库位名称"],
+      ["note", "备注"],
+      ["sort", "排序"],
+      ["createdAt", "创建时间"],
     ],
   },
   staff: {
@@ -1507,6 +1575,7 @@ const bannerConfig: SectionConfig = {
 const createLabels: Record<string, string> = {
   products: "＋ 新建记录",
   categories: "＋ 新建类别",
+  locations: "＋ 新建库位",
   marketing: "＋ 新建优惠券",
   banners: "＋ 新建 Banner",
   campuses: "＋ 新建楼栋",
@@ -1517,10 +1586,6 @@ const createLabels: Record<string, string> = {
 };
 const section = computed(() => String(route.params.section)),
   config = computed<SectionConfig>(() => {
-    if (section.value === "inventory" && invTab.value === "txns")
-      return inventoryTxnsConfig;
-    if (section.value === "inventory" && invTab.value === "picking")
-      return inventoryPickingConfig;
     if (section.value === "dispatch")
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
@@ -1596,9 +1661,102 @@ watch(
   section,
   (s) => {
     if (s === "products" || s === "categories") void loadCategories();
+    // 库位字典（IKA0VG）：商品表单/库位管理共用
+    if (s === "products" || s === "locations") void ensureLocations();
   },
   { immediate: true },
 );
+/* ---------- 库位管理（IKA0VG）：字典 CRUD + 商品表单下拉选项 ---------- */
+interface LocationItem {
+  id: string;
+  name: string;
+  note: string;
+  sort: number;
+  createdAt: string;
+}
+const locationsCache = ref<LocationItem[]>([]);
+async function ensureLocations(): Promise<LocationItem[]> {
+  try {
+    locationsCache.value = await api.adminLocations();
+  } catch {
+    /* 库位加载失败不阻塞商品表单（下拉退化为手填值） */
+  }
+  return locationsCache.value;
+}
+/** 商品表单库位下拉：字典 + 当前值兜底（历史数据不在字典时保留可选）。 */
+function locationOptions(current?: string) {
+  const names = locationsCache.value.map((l) => l.name);
+  if (current && !names.includes(current)) names.unshift(current);
+  return names.map((n) => ({
+    value: n,
+    label: n,
+  }));
+}
+function locationPayload(d: Record<string, FormValue>) {
+  return {
+    name: String(d.name || "").trim(),
+    note: String(d.note ?? "").trim(),
+    sort: Number(d.sort ?? 0),
+  };
+}
+function openLocationCreate() {
+  openForm(
+    {
+      eyebrow: "NEW LOCATION",
+      title: "新建库位",
+      submit: "保存库位",
+      done: "库位已创建",
+      fields: [
+        { key: "name", label: "库位名称", placeholder: "如：冷藏A / 常温B" },
+        { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        { key: "note", label: "备注（选填）", placeholder: "如：靠门冰柜第2层" },
+      ],
+      save: async (d) => {
+        if (!String(d.name || "").trim()) throw new Error("请填写库位名称");
+        void (await api.createLocation(locationPayload(d)));
+      },
+    },
+    { name: "", sort: 0, note: "" },
+  );
+}
+function openLocationEdit(row: AdminRow) {
+  selected.value = undefined;
+  const record = row as unknown as LocationItem;
+  openForm(
+    {
+      eyebrow: "EDIT LOCATION",
+      title: "编辑库位",
+      submit: "保存修改",
+      done: "库位已更新",
+      fields: [
+        { key: "name", label: "库位名称" },
+        { key: "sort", label: "排序（越小越靠前）", type: "number" },
+        { key: "note", label: "备注（选填）" },
+      ],
+      save: async (d) => {
+        if (!String(d.name || "").trim()) throw new Error("请填写库位名称");
+        void (await api.updateLocation(record.id, locationPayload(d)));
+      },
+    },
+    { name: record.name, sort: Number(record.sort ?? 0), note: record.note ?? "" },
+  );
+}
+async function removeLocationRow() {
+  if (!selected.value) return;
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  try {
+    await api.deleteLocation(selected.value.id);
+    notify("库位已删除");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    confirmDelete.value = false;
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
 function openCategoryCreate() {
   openForm(
     {
@@ -1706,7 +1864,6 @@ watch(
   () => route.params.section,
   () => {
     selected.value = undefined;
-    invTab.value = "stock";
     dispTab.value = "leaves";
     mktTab.value = "coupons";
     resetAndLoad();
@@ -1795,8 +1952,9 @@ function txnQuantity(row: AdminRow) {
 function isStockIn(row: AdminRow) {
   return (row as InventoryTxn).type === "stock-in";
 }
-function txnTypeText(row: AdminRow) {
-  return (row as InventoryTxn).type === "stock-in" ? "采购入库" : "盘点调整";
+/** 订单行的原始 status（display 会做文案映射，按钮条件要原始值）。 */
+function rowStatusOf(row: AdminRow): string {
+  return String((row as unknown as Record<string, unknown>).status ?? "");
 }
 function rowKey(row: AdminRow): string {
   const record = row as unknown as Record<string, unknown>;
@@ -1819,8 +1977,9 @@ function openDetail(row: AdminRow) {
       stock: Number(product.availableStock ?? product.stock ?? 0),
       // 头图（IK9RWX）：编辑抽屉可上传替换，留空 = 不改图
       image: product.image || "",
-      // 库位（IK9U40）/详情多图（IK9SNS）
+      // 库位（IK9U40/IKA0VG）/详情多图（IK9SNS）
       location: product.location ?? "",
+      locationCode: (product as Product & { locationCode?: string }).locationCode ?? "",
       images: Array.isArray(product.images) ? [...product.images] : [],
     };
   }
@@ -1838,8 +1997,9 @@ async function act(action: string) {
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
           : {}),
-        // 库位（IK9U40）：空串语义清空回退默认
+        // 库位（IK9U40/IKA0VG）：空串语义清空回退默认
         location: productEdit.value.location.trim(),
+        locationCode: productEdit.value.locationCode.trim(),
         // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
         images: productEdit.value.images.filter(Boolean),
       });
@@ -1917,9 +2077,12 @@ function openCreate() {
       tag: "新品",
       image: "",
       location: "",
+      locationCode: "",
+      images: [],
       weight: 0,
     };
   } else if (section.value === "categories") openCategoryCreate();
+  else if (section.value === "locations") openLocationCreate();
   else if (section.value === "marketing")
     mktTab.value === "banners" ? openBannerCreate() : openCouponCreate();
   else if (section.value === "campuses") openBuildingCreate();
@@ -1951,6 +2114,7 @@ async function lookup() {
     }
     const found = result.product;
     productForm.value = {
+      ...productForm.value,
       barcode: found.barcode ?? productForm.value.barcode,
       name: found.name ?? productForm.value.name,
       subtitle: found.subtitle ?? productForm.value.subtitle,
@@ -2064,35 +2228,94 @@ const inviteStatus = computed(() =>
 const ruleActive = computed(
   () => section.value === "rules" && selectedStatus() === "active",
 );
-/** 订单履约（IK9U3Z）：拣货中订单的出库动作已移交「商品仓储 · 拣货出库」。 */
+/** 订单履约（IK9U3Z）：出库动作已移交「仓储中心 · 仓库订单」，本页仅跟踪状态。 */
 const orderInPicking = computed(
-  () => section.value === "orders" && selectedStatus() === "picking",
+  () =>
+    section.value === "orders" &&
+    ["paid", "picking"].includes(selectedStatus()),
 );
-/** 拣货出库抽屉的拣货清单（含商品库位指引，IK9U40）。 */
+/** 仓库订单抽屉的拣货清单（含商品库位指引，IK9U40/IKA0VG 区域-编号）。 */
 const pickingItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
-  if (
-    section.value !== "inventory" ||
-    invTab.value !== "picking" ||
-    !order?.items
-  )
-    return [];
+  if (section.value !== "warehouse-orders" || !order?.items) return [];
   return order.items.map((line) => ({
     name: line.product?.name ?? "未知商品",
     quantity: line.quantity,
-    location: line.product?.location ?? "",
+    location:
+      [
+        line.product?.location ?? "",
+        (line.product as { locationCode?: string } | undefined)
+          ?.locationCode ?? "",
+      ]
+        .filter(Boolean)
+        .join("-"),
   }));
 });
-/** 确认出库（IK9U3Z）：picking → waiting-first-mile，与原订单推进同接口。 */
+/** 确认出库（IKA0UQ）：paid/picking → waiting-first-mile 一步到位 + 出库流水。 */
 async function outbound() {
   if (!selected.value) return;
   try {
-    await api.orderAction(selected.value.id, "advance");
-    notify("已出库，订单等待一级配送接单");
+    await api.orderAction(selected.value.id, "outbound");
+    notify("已出库，订单转待配送，配送员可接单");
     selected.value = undefined;
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "出库失败", true);
+  }
+}
+/** 列表内联出库（IKA0UT）：不进抽屉，一键出库。 */
+async function outboundRow(row: AdminRow) {
+  try {
+    await api.orderAction(row.id, "outbound");
+    notify("已出库，订单转待配送");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "出库失败", true);
+  }
+}
+/* ---------- 手动改订单状态（IKA0UT）：12 态白名单 + 原因进审计日志 ---------- */
+const ORDER_STATUS_OPTIONS: Array<[string, string]> = [
+  ["pending-payment", "等待支付"],
+  ["paid", "仓库正在接单"],
+  ["picking", "仓库正在拣货"],
+  ["waiting-first-mile", "已出库，待配送员接单"],
+  ["first-mile", "配送中"],
+  ["waiting-handover", "已到楼下，等待楼长交接"],
+  ["last-mile", "楼长送往寝室"],
+  ["delivered", "已送达寝室"],
+  ["completed", "已确认收货"],
+  ["cancelled", "订单已取消"],
+  ["exception", "履约异常"],
+  ["refunded", "已退款"],
+];
+const statusDialogOpen = ref(false),
+  statusDialogRow = ref<AdminRow>(),
+  statusDialogValue = ref("paid"),
+  statusDialogReason = ref(""),
+  statusDialogSaving = ref(false);
+function openStatusDialog(row: AdminRow) {
+  const record = row as unknown as Record<string, unknown>;
+  statusDialogRow.value = row;
+  statusDialogValue.value = String(record.status ?? "paid");
+  statusDialogReason.value = "";
+  statusDialogOpen.value = true;
+}
+async function submitStatusDialog() {
+  if (!statusDialogRow.value || statusDialogSaving.value) return;
+  statusDialogSaving.value = true;
+  try {
+    await api.updateOrderStatus(
+      statusDialogRow.value.id,
+      statusDialogValue.value,
+      statusDialogReason.value.trim(),
+    );
+    statusDialogOpen.value = false;
+    notify("订单状态已更新（操作已记录进审计日志）");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "修改失败", true);
+  } finally {
+    statusDialogSaving.value = false;
   }
 }
 </script>
@@ -2119,20 +2342,7 @@ async function outbound() {
       </div>
     </div>
     <div class="toolbar">
-      <div v-if="section === 'inventory'" class="segmented inv-tabs">
-        <button :class="{ active: invTab === 'stock' }" @click="switchInvTab('stock')">
-          当前库存
-        </button>
-        <button :class="{ active: invTab === 'txns' }" @click="switchInvTab('txns')">
-          出入库流水
-        </button>
-        <button
-          :class="{ active: invTab === 'picking' }"
-          @click="switchInvTab('picking')"
-        >
-          拣货出库
-        </button>
-      </div>
+      <!-- IKA0V2：库存与批次页的流水/拣货 tab 已拆独立菜单（出入库流水、仓库订单） -->
       <div v-if="section === 'dispatch'" class="segmented inv-tabs">
         <button :class="{ active: dispTab === 'leaves' }" @click="switchDispTab('leaves')">
           请假记录
@@ -2159,8 +2369,8 @@ async function outbound() {
       </div>
       <select
         v-if="
-          !(section === 'inventory' && invTab === 'txns') &&
-          !(section === 'inventory' && invTab === 'picking') &&
+          section !== 'inventory-txns' &&
+          section !== 'warehouse-orders' &&
           !(section === 'marketing' && mktTab === 'banners')
         "
         v-model="statusFilter"
@@ -2185,12 +2395,13 @@ async function outbound() {
         </option>
       </select>
       <div class="toolbar-spacer"></div>
-      <template v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')">
-        <button class="btn ghost" @click="openStockForm('adjust')">
-          盘点调整
-        </button>
+      <!-- IKA0V2：采购入库为日常主操作排前，盘点调整次之 -->
+      <template v-if="section === 'inventory' && canWrite('inventory')">
         <button class="btn primary" @click="openStockForm('stock-in')">
           采购入库
+        </button>
+        <button class="btn ghost" @click="openStockForm('adjust')">
+          盘点调整
         </button>
       </template>
       <button class="btn ghost" @click="exportData">导出数据</button>
@@ -2207,9 +2418,7 @@ async function outbound() {
         </div>
         <p>
           <span class="live-dot"></span>
-          {{
-            section === "inventory" && invTab === "txns" ? "流水已同步" : "数据已同步"
-          }}
+          {{ section === "inventory-txns" ? "流水已同步" : "数据已同步" }}
         </p>
       </div>
       <div class="table-wrap">
@@ -2235,10 +2444,10 @@ async function outbound() {
               <tr v-for="row in filtered" :key="rowKey(row)">
                 <td v-for="col in config.columns" :key="col[0]">
                   <span
-                    v-if="col[0] === 'type' && section === 'inventory' && invTab === 'txns'"
+                    v-if="col[0] === 'typeText' && section === 'inventory-txns'"
                     class="status"
                     :class="{ success: isStockIn(row) }"
-                    >{{ txnTypeText(row) }}</span
+                    >{{ display(row, "typeText") }}</span
                   ><span
                     v-else-if="['status', 'statusText', 'online'].includes(col[0])"
                     class="status"
@@ -2253,8 +2462,8 @@ async function outbound() {
                     >{{ display(row, col[0]) }}</span
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
-                  ><span
-                    v-else-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'"
+                  ><!-- 流水数量列（含 IKA0UQ 出库负数） --><span
+                    v-else-if="col[0] === 'quantity' && section === 'inventory-txns'"
                     >{{ txnQuantity(row) }}</span
                   ><!-- 图片列（IK9RX0 类别图）：有图缩略预览，无图占位 -->
                   <img
@@ -2265,7 +2474,29 @@ async function outbound() {
                     loading="lazy"
                   /><span v-else>{{ display(row, col[0]) }}</span>
                 </td>
-                <td>
+                <td class="row-actions">
+                  <!-- IKA0UT：订单类列表常用操作内联最右侧，一步可达 -->
+                  <template
+                    v-if="
+                      (section === 'orders' || section === 'warehouse-orders') &&
+                      canWriteSection
+                    "
+                  >
+                    <button
+                      v-if="['paid', 'picking'].includes(rowStatusOf(row))"
+                      class="btn mini primary"
+                      @click="outboundRow(row)"
+                    >
+                      出库
+                    </button>
+                    <button
+                      v-if="section === 'orders'"
+                      class="btn mini ghost"
+                      @click="openStatusDialog(row)"
+                    >
+                      改状态
+                    </button>
+                  </template>
                   <button
                     class="more"
                     aria-label="更多操作"
@@ -2395,7 +2626,49 @@ async function outbound() {
         </template>
         <div v-else class="drawer-fields">
           <template v-if="section === 'products' && canWriteSection"
-            ><label
+            ><!-- IKA0UW：原信息摘要——编辑前原值一眼可读 -->
+            <div class="origin-summary">
+              <div>
+                <span>商品名 / SKU</span
+                ><strong
+                  >{{ display(selected, "name") }} ·
+                  {{ display(selected, "skuNo") }}</strong
+                >
+              </div>
+              <div>
+                <span>分类 / 状态</span
+                ><strong
+                  >{{ display(selected, "categoryId") }} ·
+                  {{ display(selected, "status") }}</strong
+                >
+              </div>
+              <div>
+                <span>当前售价</span
+                ><strong>¥{{ fenToYuan(Number((selected as unknown as Record<string, unknown>)?.price ?? 0)) }}</strong>
+              </div>
+              <div>
+                <span>当前可售库存</span
+                ><strong>{{ display(selected, "availableStock") }}</strong>
+              </div>
+              <div>
+                <span>当前库位</span
+                ><strong>{{ display(selected, "locationText") || "未配置" }}</strong>
+              </div>
+              <div>
+                <span>建议零售价</span
+                ><strong
+                  >¥{{
+                    fenToYuan(
+                      Number(
+                        (selected as unknown as Record<string, unknown>)
+                          ?.originalPrice ?? 0,
+                      ),
+                    )
+                  }}</strong
+                >
+              </div>
+            </div>
+            <label
               >校园售价<input
                 v-model.number="productEdit.price"
                 type="number"
@@ -2405,13 +2678,23 @@ async function outbound() {
                 v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
-            ><!-- 库位（IK9U40）：区域代码+序号，拣货出库按此指引找货 -->
+            ><!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
             <label
-              >库位<input
-                v-model.trim="productEdit.location"
+              >库位（字典选择）<select v-model="productEdit.location">
+                <option value="">未配置</option>
+                <option
+                  v-for="opt in locationOptions(productEdit.location)"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </option></select></label
+            ><label
+              >库位编号（选填）<input
+                v-model.trim="productEdit.locationCode"
                 type="text"
                 maxlength="20"
-                placeholder="如：冷A-03" /></label
+                placeholder="如：03（区域内具体位置）" /></label
             ><div class="wide product-image-edit">
               <span class="field-label">商品头图（换新图后小程序即见）</span>
               <ImageUploadField v-model="productEdit.image" folder="app/product" />
@@ -2425,13 +2708,13 @@ async function outbound() {
           <div v-for="col in config.columns" :key="col[0]">
             <span>{{ col[1] }}</span
             ><strong
-              v-if="col[0] === 'quantity' && section === 'inventory' && invTab === 'txns'"
+              v-if="col[0] === 'quantity' && section === 'inventory-txns'"
               >{{ txnQuantity(selected) }}</strong
             ><strong v-else>{{ display(selected, col[0]) }}</strong>
           </div>
           <!-- 拣货清单（IK9U40）：库位指引找货，新单起快照携带库位 -->
           <div
-            v-if="section === 'inventory' && invTab === 'picking' && pickingItems.length"
+            v-if="section === 'warehouse-orders' && pickingItems.length"
             class="wide pick-list-wrap"
           >
             <span class="field-label">拣货清单（按库位找货）</span>
@@ -2451,7 +2734,7 @@ async function outbound() {
           <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」 -->
           <template v-else-if="section === 'orders' && canWriteSection && orderInPicking"
             ><p class="form-hint plain processed-hint">
-              拣货/出库操作已归入「商品仓储 · 拣货出库」，本页仅跟踪订单状态。
+              出库操作已归入「仓储中心 · 仓库订单」，本页仅跟踪订单状态。
             </p></template
           >
           <template v-else-if="section === 'orders' && canWriteSection"
@@ -2461,10 +2744,10 @@ async function outbound() {
               标记异常
             </button></template
           >
-          <!-- 确认出库（IK9U3Z）：拣货完成 → 等待一级配送 -->
+          <!-- 确认出库（IKA0UQ）：一步转待配送 + 出库流水 -->
           <template
             v-else-if="
-              section === 'inventory' && invTab === 'picking' && canWriteSection
+              section === 'warehouse-orders' && canWriteSection
             "
           >
             <button class="btn primary" @click="outbound">确认出库</button>
@@ -2743,6 +3026,71 @@ async function outbound() {
         </div>
       </aside>
     </div>
+    <!-- 手动改订单状态（IKA0UT）：12 态白名单 + 原因必填进审计日志 -->
+    <div
+      v-if="statusDialogOpen"
+      class="drawer-mask"
+      @click.self="statusDialogOpen = false"
+    >
+      <aside class="drawer status-dialog">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">MANUAL STATUS</p>
+            <h2>修改订单状态</h2>
+          </div>
+          <button aria-label="关闭" @click="statusDialogOpen = false">×</button>
+        </div>
+        <div class="drawer-fields">
+          <div>
+            <span>订单编号</span
+            ><strong>{{
+              (statusDialogRow as unknown as Record<string, unknown>)?.orderNo
+            }}</strong>
+          </div>
+          <div>
+            <span>当前状态</span
+            ><strong>{{
+              (statusDialogRow as unknown as Record<string, unknown>)
+                ?.statusText
+            }}</strong>
+          </div>
+          <label class="wide"
+            >目标状态
+            <select v-model="statusDialogValue">
+              <option
+                v-for="[value, label] in ORDER_STATUS_OPTIONS"
+                :key="value"
+                :value="value"
+              >
+                {{ label }}
+              </option>
+            </select></label
+          >
+          <label class="wide"
+            >操作原因（必填，写入审计日志）
+            <input
+              v-model.trim="statusDialogReason"
+              type="text"
+              maxlength="200"
+              placeholder="例如：测试链路 / 客服兜底改状态"
+          /></label>
+          <p class="form-hint">
+            绕过流程改状态会留下操作人/时间/原因记录（审计日志），仅用于测试与上线初期兜底。
+          </p>
+        </div>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="statusDialogOpen = false">
+            取消</button
+          ><button
+            class="btn primary"
+            :disabled="statusDialogSaving || !statusDialogReason"
+            @click="submitStatusDialog"
+          >
+            确认修改
+          </button>
+        </div>
+      </aside>
+    </div>
     <div v-if="creating" class="drawer-mask" @click.self="closeCreate">
       <aside class="drawer product-create">
         <div class="drawer-head">
@@ -2819,16 +3167,32 @@ async function outbound() {
               min="0"
               step="0.001"
           /></label>
-          <!-- 库位（IK9U40）：区域代码+序号，拣货出库按此指引 -->
+          <!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
           <label
-            >库位<input
-              v-model.trim="productForm.location"
+            >库位（字典选择）<select v-model="productForm.location">
+              <option value="">未配置</option>
+              <option
+                v-for="opt in locationOptions(productForm.location)"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option></select></label
+          >
+          <label
+            >库位编号（选填）<input
+              v-model.trim="productForm.locationCode"
               maxlength="20"
-              placeholder="如：冷A-03"
+              placeholder="如：03"
           /></label>
           <div class="wide product-image-edit">
             <span class="field-label">商品头图（上传到 COS app/product，小程序即见）</span>
             <ImageUploadField v-model="productForm.image" folder="app/product" />
+          </div>
+          <!-- 详情多图（IK9SNS / IKA0UW）：新增与编辑能力一致，选填 -->
+          <div class="wide product-image-edit">
+            <span class="field-label">详情多图（用户端详情页轮播，可排序，选填）</span>
+            <ProductImagesField v-model="productForm.images" folder="app/product" />
           </div>
         </div>
         <div class="drawer-actions">
