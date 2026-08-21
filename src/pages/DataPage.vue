@@ -998,6 +998,8 @@ function toLeaveRow(l: LeaveRequest): LeaveRow {
     // IK9U4B：调配方式供后台审核核对（self=自己联系代班，platform=平台派单）
     dispatchModeText:
       l.dispatchMode === "self" ? "自己联系代班" : "平台自动派单",
+    // IKA57Y：自己调配时指定的代班楼长（姓名快照）
+    substituteText: l.substituteName ?? "—",
     status: l.status,
     statusText: l.statusText,
   };
@@ -1033,6 +1035,11 @@ const BANNER_COLOR_TEXT: Record<string, string> = {
   orange: "橙色",
   dark: "深色",
 };
+/** Banner 展示位置（IKA57F）：支付成功页广告位复用 Banner 基建。 */
+const BANNER_PLACEMENT_TEXT: Record<string, string> = {
+  home: "首页轮播",
+  "pay-success": "支付成功页",
+};
 function bannerPayload(d: Record<string, FormValue>) {
   return {
     title: String(d.title || "").trim(),
@@ -1042,6 +1049,7 @@ function bannerPayload(d: Record<string, FormValue>) {
     ...(d.image ? { image: String(d.image) } : {}),
     // IK9SNN：图文详情多行文本；空串语义清空（Banner 回到不可点）
     content: String(d.content ?? "").trim(),
+    placement: String(d.placement || "home"),
     sort: Number(d.sort ?? 0),
   };
 }
@@ -1062,6 +1070,16 @@ const BANNER_IMAGE_FIELD: FieldDef = {
   type: "image",
   wide: true,
   folder: "app",
+};
+/** 展示位置（IKA57F）：首页轮播 / 支付成功页广告位。 */
+const BANNER_PLACEMENT_FIELD: FieldDef = {
+  key: "placement",
+  label: "展示位置",
+  type: "select",
+  options: () => [
+    { value: "home", label: "首页轮播" },
+    { value: "pay-success", label: "支付成功页" },
+  ],
 };
 function openBannerCreate() {
   openForm(
@@ -1084,6 +1102,7 @@ function openBannerCreate() {
             { value: "dark", label: "深色" },
           ],
         },
+        BANNER_PLACEMENT_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
@@ -1093,7 +1112,7 @@ function openBannerCreate() {
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", sort: 0, image: "", content: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: "home", sort: 0, image: "", content: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -1119,6 +1138,7 @@ function openBannerEdit(row: AdminRow) {
             { value: "dark", label: "深色" },
           ],
         },
+        BANNER_PLACEMENT_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
@@ -1145,6 +1165,7 @@ function openBannerEdit(row: AdminRow) {
       subtitle: record.subtitle,
       badge: record.badge,
       color: record.color,
+      placement: record.placement ?? "home",
       sort: Number(record.sort ?? 0),
       image: record.image ?? "",
       content: record.content ?? "",
@@ -1265,6 +1286,7 @@ const dispatchLeavesConfig: SectionConfig = {
     ["startAt", "开始时间"],
     ["endAt", "结束时间"],
     ["dispatchModeText", "调配方式"],
+    ["substituteText", "代班楼长"],
     ["statusText", "请假状态"],
   ],
 };
@@ -1318,7 +1340,6 @@ const configs: Record<string, SectionConfig> = {
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
       ["estimatedArrival", "时效"],
-      ["packageNo", "包裹"],
     ],
   },
   products: {
@@ -1559,12 +1580,14 @@ const bannerConfig: SectionConfig = {
       rows: res.items.map((b) => ({
         ...b,
         contentText: b.content ? `${b.content.length} 字` : "—",
+        placementText: BANNER_PLACEMENT_TEXT[b.placement ?? "home"] ?? b.placement,
       })),
       total: res.total,
     })),
   columns: [
     ["image", "图片"],
     ["title", "标题"],
+    ["placementText", "展示位置"],
     ["badge", "角标"],
     ["color", "主题色"],
     ["contentText", "图文详情"],
@@ -2234,6 +2257,19 @@ const orderInPicking = computed(
     section.value === "orders" &&
     ["paid", "picking"].includes(selectedStatus()),
 );
+/** 履约凭证（IKA57U）：交接拍照 + 送达凭证，订单/仓库订单抽屉就地展示。 */
+const orderProofs = computed(() => {
+  const order = selected.value as unknown as Order | undefined;
+  if (
+    !order ||
+    (section.value !== "orders" && section.value !== "warehouse-orders")
+  )
+    return [];
+  return [
+    ...(order.package?.handoverProof?.images ?? []),
+    ...(order.package?.deliveredProof?.images ?? []),
+  ].filter(Boolean);
+});
 /** 仓库订单抽屉的拣货清单（含商品库位指引，IK9U40/IKA0VG 区域-编号）。 */
 const pickingItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
@@ -2724,6 +2760,23 @@ async function submitStatusDialog() {
                 <span>{{ line.name }} ×{{ line.quantity }}</span>
               </li>
             </ul>
+          </div>
+          <!-- 履约凭证（IKA57U）：交接拍照/送达凭证此前只落库不展示，PM 无法核对 -->
+          <div
+            v-if="orderProofs.length"
+            class="wide proof-block drawer-proofs"
+          >
+            <span class="proof-label">履约凭证（交接/送达，点击放大）</span>
+            <div class="proof-grid">
+              <img
+                v-for="(src, i) in orderProofs"
+                :key="i"
+                :src="resolveImageUrl(src)"
+                :alt="`凭证 ${i + 1}`"
+                loading="lazy"
+                @click="previewImage = resolveImageUrl(src)"
+              />
+            </div>
           </div>
         </div>
         <div class="drawer-actions wrap">

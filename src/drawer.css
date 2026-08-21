@@ -53,8 +53,9 @@
 .drawer-fields span,
 .drawer-fields label {
   display: block;
-  font-size: 11px;
-  color: var(--muted);
+  /* IKA57U：白卡上浅灰标签对比度不足，加深并放大一档（≥6:1） */
+  font-size: 12px;
+  color: #3f4a44;
 }
 .drawer-fields strong {
   display: block;

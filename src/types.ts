@@ -114,10 +114,16 @@ export interface Order {
   /** 优惠金额（分）。 */
   discount?: number;
   estimatedArrival: string;
-  packageNo: string;
+  /** IKA57P：配送单号概念已下线（做多单合并配送时再启用），后台仅显订单号。 */
+  packageNo?: string;
   userPhone?: string;
   address?: OrderAddress;
   items?: OrderItem[];
+  /** 履约凭证快照（IKA57U）：交接拍照 / 送达凭证由履约端写入 package JSON。 */
+  package?: {
+    handoverProof?: { images?: string[]; time?: string };
+    deliveredProof?: { images?: string[]; remark?: string; time?: string };
+  } | null;
 }
 
 export interface Staff {
@@ -149,6 +155,8 @@ export interface Banner {
   image: string | null;
   /** 图文详情（IK9SNN）：多行文本，https:// 行渲染为图；空 = 不可点。 */
   content?: string | null;
+  /** 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位。 */
+  placement?: "home" | "pay-success";
   sort: number;
   status: string;
 }
@@ -255,6 +263,9 @@ export interface LeaveRequest {
   reason: string;
   /** 请假期间调配方式（IK9U4B）：self=自己联系代班，platform=平台派单。 */
   dispatchMode?: string;
+  /** 自己调配指定的代班楼长（IKA57Y）：id + 姓名快照。 */
+  substituteStaffId?: string | null;
+  substituteName?: string | null;
   status: string;
   statusText: string;
   createdAt: string;
@@ -446,6 +457,8 @@ export interface LeaveRow {
   reason: string;
   /** 调配方式文案（IK9U4B）。 */
   dispatchModeText: string;
+  /** 代班楼长姓名（IKA57Y），未指定为 —。 */
+  substituteText: string;
   status: string;
   statusText: string;
 }
