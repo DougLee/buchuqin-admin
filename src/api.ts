@@ -175,6 +175,13 @@ export const api = {
       location?: string;
       locationCode?: string;
       images?: string[];
+      /** 资料字段（IKAHAT）：可选，仅提交有值/有变的项 */
+      name?: string;
+      subtitle?: string;
+      originalPrice?: number;
+      tag?: string;
+      weight?: number;
+      categoryId?: string;
     },
   ) =>
     request<Product>(`/admin/products/${id}`, {

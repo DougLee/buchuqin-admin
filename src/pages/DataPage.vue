@@ -48,6 +48,13 @@ const route = useRoute(),
   scanError = ref(""),
   confirmDelete = ref(false),
   productEdit = ref({
+    // 资料字段（IKAHAT）：名称/副标题/分类/原价/标签/重量可编辑
+    name: "",
+    subtitle: "",
+    categoryId: "",
+    originalPrice: 0,
+    tag: "",
+    weight: 0,
     price: 0,
     stock: 0,
     image: "",
@@ -1995,6 +2002,13 @@ function openDetail(row: AdminRow) {
   if (section.value === "products") {
     const product = row as Product;
     productEdit.value = {
+      // 资料字段（IKAHAT）：原值回填，改什么提交什么
+      name: product.name || "",
+      subtitle: product.subtitle || "",
+      categoryId: product.categoryId || "",
+      originalPrice: Number(fenToYuan(Number(product.originalPrice ?? 0))),
+      tag: product.tag || "",
+      weight: Number(product.weight ?? 0),
       // 接口价格为分，编辑框以元展示
       price: Number(fenToYuan(product.price)),
       stock: Number(product.availableStock ?? product.stock ?? 0),
@@ -2012,8 +2026,22 @@ function openDetail(row: AdminRow) {
 async function act(action: string) {
   if (!selected.value) return;
   try {
-    if (section.value === "products")
+    if (section.value === "products") {
+      // 名称空白就地拦截（IKAHAT），与后端「商品名称不能为空」同口径
+      if (!productEdit.value.name.trim())
+        throw new Error("商品名称不能为空");
       await api.updateProduct(selected.value.id, {
+        // 资料字段（IKAHAT）：副标题/标签可清空，重量/分类有值才提交
+        name: productEdit.value.name.trim(),
+        subtitle: productEdit.value.subtitle.trim(),
+        tag: productEdit.value.tag.trim(),
+        originalPrice: yuanToFen(productEdit.value.originalPrice),
+        ...(productEdit.value.weight > 0
+          ? { weight: productEdit.value.weight }
+          : {}),
+        ...(productEdit.value.categoryId
+          ? { categoryId: productEdit.value.categoryId }
+          : {}),
         price: yuanToFen(productEdit.value.price),
         stock: Number(productEdit.value.stock),
         // 头图仅在填了 URL 时提交（DTO 校验 http(s)，空串跳过 = 保持原图）
@@ -2026,7 +2054,7 @@ async function act(action: string) {
         // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
         images: productEdit.value.images.filter(Boolean),
       });
-    else if (section.value === "orders")
+    } else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
     else if (section.value === "finance") {
       // 账单状态机：pending-review → confirm → pay；条件流转由后端校验
@@ -2704,6 +2732,40 @@ async function submitStatusDialog() {
                 >
               </div>
             </div>
+            <!-- 资料字段（IKAHAT）：名称/副标题/分类/原价/标签/重量可编辑，改完小程序即见 -->
+            <label
+              >商品名称<input
+                v-model.trim="productEdit.name"
+                type="text"
+                maxlength="80" /></label
+            ><label
+              >副标题<input
+                v-model.trim="productEdit.subtitle"
+                type="text"
+                maxlength="120" /></label
+            ><label
+              >分类<select v-model="productEdit.categoryId">
+                <option v-for="c in categories" :key="c.id" :value="c.id">
+                  {{ c.name }}
+                </option></select></label
+            ><label
+              >建议零售价（元）<input
+                v-model.number="productEdit.originalPrice"
+                type="number"
+                min="0" /></label
+            ><label
+              >标签<input
+                v-model.trim="productEdit.tag"
+                type="text"
+                maxlength="20"
+                placeholder="如：新品" /></label
+            ><label
+              >重量（kg）<input
+                v-model.number="productEdit.weight"
+                type="number"
+                min="0"
+                step="0.001" /></label
+            >
             <label
               >校园售价<input
                 v-model.number="productEdit.price"
