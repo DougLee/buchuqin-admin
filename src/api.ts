@@ -182,6 +182,8 @@ export const api = {
       tag?: string;
       weight?: number;
       categoryId?: string;
+      /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
+      description?: string;
     },
   ) =>
     request<Product>(`/admin/products/${id}`, {

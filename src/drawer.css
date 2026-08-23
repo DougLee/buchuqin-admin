@@ -257,6 +257,24 @@
   display: grid;
   gap: 8px;
 }
+/* 商品介绍（IKAHAU）：新建/编辑同款长文本，样式对齐 product-form textarea */
+.product-desc-edit {
+  display: grid;
+  gap: 8px;
+}
+.product-desc-edit textarea {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #d8e1dc;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  background: #fff;
+  box-sizing: border-box;
+}
 .proof-block {
   margin-top: 14px;
 }

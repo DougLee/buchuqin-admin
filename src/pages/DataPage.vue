@@ -61,6 +61,8 @@ const route = useRoute(),
     location: "",
     locationCode: "",
     images: [] as string[],
+    // 商品介绍（IKAHAU）：整段覆盖，空串清空
+    description: "",
   }),
   productForm = ref({
     barcode: "",
@@ -76,6 +78,8 @@ const route = useRoute(),
     locationCode: "",
     images: [] as string[],
     weight: 0,
+    // 商品介绍（IKAHAU）：纯文本多行，空 = 小程序详情页不渲染
+    description: "",
   });
 const statusFilter = ref("all"),
   exporting = ref(false),
@@ -2018,6 +2022,7 @@ function openDetail(row: AdminRow) {
       location: product.location ?? "",
       locationCode: (product as Product & { locationCode?: string }).locationCode ?? "",
       images: Array.isArray(product.images) ? [...product.images] : [],
+      description: product.description ?? "",
     };
   }
   if (section.value === "after-sales")
@@ -2053,6 +2058,8 @@ async function act(action: string) {
         locationCode: productEdit.value.locationCode.trim(),
         // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
         images: productEdit.value.images.filter(Boolean),
+        // 商品介绍（IKAHAU）：整段覆盖，空串清空；trim 只去首尾空白保内换行
+        description: productEdit.value.description.trim(),
       });
     } else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
@@ -2131,6 +2138,7 @@ function openCreate() {
       locationCode: "",
       images: [],
       weight: 0,
+      description: "",
     };
   } else if (section.value === "categories") openCategoryCreate();
   else if (section.value === "locations") openLocationCreate();
@@ -2801,6 +2809,18 @@ async function submitStatusDialog() {
             <div class="wide product-image-edit">
               <span class="field-label">详情多图（用户端详情页轮播，可排序）</span>
               <ProductImagesField v-model="productEdit.images" folder="app/product" />
+            </div>
+            <!-- 商品介绍（IKAHAU）：纯文本多行，小程序详情页展示，空 = 不渲染 -->
+            <div class="wide product-desc-edit">
+              <span class="field-label"
+                >商品介绍（小程序详情页展示，{{ productEdit.description.length }}/2000）</span
+              >
+              <textarea
+                v-model="productEdit.description"
+                rows="5"
+                maxlength="2000"
+                placeholder="多行纯文本，换行在小程序详情页保留；留空则不展示介绍区块"
+              />
             </div></template
           >
           <div v-for="col in config.columns" :key="col[0]">
@@ -3308,6 +3328,18 @@ async function submitStatusDialog() {
           <div class="wide product-image-edit">
             <span class="field-label">详情多图（用户端详情页轮播，可排序，选填）</span>
             <ProductImagesField v-model="productForm.images" folder="app/product" />
+          </div>
+          <!-- 商品介绍（IKAHAU）：与编辑能力一致，选填 -->
+          <div class="wide product-desc-edit">
+            <span class="field-label"
+              >商品介绍（小程序详情页展示，{{ productForm.description.length }}/2000，选填）</span
+            >
+            <textarea
+              v-model="productForm.description"
+              rows="5"
+              maxlength="2000"
+              placeholder="多行纯文本，换行在小程序详情页保留；留空则不展示介绍区块"
+            />
           </div>
         </div>
         <div class="drawer-actions">

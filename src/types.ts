@@ -70,6 +70,8 @@ export interface Product {
   /** 库位（IK9U40）：区域代码+序号（如 冷A-03），拣货指引。 */
   location?: string;
   weight: number;
+  /** 商品介绍（IKAHAU）：纯文本 ≤2000 字，空串/null = 详情页不渲染。 */
+  description?: string | null;
   status: string;
   skuNo: string;
   actualStock: number;
