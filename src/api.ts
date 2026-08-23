@@ -20,6 +20,7 @@ import type {
   PagedResponse,
   PageQuery,
   Product,
+  Promotion,
   Room,
   Settlement,
   Staff,
@@ -417,6 +418,30 @@ export const api = {
     }),
   deleteBanner: (id: string) =>
     request<Banner>(`/admin/banners/${id}`, { method: "DELETE" }),
+  /** 促销活动（ADR-0006 / IKAHFF）：price 为促销价（分），无删除（留审计）。 */
+  promotions: (query?: ListQuery) =>
+    request<PagedResponse<Promotion>>(
+      `/admin/promotions${withQuery(listQuery(query))}`,
+    ),
+  createPromotion: (data: {
+    productId: string;
+    type: "seckill" | "clearance";
+    price: number;
+    startsAt: string;
+    endsAt: string;
+  }) =>
+    request<Promotion>("/admin/promotions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updatePromotion: (
+    id: string,
+    data: { price?: number; startsAt?: string; endsAt?: string; status?: string },
+  ) =>
+    request<Promotion>(`/admin/promotions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   /** 配送费/起送门槛配置（IK9SO6）：金额整数分，校园维度即时生效。 */
   deliveryConfig: () =>
     request<{

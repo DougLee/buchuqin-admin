@@ -29,6 +29,7 @@ import type {
   Order,
   PagedResponse,
   Product,
+  Promotion,
   Room,
   RuleRow,
   Settlement,
@@ -1035,8 +1036,8 @@ function switchDispTab(tab: "leaves" | "invites") {
 }
 
 /* ---------- Banner 管理（IK9RX2）：营销板块第二个 tab，校园维度 ---------- */
-const mktTab = ref<"coupons" | "banners">("coupons");
-function switchMktTab(tab: "coupons" | "banners") {
+const mktTab = ref<"coupons" | "banners" | "promotions">("coupons");
+function switchMktTab(tab: "coupons" | "banners" | "promotions") {
   mktTab.value = tab;
   resetStatusFilterAndLoad();
 }
@@ -1198,6 +1199,123 @@ async function removeBannerRow() {
   } catch (error) {
     confirmDelete.value = false;
     notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+/* ---------- 促销活动管理（ADR-0006 / IKAHFF）：营销板块第三个 tab ---------- */
+const PROMO_TYPE_TEXT: Record<string, string> = {
+  seckill: "秒杀",
+  clearance: "临期特惠",
+};
+/** 活动状态：停用/未开始/进行中/已结束（窗口读时判定，无 cron）。 */
+function promoState(p: Promotion): string {
+  if (p.status === "disabled") return "已停用";
+  const now = Date.now();
+  if (new Date(p.startsAt).getTime() > now) return "未开始";
+  if (new Date(p.endsAt).getTime() <= now) return "已结束";
+  return "进行中";
+}
+function promoWindowText(p: Promotion): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString("zh-CN", { hour12: false });
+  return `${fmt(p.startsAt)} ~ ${fmt(p.endsAt)}`;
+}
+/** 新建促销：选商品/类型/促销价/起止窗口；重叠与价格底线由后端把关。 */
+function openPromotionCreate() {
+  void ensureProducts();
+  openForm(
+    {
+      eyebrow: "NEW PROMOTION",
+      title: "新建促销活动",
+      submit: "保存活动",
+      done: "促销活动已创建",
+      fields: [
+        { key: "productId", label: "商品（在售）", type: "select", wide: true, options: productOptions },
+        {
+          key: "type",
+          label: "类型",
+          type: "select",
+          options: () => [
+            { value: "seckill", label: "限时秒杀" },
+            { value: "clearance", label: "临期特惠（详情页会注明临近保质期）" },
+          ],
+        },
+        { key: "price", label: "促销价（元，须低于现价）", type: "number", min: 0.01, step: 0.01 },
+        { key: "startsAt", label: "开始时间", type: "datetime" },
+        { key: "endsAt", label: "结束时间", type: "datetime" },
+      ],
+      save: async (d) => {
+        if (!d.productId) throw new Error("请选择商品");
+        if (!d.price && d.price !== 0) throw new Error("请填写促销价");
+        if (!d.startsAt || !d.endsAt) throw new Error("请选择起止时间");
+        if (new Date(String(d.endsAt)) <= new Date(String(d.startsAt)))
+          throw new Error("结束时间必须晚于开始时间");
+        if (new Date(String(d.endsAt)).getTime() <= Date.now())
+          throw new Error("结束时间必须晚于当前时间");
+        const fen = yuanToFen(String(d.price));
+        await api.createPromotion({
+          productId: String(d.productId),
+          type: String(d.type || "seckill") as "seckill" | "clearance",
+          price: fen,
+          startsAt: new Date(String(d.startsAt)).toISOString(),
+          endsAt: new Date(String(d.endsAt)).toISOString(),
+        });
+      },
+    },
+    {
+      productId: "",
+      type: "seckill",
+      price: "",
+      startsAt: toDatetimeLocal(),
+      endsAt: toDatetimeLocal(
+        new Date(Date.now() + 2 * 3600_000).toISOString(),
+      ),
+    },
+  );
+}
+/** 编辑促销：商品/类型不可改（要换就停用重建）；已结束由后端拒绝。 */
+function openPromotionEdit(row: AdminRow) {
+  selected.value = undefined;
+  const record = row as unknown as Promotion;
+  openForm(
+    {
+      eyebrow: "EDIT PROMOTION",
+      title: "编辑促销活动",
+      submit: "保存修改",
+      done: "促销活动已更新",
+      fields: [
+        { key: "price", label: "促销价（元）", type: "number", min: 0.01, step: 0.01 },
+        { key: "startsAt", label: "开始时间", type: "datetime" },
+        { key: "endsAt", label: "结束时间", type: "datetime" },
+      ],
+      save: async (d) => {
+        if (d.startsAt && d.endsAt && new Date(String(d.endsAt)) <= new Date(String(d.startsAt)))
+          throw new Error("结束时间必须晚于开始时间");
+        await api.updatePromotion(record.id, {
+          ...(d.price !== "" && d.price !== undefined ? { price: yuanToFen(String(d.price)) } : {}),
+          startsAt: d.startsAt ? new Date(String(d.startsAt)).toISOString() : undefined,
+          endsAt: d.endsAt ? new Date(String(d.endsAt)).toISOString() : undefined,
+        });
+      },
+    },
+    {
+      price: fenToYuan(record.price),
+      startsAt: toDatetimeLocal(record.startsAt),
+      endsAt: toDatetimeLocal(record.endsAt),
+    },
+  );
+}
+/** 停用/启用：进行中停用 C 端读时立即回落（ADR-0006）。 */
+async function togglePromotion() {
+  if (!selected.value) return;
+  const record = selected.value as unknown as Promotion;
+  const next = record.status === "active" ? "disabled" : "active";
+  try {
+    await api.updatePromotion(record.id, { status: next });
+    notify(next === "disabled" ? "活动已停用，C 端立即回落原价" : "活动已启用");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
   }
 }
 const bannerHidden = computed(
@@ -1606,12 +1724,40 @@ const bannerConfig: SectionConfig = {
     ["status", "状态"],
   ],
 };
+/** 促销活动（IKAHFF/ADR-0006）：营销板块 promotions tab 的表格配置。 */
+const promotionConfig: SectionConfig = {
+  title: "促销活动",
+  eyebrow: "PROMOTIONS",
+  desc: "限时秒杀 / 临期特惠统一管理；进行中停用立即生效，无删除留审计。",
+  loader: (query) =>
+    api.promotions(query).then((res) => ({
+      rows: res.items.map((p) => ({
+        ...p,
+        productName: p.product?.name ?? "—",
+        typeText: PROMO_TYPE_TEXT[p.type] ?? p.type,
+        priceText: `¥${fenToYuan(p.price)}`,
+        basePriceText: p.product ? `¥${fenToYuan(p.product.price)}` : "—",
+        windowText: promoWindowText(p),
+        stateText: promoState(p),
+      })),
+      total: res.total,
+    })),
+  columns: [
+    ["productName", "商品"],
+    ["typeText", "类型"],
+    ["priceText", "促销价"],
+    ["basePriceText", "商品现价"],
+    ["windowText", "时间窗"],
+    ["stateText", "状态"],
+  ],
+};
 const createLabels: Record<string, string> = {
   products: "＋ 新建记录",
   categories: "＋ 新建类别",
   locations: "＋ 新建库位",
   marketing: "＋ 新建优惠券",
   banners: "＋ 新建 Banner",
+  promotions: "＋ 新建促销",
   campuses: "＋ 新建楼栋",
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
@@ -1626,16 +1772,19 @@ const section = computed(() => String(route.params.section)),
         : dispatchInvitesConfig;
     if (section.value === "marketing" && mktTab.value === "banners")
       return bannerConfig;
+    if (section.value === "marketing" && mktTab.value === "promotions")
+      return promotionConfig;
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
-  /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner）。 */
-  createLabel = computed(
-    () =>
-      (section.value === "marketing" && mktTab.value === "banners"
-        ? createLabels.banners
-        : createLabels[section.value]) ?? "",
-  ),
+  /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
+  createLabel = computed(() => {
+    if (section.value === "marketing") {
+      if (mktTab.value === "banners") return createLabels.banners;
+      if (mktTab.value === "promotions") return createLabels.promotions;
+    }
+    return createLabels[section.value] ?? "";
+  }),
   canCreate = computed(
     () => Boolean(createLabel.value) && canWriteSection.value,
   ),
@@ -2142,8 +2291,11 @@ function openCreate() {
     };
   } else if (section.value === "categories") openCategoryCreate();
   else if (section.value === "locations") openLocationCreate();
-  else if (section.value === "marketing")
-    mktTab.value === "banners" ? openBannerCreate() : openCouponCreate();
+  else if (section.value === "marketing") {
+    if (mktTab.value === "banners") openBannerCreate();
+    else if (mktTab.value === "promotions") openPromotionCreate();
+    else openCouponCreate();
+  }
   else if (section.value === "campuses") openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
   else if (section.value === "dispatch") openInviteForm();
@@ -2430,6 +2582,9 @@ async function submitStatusDialog() {
         <button :class="{ active: mktTab === 'banners' }" @click="switchMktTab('banners')">
           首页 Banner
         </button>
+        <button :class="{ active: mktTab === 'promotions' }" @click="switchMktTab('promotions')">
+          促销活动
+        </button>
       </div>
       <div class="filter-search">
         <span></span
@@ -2443,7 +2598,8 @@ async function submitStatusDialog() {
         v-if="
           section !== 'inventory-txns' &&
           section !== 'warehouse-orders' &&
-          !(section === 'marketing' && mktTab === 'banners')
+          !(section === 'marketing' && mktTab === 'banners') &&
+          !(section === 'marketing' && mktTab === 'promotions')
         "
         v-model="statusFilter"
         class="filter-btn"
@@ -2903,7 +3059,7 @@ async function submitStatusDialog() {
               </button>
             </template>
             <!-- Banner tab（IK9RX2） -->
-            <template v-else>
+            <template v-else-if="mktTab === 'banners'">
               <button class="btn primary" @click="openBannerEdit(selected)">
                 编辑 Banner
               </button>
@@ -2912,6 +3068,17 @@ async function submitStatusDialog() {
               </button>
               <button class="btn danger-btn" @click="removeBannerRow">
                 {{ confirmDelete ? "确认删除" : "删除 Banner" }}
+              </button>
+            </template>
+            <!-- 促销活动 tab（IKAHFF/ADR-0006）：无删除留审计 -->
+            <template v-else>
+              <button class="btn primary" @click="openPromotionEdit(selected)">
+                编辑促销
+              </button>
+              <button class="btn ghost" @click="togglePromotion">
+                {{ (selected as unknown as Promotion).status === 'active'
+                  ? '停用（立即回落原价）'
+                  : '启用活动' }}
               </button>
             </template>
           </template>

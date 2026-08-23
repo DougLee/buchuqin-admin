@@ -162,6 +162,27 @@ export interface Banner {
   sort: number;
   status: string;
 }
+/** 促销活动（ADR-0006 / IKAHFF）：type 区分秒杀/临期，price 为促销价（分）。 */
+export interface Promotion {
+  id: string;
+  productId: string;
+  type: "seckill" | "clearance";
+  /** 促销价，单位：分 */
+  price: number;
+  startsAt: string;
+  endsAt: string;
+  /** active 生效 | disabled 运营停用 */
+  status: string;
+  createdAt: string;
+  product?: {
+    id: string;
+    name: string;
+    image: string;
+    /** 商品现价，单位：分 */
+    price: number;
+    status: string;
+  };
+}
 export interface Coupon {
   id: string;
   campusId: string;
@@ -418,6 +439,7 @@ export type AdminRow =
   | Staff
   | Coupon
   | Banner
+  | Promotion
   | Building
   | Room
   | InventoryTxn
