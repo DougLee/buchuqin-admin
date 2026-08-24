@@ -123,25 +123,27 @@ const visibleGroups = computed(() =>
     }))
     .filter((group) => group.items.length),
 );
-/* 分组手风琴（IK9RTU）：同一时刻仅一个分组展开，初始定位到当前路由所在组 */
+/* 分组开关（IK9RTU 手风琴 → IKAJT1 默认全展开）：各组独立开关，
+   默认全部展开便于查找；功能再多也不用逐组翻 */
 function groupLabelOf(path: string): string | null {
   const hit = visibleGroups.value.find((group) =>
     group.items.some((item) => item[0] === path),
   );
   return hit?.label ?? null;
 }
-const expandedGroup = ref<string | null>(
-  groupLabelOf(route.path) ?? visibleGroups.value[0]?.label ?? null,
-);
+const expandedGroups = ref<string[]>(visibleGroups.value.map((g) => g.label));
 function toggleGroup(label: string) {
-  expandedGroup.value = expandedGroup.value === label ? null : label;
+  expandedGroups.value = expandedGroups.value.includes(label)
+    ? expandedGroups.value.filter((l) => l !== label)
+    : [...expandedGroups.value, label];
 }
 /* 全局搜索/顶栏入口等跨组跳转后，目标分组自动展开（导航点击场景天然保持） */
 watch(
   () => route.path,
   (path) => {
     const label = groupLabelOf(path);
-    if (label) expandedGroup.value = label;
+    if (label && !expandedGroups.value.includes(label))
+      expandedGroups.value = [...expandedGroups.value, label];
   },
 );
 </script>
@@ -158,14 +160,14 @@ watch(
           <button
             class="group-head"
             type="button"
-            :aria-expanded="expandedGroup === group.label"
+            :aria-expanded="expandedGroups.includes(group.label)"
             @click="toggleGroup(group.label)"
           >
             <span>{{ group.label }}</span><i class="group-arrow">⌄</i>
           </button>
-          <!-- 图标折叠态标题已隐藏，菜单项必须全量可见，手风琴仅在展开态生效 -->
+          <!-- 图标折叠态标题已隐藏，菜单项必须全量可见，分组开关仅在展开态生效 -->
           <RouterLink
-            v-for="item in collapsed || expandedGroup === group.label
+            v-for="item in collapsed || expandedGroups.includes(group.label)
               ? group.items
               : []"
             :key="item[0]"
