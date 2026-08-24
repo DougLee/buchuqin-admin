@@ -95,6 +95,9 @@ const groups = [
     items: [
       ["/staff", "staff", "履约人员"],
       ["/campuses", "campus", "校园组织"],
+      // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
+      ["/users", "staff", "C端用户"],
+      ["/wechat-groups", "campus", "微信群码"],
       ["/marketing", "marketing", "营销活动"],
       ["/dispatch", "dispatch", "调配与请假"],
     ],

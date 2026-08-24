@@ -17,6 +17,8 @@ export interface PageQuery {
  */
 export interface ListQuery extends PageQuery {
   keyword?: string;
+  /** 楼栋筛选（IKAJSW 用户列表）。 */
+  buildingId?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
@@ -341,10 +343,49 @@ export interface AdminAccount {
 /** 账号管理板块表格行：附角色中文文案。 */
 export type AccountRow = AdminAccount & { roleText: string };
 
+/** C 端用户（IKAJSW 聚合列表；手机/openid 脱敏口径同后端）。 */
 export interface AdminUser {
   id: string;
   nickname: string;
-  phone: string;
+  openidMasked: string;
+  phoneMasked: string;
+  buildingName: string;
+  room: string;
+  createdAt: string;
+  orderCount: number;
+  /** 累计消费（分，有效支付单）。 */
+  totalSpend: number;
+}
+
+/** C 端用户统计（IKAJSW）。 */
+export interface UserStats {
+  total: number;
+  todayNew: number;
+  monthActive: number;
+  avgOrders: number;
+  /** 企微绑定率（预留，接入企微 API 后供数）。 */
+  wechatWorkBindRate: number | null;
+}
+
+/** 用户订单流水（IKAJSW 详情抽屉）。 */
+export interface UserOrderRow {
+  id: string;
+  orderNo: string;
+  status: string;
+  statusText: string;
+  /** 实付（分）。 */
+  payableAmount: number;
+  createdAt: string;
+}
+
+/** 微信群码（IKAJSY：buildingId 空 = 校级大群）。 */
+export interface WechatGroup {
+  id: string;
+  campusId: string;
+  buildingId: string;
+  buildingName: string;
+  image: string;
+  updatedAt: string;
 }
 
 export interface AfterSale {
@@ -390,6 +431,22 @@ export interface DashboardActivity {
   time: string;
   text: string;
   type: string;
+  /** IKAJSS：直达路由用（order/promotion/product/staff/...）。 */
+  entityType?: string;
+  orderNo?: string;
+}
+
+/** 水位节点下钻（IKAJSS）：作业人数 + 平均停留分钟（自支付起算）。 */
+export interface FulfillmentNodeDetail {
+  staff: number;
+  avgMinutes: number | null;
+}
+
+/** 超时单（IKAJSS Top5）：工作台直达处理。 */
+export interface TimeoutOrder {
+  id: string;
+  orderNo: string;
+  overtimeMinutes: number;
 }
 
 export interface HotBuilding {
@@ -422,6 +479,9 @@ export interface DashboardData {
   trend: TrendPoint[];
   activities: DashboardActivity[];
   fulfillment: Record<string, number>;
+  /** IKAJSS：水位节点下钻数据。 */
+  fulfillmentDetail: Record<string, FulfillmentNodeDetail>;
+  timeoutOrders: TimeoutOrder[];
   hotBuildings: HotBuilding[];
 }
 
@@ -451,6 +511,7 @@ export type AdminRow =
   | AdminUser
   | AfterSale
   | Campus
+  | WechatGroup
   /* 扁平化视图行 */
   | LeaveRow
   | DispatchRow

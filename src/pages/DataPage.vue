@@ -34,6 +34,9 @@ import type {
   RuleRow,
   Settlement,
   Staff,
+  UserOrderRow,
+  UserStats,
+  WechatGroup,
 } from "../types";
 const route = useRoute(),
   rows = ref<AdminRow[]>([]),
@@ -547,10 +550,11 @@ const selectedUserIds = computed(() => {
   return [...new Set([...checked, ...manual])];
 });
 function userLabel(u: AdminUser) {
-  return u.nickname || u.phone || u.id;
+  // IKAJSW 起列表手机号脱敏（phoneMasked），原 phone 字段已下线
+  return u.nickname || u.id;
 }
 function userSub(u: AdminUser) {
-  return u.phone || u.id;
+  return u.phoneMasked || u.id;
 }
 async function confirmIssue() {
   if (!issueCouponRow.value) return;
@@ -1051,6 +1055,18 @@ function switchMktTab(tab: "coupons" | "banners" | "promotions") {
   mktTab.value = tab;
   resetStatusFilterAndLoad();
 }
+// IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (
+      section.value === "marketing" &&
+      ["coupons", "banners", "promotions"].includes(String(tab))
+    )
+      mktTab.value = String(tab) as "coupons" | "banners" | "promotions";
+  },
+  { immediate: true },
+);
 /** Banner 主题色展示：预置键转中文，自定义 hex 原样。 */
 const BANNER_COLOR_TEXT: Record<string, string> = {
   green: "绿色",
@@ -1468,6 +1484,105 @@ function loadRules(query: ListQuery): Promise<PageRows> {
     }),
   );
 }
+/* ---------- C 端用户管理（IKAJSW）：聚合列表 + 统计 + 详情订单流水 ---------- */
+const userBuildingFilter = ref(""),
+  userStatsData = ref<UserStats | null>(null),
+  userOrderRows = ref<UserOrderRow[]>([]),
+  userOrdersLoading = ref(false);
+watch(userBuildingFilter, () => resetAndLoad());
+const usersConfig: SectionConfig = {
+  title: "C 端用户",
+  eyebrow: "CUSTOMER BASE",
+  desc: "用户规模、消费聚合与订单流水；手机号/OpenID 脱敏展示。",
+  loader: (query) =>
+    api
+      .adminUsers({
+        ...query,
+        ...(userBuildingFilter.value ? { buildingId: userBuildingFilter.value } : {}),
+      })
+      .then(unwrap),
+  columns: [
+    ["nickname", "昵称"],
+    ["phoneMasked", "手机号"],
+    ["openidMasked", "OpenID"],
+    ["buildingName", "默认楼栋"],
+    ["orderCount", "订单数"],
+    ["totalSpend", "累计消费"],
+    ["createdAt", "注册时间"],
+  ],
+};
+/* ---------- 微信群二维码（IKAJSY）：楼栋群 + 校级大群 ---------- */
+const wechatGroupsConfig: SectionConfig = {
+  title: "微信群码",
+  eyebrow: "WECHAT GROUPS",
+  desc: "楼栋群与校级大群二维码；用户端进群入口按「楼栋群→校级大群」回落。",
+  // 非分页端点：全量拉取后前端切片分页（与类别字典同模式）
+  loader: async (query) => {
+    const all = await api.wechatGroups();
+    const start = (query.page - 1) * query.pageSize;
+    return { rows: all.slice(start, start + query.pageSize), total: all.length };
+  },
+  columns: [
+    ["buildingName", "群"],
+    ["image", "二维码"],
+    ["updatedAt", "更新时间"],
+  ],
+};
+/** 上传/替换群码：楼栋选空 = 校级大群；同楼栋重复保存即替换。 */
+function openWechatGroupForm(row?: AdminRow) {
+  selected.value = undefined;
+  void ensureBuildings();
+  const record = row as WechatGroup | undefined;
+  openForm(
+    {
+      eyebrow: "WECHAT GROUP",
+      title: record ? "替换群二维码" : "上传群二维码",
+      submit: "保存",
+      done: record ? "群二维码已替换" : "群二维码已保存",
+      fields: [
+        {
+          key: "buildingId",
+          label: "所属群",
+          type: "select",
+          wide: true,
+          options: () => [
+            { value: "", label: "校级大群（未设楼栋用户的回落入口）" },
+            ...buildingOptions(),
+          ],
+        },
+        { key: "image", label: "群二维码", type: "image", wide: true, folder: "app/wechat-group" },
+      ],
+      save: async (d) => {
+        if (!d.image) throw new Error("请上传群二维码图片");
+        await api.upsertWechatGroup({
+          buildingId: String(d.buildingId || "") || undefined,
+          image: String(d.image),
+        });
+      },
+    },
+    {
+      buildingId: record?.buildingId ?? "",
+      image: record?.image ?? "",
+    },
+  );
+}
+/** 删除群码（抽屉内二次确认；用户端对应入口随之隐藏/回落）。 */
+async function removeWechatGroupRow() {
+  if (!selected.value) return;
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  try {
+    await api.deleteWechatGroup(selected.value.id);
+    notify("群码已删除");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    confirmDelete.value = false;
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
 /**
  * 订单状态 Tab（IKAJSP）：按运营节奏分组，多个原始状态合并展示
  * （配送中 = 等首程/首程/末程），计数来自 orders/status-counts。
@@ -1517,6 +1632,8 @@ const configs: Record<string, SectionConfig> = {
       ["estimatedArrival", "时效"],
     ],
   },
+  users: usersConfig,
+  "wechat-groups": wechatGroupsConfig,
   products: {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
@@ -1809,6 +1926,8 @@ const createLabels: Record<string, string> = {
   dispatch: "＋ 邀请调配",
   rules: "＋ 新建提成规则",
   accounts: "＋ 新建后台账号",
+  // IKAJSY：群码上传（users 为只读板块，无新建入口）
+  "wechat-groups": "＋ 上传群码",
 };
 const section = computed(() => String(route.params.section)),
   config = computed<SectionConfig>(() => {
@@ -1867,6 +1986,14 @@ function statusTabCount(tab: StatusTab) {
 async function load() {
   loading.value = true;
   loadError.value = "";
+  // IKAJSW：用户板块统计与楼栋下拉随列表加载（失败静默不阻塞）
+  if (section.value === "users") {
+    void ensureBuildings();
+    api
+      .userStats()
+      .then((s) => (userStatsData.value = s))
+      .catch(() => {});
+  }
   try {
     // IKAJSP：Tab 角标随列表并行拉取，计数失败静默（角标回落 0，不阻塞列表）
     const [result, counts] = await Promise.all([
@@ -2146,6 +2273,8 @@ const MONEY_KEYS = [
   "adjustment",
   "payable",
   "amount",
+  // IKAJSW：用户累计消费（分）
+  "totalSpend",
   "threshold",
   "reward",
 ];
@@ -2187,9 +2316,16 @@ function display(row: AdminRow, key: string) {
   if (key === "status" && typeof v === "string" && STATUS_TEXT[v])
     return STATUS_TEXT[v];
   if (
-    ["createdAt", "startAt", "endAt", "effectiveAt", "confirmedAt", "paidAt"].includes(
-      key,
-    )
+    [
+      "createdAt",
+      "startAt",
+      "endAt",
+      "effectiveAt",
+      "confirmedAt",
+      "paidAt",
+      // IKAJSY：群码更新时间
+      "updatedAt",
+    ].includes(key)
   )
     return v ? String(v).replace("T", " ").slice(0, 16) : "—";
   return v ?? "—";
@@ -2220,6 +2356,16 @@ function openDetail(row: AdminRow) {
   confirmDelete.value = false;
   inviteConfirmCancel.value = "";
   selected.value = { ...row };
+  // IKAJSW：用户抽屉打开即拉该用户订单流水（失败静默，抽屉显示暂无）
+  if (section.value === "users") {
+    userOrderRows.value = [];
+    userOrdersLoading.value = true;
+    api
+      .userOrders(row.id)
+      .then((rows) => (userOrderRows.value = rows))
+      .catch(() => {})
+      .finally(() => (userOrdersLoading.value = false));
+  }
   if (section.value === "products") {
     const product = row as Product;
     productEdit.value = {
@@ -2369,6 +2515,8 @@ function openCreate() {
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
   else if (section.value === "accounts") openAccountCreate();
+  // IKAJSY：群码上传/替换
+  else if (section.value === "wechat-groups") openWechatGroupForm();
 }
 function closeCreate() {
   stopScan();
@@ -2681,6 +2829,8 @@ async function submitStatusDialog() {
           !config.statusTabs &&
           section !== 'inventory-txns' &&
           section !== 'warehouse-orders' &&
+          section !== 'users' &&
+          section !== 'wechat-groups' &&
           !(section === 'marketing' && mktTab === 'banners') &&
           !(section === 'marketing' && mktTab === 'promotions')
         "
@@ -2705,6 +2855,18 @@ async function submitStatusDialog() {
           {{ m }} 账期
         </option>
       </select>
+      <!-- IKAJSW：用户板块楼栋筛选（后端按地址命中聚合） -->
+      <select
+        v-if="section === 'users'"
+        v-model="userBuildingFilter"
+        class="filter-btn"
+        aria-label="楼栋筛选"
+      >
+        <option value="">全部楼栋</option>
+        <option v-for="b in buildings" :key="b.id" :value="b.id">
+          {{ b.name }}
+        </option>
+      </select>
       <div class="toolbar-spacer"></div>
       <!-- IKA0V2：采购入库为日常主操作排前，盘点调整次之 -->
       <template v-if="section === 'inventory' && canWrite('inventory')">
@@ -2727,7 +2889,14 @@ async function submitStatusDialog() {
           <strong>{{ total }}</strong
           ><span> 条记录</span>
         </div>
-        <p>
+        <!-- IKAJSW：用户板块统计条（企微绑定率接入后追加） -->
+        <p v-if="section === 'users' && userStatsData">
+          <span class="live-dot"></span>
+          总用户 {{ userStatsData.total }} · 今日新增 {{ userStatsData.todayNew }}
+          · 本月活跃 {{ userStatsData.monthActive }} · 人均订单
+          {{ userStatsData.avgOrders }} 单
+        </p>
+        <p v-else>
           <span class="live-dot"></span>
           {{ section === "inventory-txns" ? "流水已同步" : "数据已同步" }}
         </p>
@@ -2933,6 +3102,96 @@ async function submitStatusDialog() {
                 @click="previewImage = resolveImageUrl(src)"
               />
             </div>
+          </div>
+        </template>
+        <!-- 用户详情（IKAJSW）：聚合信息 + 该用户订单流水 -->
+        <template v-else-if="section === 'users'">
+          <div class="drawer-fields">
+            <div>
+              <span>昵称</span><strong>{{ (selected as AdminUser).nickname }}</strong>
+            </div>
+            <div>
+              <span>手机号</span
+              ><strong>{{ (selected as AdminUser).phoneMasked }}</strong>
+            </div>
+            <div>
+              <span>OpenID</span
+              ><strong>{{ (selected as AdminUser).openidMasked || "—" }}</strong>
+            </div>
+            <div>
+              <span>默认地址</span
+              ><strong>{{
+                (selected as AdminUser).buildingName
+                  ? `${(selected as AdminUser).buildingName} ${(selected as AdminUser).room}`
+                  : "未设置"
+              }}</strong>
+            </div>
+            <div>
+              <span>订单数 / 累计消费</span
+              ><strong
+                >{{ (selected as AdminUser).orderCount }} 单 · ¥{{
+                  fenToYuan((selected as AdminUser).totalSpend)
+                }}</strong
+              >
+            </div>
+            <div>
+              <span>注册时间</span
+              ><strong>{{ display(selected, "createdAt") }}</strong>
+            </div>
+          </div>
+          <div class="user-orders">
+            <p class="proof-label">订单流水（近 50 单）</p>
+            <p v-if="userOrdersLoading" class="empty-cell">加载中…</p>
+            <p v-else-if="!userOrderRows.length" class="empty-cell">
+              暂无订单
+            </p>
+            <table v-else>
+              <thead>
+                <tr><th>订单号</th><th>状态</th><th>实付</th><th>时间</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="o in userOrderRows" :key="o.id">
+                  <td>{{ o.orderNo }}</td>
+                  <td>
+                    <span class="status">{{ o.statusText }}</span>
+                  </td>
+                  <td>¥{{ fenToYuan(o.payableAmount) }}</td>
+                  <td>{{ String(o.createdAt).replace("T", " ").slice(0, 16) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <!-- 群码详情（IKAJSY）：大图预览 + 替换/删除 -->
+        <template v-else-if="section === 'wechat-groups'">
+          <div class="drawer-fields">
+            <div class="wide">
+              <span>所属群</span
+              ><strong>{{ (selected as WechatGroup).buildingName }}</strong>
+            </div>
+            <div>
+              <span>更新时间</span
+              ><strong>{{ display(selected, "updatedAt") }}</strong>
+            </div>
+          </div>
+          <div class="proof-block">
+            <span class="proof-label">群二维码（点击放大）</span>
+            <div class="proof-grid">
+              <img
+                :src="resolveImageUrl((selected as WechatGroup).image)"
+                :alt="`${(selected as WechatGroup).buildingName}二维码`"
+                loading="lazy"
+                @click="previewImage = resolveImageUrl((selected as WechatGroup).image)"
+              />
+            </div>
+          </div>
+          <div v-if="canWriteSection" class="drawer-actions wrap">
+            <button class="btn primary" @click="openWechatGroupForm(selected!)">
+              替换二维码
+            </button>
+            <button class="btn danger" @click="removeWechatGroupRow">
+              {{ confirmDelete ? "确认删除？" : "删除" }}
+            </button>
           </div>
         </template>
         <div v-else class="drawer-fields">

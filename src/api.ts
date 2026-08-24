@@ -2,6 +2,9 @@ import { clearSession, type SessionUser } from "./session";
 import type {
   AdminAccount,
   AdminUser,
+  UserOrderRow,
+  UserStats,
+  WechatGroup,
   AfterSale,
   AuditLog,
   Banner,
@@ -54,6 +57,7 @@ function listQuery(query?: ListQuery): string {
     `page=${query.page}`,
     `pageSize=${query.pageSize}`,
     query.keyword ? `keyword=${encodeURIComponent(query.keyword)}` : "",
+    query.buildingId ? `buildingId=${encodeURIComponent(query.buildingId)}` : "",
   ]
     .filter(Boolean)
     .join("&");
@@ -469,6 +473,19 @@ export const api = {
     request<PagedResponse<AdminUser>>(
       `/admin/users${withQuery(listQuery(query))}`,
     ),
+  /* C 端用户管理（IKAJSW）：统计 + 单用户订单流水 */
+  userStats: () => request<UserStats>("/admin/users/stats"),
+  userOrders: (id: string) =>
+    request<UserOrderRow[]>(`/admin/users/${id}/orders`),
+  /* 微信群二维码（IKAJSY） */
+  wechatGroups: () => request<WechatGroup[]>("/admin/wechat-groups"),
+  upsertWechatGroup: (data: { buildingId?: string; image: string }) =>
+    request<WechatGroup>("/admin/wechat-groups", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deleteWechatGroup: (id: string) =>
+    request(`/admin/wechat-groups/${id}`, { method: "DELETE" }),
   audits: (query?: ListQuery) =>
     request<PagedResponse<AuditLog>>(
       `/admin/audit-logs${withQuery(listQuery(query))}`,

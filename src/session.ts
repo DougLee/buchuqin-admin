@@ -33,6 +33,8 @@ const ALL_SECTIONS = [
   "locations",
   "staff",
   "campuses",
+  "users",
+  "wechat-groups",
   "marketing",
   "finance",
   "audit",

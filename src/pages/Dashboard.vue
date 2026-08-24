@@ -88,6 +88,32 @@ const activities = computed<DashboardActivity[]>(() => {
   const list = data.value?.activities;
   return Array.isArray(list) ? list : [];
 });
+/* IKAJSS：动态流直达路由——按 entityType（订单/促销/商品/员工/群码…）跳对应处理页 */
+const ACTIVITY_ROUTES: Record<string, string> = {
+  order: "/orders",
+  promotion: "/marketing?tab=promotions",
+  product: "/products",
+  staff: "/staff",
+  "wechat-group": "/wechat-groups",
+  coupon: "/marketing",
+  banner: "/marketing?tab=banners",
+  "admin-account": "/accounts",
+  campus: "/campuses",
+  building: "/campuses",
+  "after-sale": "/after-sales",
+};
+function activityRoute(a: DashboardActivity) {
+  return ACTIVITY_ROUTES[a.entityType ?? a.type] ?? null;
+}
+/* IKAJSS：水位节点下钻——作业人数/平均停留；超时节点列 Top5 单号直达 */
+const drillKey = ref<string | null>(null);
+function toggleFlowDrill(key: string) {
+  drillKey.value = drillKey.value === key ? null : key;
+}
+function nodeDetail(key: string) {
+  return data.value?.fulfillmentDetail?.[key];
+}
+const timeoutOrders = computed(() => data.value?.timeoutOrders ?? []);
 function activityClass(type: string) {
   if (["exception", "warning", "timeout", "alert"].includes(type))
     return "orange";
@@ -284,23 +310,57 @@ function exportReport() {
             </button>
           </div>
           <div class="flow-list">
-            <div
-              v-for="(value, key, index) in data.fulfillment"
-              :key="key"
-              class="flow-row"
-            >
-              <div class="flow-index">0{{ index + 1 }}</div>
-              <div class="flow-info">
-                <span>{{ flowLabel(String(key)) }}</span>
-                <div>
-                  <i
-                    :style="{ width: Math.max(16, value * 9) + '%' }"
-                    :class="{ danger: String(key) === 'timeout' }"
-                  ></i>
+            <template v-for="(value, key, index) in data.fulfillment" :key="key">
+              <!-- IKAJSS：行可点下钻（作业人数/平均停留；超时节点列单号直达） -->
+              <div class="flow-row" role="button" @click="toggleFlowDrill(String(key))">
+                <div class="flow-index">0{{ index + 1 }}</div>
+                <div class="flow-info">
+                  <span>{{ flowLabel(String(key)) }}</span>
+                  <div>
+                    <i
+                      :style="{ width: Math.max(16, value * 9) + '%' }"
+                      :class="{ danger: String(key) === 'timeout' }"
+                    ></i>
+                  </div>
                 </div>
+                <strong>{{ value }}</strong>
+                <i class="drill-arrow" :class="{ open: drillKey === key }">⌄</i>
               </div>
-              <strong>{{ value }}</strong>
-            </div>
+              <div v-if="drillKey === key" class="flow-drill">
+                <p>
+                  作业人数
+                  <b>{{ nodeDetail(String(key))?.staff || "—" }}</b>
+                  · 平均停留
+                  <b>{{
+                    nodeDetail(String(key))?.avgMinutes == null
+                      ? "—"
+                      : `${nodeDetail(String(key))!.avgMinutes} 分钟`
+                  }}</b>
+                </p>
+                <p class="drill-note">平均停留自支付起算（当日达口径）</p>
+                <template v-if="String(key) === 'timeout'">
+                  <p v-if="!timeoutOrders.length" class="drill-note">
+                    暂无超时订单
+                  </p>
+                  <div
+                    v-for="o in timeoutOrders"
+                    :key="o.id"
+                    class="timeout-order"
+                  >
+                    <span
+                      >{{ o.orderNo }} · 超时
+                      {{ o.overtimeMinutes }} 分钟</span
+                    >
+                    <button
+                      class="text-btn"
+                      @click.stop="router.push(`/orders?q=${o.orderNo}`)"
+                    >
+                      立即处理 →
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
         </article>
       </section>
@@ -356,11 +416,19 @@ function exportReport() {
             <span class="live"><i></i> LIVE</span>
           </div>
           <div class="activity-list">
+            <!-- IKAJSS：每条带直达按钮，按事件类型跳对应处理页 -->
             <div v-for="(a, i) in activities" :key="i">
               <i :class="activityClass(a.type)"></i>
               <p>
                 <b>{{ a.text }}</b><span>{{ a.time }}</span>
               </p>
+              <button
+                v-if="activityRoute(a)"
+                class="text-btn act-btn"
+                @click="router.push(activityRoute(a)!)"
+              >
+                处理 →
+              </button>
             </div>
             <p v-if="!activities.length" class="empty-cell">
               暂无实时动态
