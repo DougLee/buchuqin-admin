@@ -745,6 +745,44 @@ a {
   color: var(--green);
   box-shadow: 0 2px 8px #0000000a;
 }
+/* 状态 Tab+计数（IKAJSP）：列表页通用能力，横向可滚防窄屏挤压 */
+.status-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.status-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.status-tabs button.active {
+  border-color: var(--green);
+  color: var(--green);
+  background: #f0faf3;
+  font-weight: 700;
+}
+.status-tabs button em {
+  font-style: normal;
+  background: #eef3ef;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 17px;
+  color: var(--muted);
+}
+.status-tabs button.active em {
+  background: var(--green);
+  color: #fff;
+}
 .chart {
   display: grid;
   grid-template-columns: 28px 1fr;

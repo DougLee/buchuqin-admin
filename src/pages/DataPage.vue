@@ -920,12 +920,22 @@ interface PageRows {
 function unwrap<T extends AdminRow>(res: PagedResponse<T>): PageRows {
   return { rows: res.items, total: res.total };
 }
+/** 状态 Tab 组（IKAJSP）：把若干原始状态聚合为一个运营阶段（如「配送中」），statuses 空 = 全部。 */
+interface StatusTab {
+  key: string;
+  label: string;
+  statuses: string[];
+}
 interface SectionConfig {
   title: string;
   eyebrow: string;
   desc: string;
   loader: (query: ListQuery) => Promise<PageRows>;
   columns: [string, string][];
+  /** 配置后工具栏下拉换成 Tab 行，过滤走服务端（逗号状态，页内不再二次筛）。 */
+  statusTabs?: StatusTab[];
+  /** Tab 角标计数来源（原始状态→数量，随 load() 刷新）。 */
+  countsLoader?: () => Promise<Record<string, number>>;
 }
 /* ---------- 仓储板块拆分（IKA0V2）：流水/仓库订单独立菜单入口 ---------- */
 const inventoryTxnsConfig: SectionConfig = {
@@ -1458,12 +1468,48 @@ function loadRules(query: ListQuery): Promise<PageRows> {
     }),
   );
 }
+/**
+ * 订单状态 Tab（IKAJSP）：按运营节奏分组，多个原始状态合并展示
+ * （配送中 = 等首程/首程/末程），计数来自 orders/status-counts。
+ */
+const ORDER_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending-payment", label: "待支付", statuses: ["pending-payment"] },
+  { key: "awaiting-outbound", label: "待出库", statuses: ["paid", "picking"] },
+  {
+    key: "delivering",
+    label: "配送中",
+    statuses: ["waiting-first-mile", "first-mile", "last-mile"],
+  },
+  {
+    key: "waiting-handover",
+    label: "楼下待交接",
+    statuses: ["waiting-handover"],
+  },
+  { key: "delivered", label: "已送达", statuses: ["delivered"] },
+  { key: "completed", label: "已完成", statuses: ["completed"] },
+  {
+    key: "closed",
+    label: "取消/退款/异常",
+    statuses: ["cancelled", "refunded", "exception"],
+  },
+];
 const configs: Record<string, SectionConfig> = {
   orders: {
     title: "订单与履约",
     eyebrow: "ORDER CONTROL",
     desc: "监控订单全生命周期与两段配送进度。",
-    loader: (query) => api.orders("all", query).then(unwrap),
+    // IKAJSP：Tab 即过滤条件（服务端逗号状态），statusFilter 存 Tab key
+    loader: (query) => {
+      const tab =
+        ORDER_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
+        ORDER_STATUS_TABS[0];
+      return api
+        .orders(tab.statuses.length ? tab.statuses.join(",") : "all", query)
+        .then(unwrap);
+    },
+    statusTabs: ORDER_STATUS_TABS,
+    countsLoader: () => api.orderStatusCounts(),
     columns: [
       ["orderNo", "订单编号"],
       ["statusText", "当前状态"],
@@ -1791,30 +1837,50 @@ const section = computed(() => String(route.params.section)),
   filtered = computed(() =>
     // 服务端分页 + 服务端 keyword 过滤（IK8W5X 契约收尾）：rows 即命中当前页；
     // 前端仅保留状态 tab 的展示级筛选。
-    rows.value.filter((row) => {
-      const record = row as unknown as Record<string, unknown>;
-      return (
-        statusFilter.value === "all" ||
-        [record.status, record.statusText, String(record.online ?? "")].some(
-          (value) => String(value ?? "").includes(statusFilter.value),
-        )
-      );
-    }),
+    // IKAJSP：statusTabs 板块过滤已在服务端完成（Tab key 不是原始状态值，
+    // 走页内筛选反而会把表筛空），直接透出。
+    config.value.statusTabs
+      ? rows.value
+      : rows.value.filter((row) => {
+          const record = row as unknown as Record<string, unknown>;
+          return (
+            statusFilter.value === "all" ||
+            [record.status, record.statusText, String(record.online ?? "")].some(
+              (value) => String(value ?? "").includes(statusFilter.value),
+            )
+          );
+        }),
   ),
   totalPages = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
   );
+/** Tab 角标计数（IKAJSP）：原始状态→数量，随 load() 并行刷新。 */
+const statusCounts = ref<Record<string, number>>({});
+function statusTabCount(tab: StatusTab) {
+  const counts = statusCounts.value;
+  const sum = (keys: string[]) =>
+    keys.reduce((n, k) => n + (counts[k] ?? 0), 0);
+  return tab.statuses.length
+    ? sum(tab.statuses)
+    : Object.values(counts).reduce((a, b) => a + b, 0);
+}
 async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    const result = await config.value.loader({
-      page: page.value,
-      pageSize: pageSize.value,
-      keyword: keyword.value.trim() || undefined,
-    });
+    // IKAJSP：Tab 角标随列表并行拉取，计数失败静默（角标回落 0，不阻塞列表）
+    const [result, counts] = await Promise.all([
+      config.value.loader({
+        page: page.value,
+        pageSize: pageSize.value,
+        keyword: keyword.value.trim() || undefined,
+      }),
+      config.value.countsLoader?.().catch(() => undefined) ??
+        Promise.resolve(undefined),
+    ]);
     rows.value = result.rows;
     total.value = result.total;
+    if (counts) statusCounts.value = counts;
   } catch (error) {
     rows.value = [];
     total.value = 0;
@@ -2049,7 +2115,9 @@ watch(
     selected.value = undefined;
     dispTab.value = "leaves";
     mktTab.value = "coupons";
-    resetAndLoad();
+    // IKAJSP：订单 Tab key 不是通用状态值，切板块必须归位 all（值变时由
+    // statusFilter watcher 接管重载，避免双请求）
+    resetStatusFilterAndLoad();
   },
 );
 const STATUS_TEXT: Record<string, string> = {
@@ -2586,6 +2654,20 @@ async function submitStatusDialog() {
           促销活动
         </button>
       </div>
+      <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力，订单先接入）；点 Tab 即服务端过滤 -->
+      <div v-if="config.statusTabs" class="status-tabs" role="tablist">
+        <button
+          v-for="tab in config.statusTabs"
+          :key="tab.key"
+          type="button"
+          role="tab"
+          :aria-selected="statusFilter === tab.key"
+          :class="{ active: statusFilter === tab.key }"
+          @click="statusFilter = tab.key"
+        >
+          {{ tab.label }}<em>{{ statusTabCount(tab) }}</em>
+        </button>
+      </div>
       <div class="filter-search">
         <span></span
         ><input
@@ -2596,6 +2678,7 @@ async function submitStatusDialog() {
       </div>
       <select
         v-if="
+          !config.statusTabs &&
           section !== 'inventory-txns' &&
           section !== 'warehouse-orders' &&
           !(section === 'marketing' && mktTab === 'banners') &&

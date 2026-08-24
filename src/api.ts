@@ -213,6 +213,9 @@ export const api = {
     request<PagedResponse<Order>>(
       `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
     ),
+  /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量。 */
+  orderStatusCounts: () =>
+    request<Record<string, number>>("/admin/orders/status-counts"),
   orderAction: (id: string, action: string) =>
     request<Order>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
   /** 手动改订单状态（IKA0UT）：原因进审计日志。 */
