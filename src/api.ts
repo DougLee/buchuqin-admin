@@ -166,6 +166,26 @@ export const api = {
     request<PagedResponse<Product>>(
       `/admin/products${withQuery(listQuery(query))}`,
     ),
+  /** 官方库浏览（IKAJSO 导入弹窗）：只读官方库行，校区角色可查。 */
+  officialProducts: (query?: ListQuery) =>
+    request<PagedResponse<Product>>(
+      `/admin/products/official-library${withQuery(listQuery(query))}`,
+    ),
+  /** 从官方库批量导入本校区（IKAJSO）：初始下架零库存，售价/库存/上下架自管。 */
+  importProducts: (productIds: string[]) =>
+    request<{
+      importedCount: number;
+      importedProductIds: string[];
+      skipped: { id: string; name: string; reason: string }[];
+    }>("/admin/products/import", {
+      method: "POST",
+      body: JSON.stringify({ productIds }),
+    }),
+  /** 一键拉取官方库最新资料（IKAJSO）：不动本地售价/上下架/库存。 */
+  pullUpstream: (id: string) =>
+    request<Product>(`/admin/products/${id}/pull-upstream`, {
+      method: "POST",
+    }),
   lookupBarcode: (barcode: string) =>
     request<BarcodeLookup>("/admin/products/barcode/lookup", {
       method: "POST",

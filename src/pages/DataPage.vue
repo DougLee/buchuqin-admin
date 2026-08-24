@@ -1794,6 +1794,33 @@ const ORDER_STATUS_TABS: StatusTab[] = [
     statuses: ["cancelled", "refunded", "exception"],
   },
 ];
+/* IKAJSM：hq 商品板块 = 官方商品库（源头档案）——无库存/库位列（库存归校区），
+   建档/改档经同一 products 端点（后端按角色落 campus-official）。 */
+const hqProductsConfig: SectionConfig = {
+  title: "官方商品库",
+  eyebrow: "OFFICIAL CATALOG",
+  desc: "总部维护统一商品档案，校区从这里导入落地；同码可与校区商品并存。",
+  loader: (query) =>
+    api.products(query).then((res) => ({
+      rows: res.items.map((p) => ({
+        ...p,
+        locationText:
+          [p.location, (p as Product & { locationCode?: string }).locationCode]
+            .filter(Boolean)
+            .join("-") || "",
+      })),
+      total: res.total,
+    })),
+  columns: [
+    ["skuNo", "SKU"],
+    ["name", "商品"],
+    ["categoryId", "分类"],
+    ["price", "官方售价"],
+    ["originalPrice", "建议零售价"],
+    ["status", "状态"],
+  ],
+};
+
 const configs: Record<string, SectionConfig> = {
   orders: {
     title: "订单与履约",
@@ -2139,6 +2166,9 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "banners") return bannerConfig;
     if (section.value === "campuses" && isHqRole.value)
       return hqCampusesConfig;
+    // IKAJSM：hq 商品板块 = 官方商品库视图（无库存/库位列）
+    if (section.value === "products" && isHqRole.value)
+      return hqProductsConfig;
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
@@ -2150,6 +2180,9 @@ const section = computed(() => String(route.params.section)),
     // IKAJSL：campuses 板块两视角——hq 建校区，校区长建楼栋
     if (section.value === "campuses" && isHqRole.value)
       return "＋ 新建校区";
+    // IKAJSM：商品板块两视角——hq 官方库建档，校区从官方库导入（禁自建）
+    if (section.value === "products")
+      return isHqRole.value ? "＋ 官方库建档" : "从官方库导入";
     return createLabels[section.value] ?? "";
   }),
   canCreate = computed(
@@ -2625,9 +2658,13 @@ async function act(action: string) {
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
           : {}),
-        // 库位（IK9U40/IKA0VG）：空串语义清空回退默认
-        location: productEdit.value.location.trim(),
-        locationCode: productEdit.value.locationCode.trim(),
+        // 库位（IK9U40/IKA0VG）：空串语义清空回退默认；官方库无库位概念（IKAJSM）
+        ...(isHqRole.value
+          ? {}
+          : {
+              location: productEdit.value.location.trim(),
+              locationCode: productEdit.value.locationCode.trim(),
+            }),
         // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
         images: productEdit.value.images.filter(Boolean),
         // 商品介绍（IKAHAU）：整段覆盖，空串清空；trim 只去首尾空白保内换行
@@ -2694,6 +2731,11 @@ async function exportData() {
 }
 function openCreate() {
   if (section.value === "products") {
+    // IKAJSM：校区禁自建——入口换成官方库导入弹窗；hq 保留扫码建档
+    if (!isHqRole.value) {
+      openImportModal();
+      return;
+    }
     creating.value = true;
     scanError.value = "";
     productForm.value = {
@@ -2732,6 +2774,81 @@ function openCreate() {
 function closeCreate() {
   stopScan();
   creating.value = false;
+}
+/* ---------- 官方库导入弹窗（IKAJSO）：搜索 + 多选 → 批量落地本校区 ---------- */
+const importOpen = ref(false),
+  importKeyword = ref(""),
+  importLoading = ref(false),
+  importRows = ref<Product[]>([]),
+  importTotal = ref(0),
+  importPage = ref(1),
+  importSelected = ref<string[]>([]),
+  importing = ref(false),
+  importResult = ref<{
+    importedCount: number;
+    skipped: { name: string; reason: string }[];
+  } | null>(null);
+async function loadImportRows() {
+  importLoading.value = true;
+  try {
+    const res = await api.officialProducts({
+      page: importPage.value,
+      pageSize: 50,
+      keyword: importKeyword.value.trim() || undefined,
+    });
+    importRows.value = res.items;
+    importTotal.value = res.total;
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "官方库加载失败", true);
+  } finally {
+    importLoading.value = false;
+  }
+}
+function openImportModal() {
+  importOpen.value = true;
+  importKeyword.value = "";
+  importPage.value = 1;
+  importSelected.value = [];
+  importResult.value = null;
+  void loadImportRows();
+}
+function searchImport() {
+  importPage.value = 1;
+  void loadImportRows();
+}
+function toggleImportSel(id: string) {
+  importSelected.value = importSelected.value.includes(id)
+    ? importSelected.value.filter((x) => x !== id)
+    : [...importSelected.value, id];
+}
+async function submitImport() {
+  if (!importSelected.value.length || importing.value) return;
+  importing.value = true;
+  try {
+    const res = await api.importProducts(importSelected.value);
+    importResult.value = {
+      importedCount: res.importedCount,
+      skipped: res.skipped.map(({ name, reason }) => ({ name, reason })),
+    };
+    importSelected.value = [];
+    notify(`已导入 ${res.importedCount} 个商品（初始下架零库存，备货后上架）`);
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "导入失败", true);
+  } finally {
+    importing.value = false;
+  }
+}
+/** 一键拉取上游资料（IKAJSO）：不动本地售价/上下架/库存，角标清零。 */
+async function pullUpstreamRow(row: AdminRow) {
+  try {
+    await api.pullUpstream(row.id);
+    notify("已同步官方库最新资料（本地售价/上下架/库存未动）");
+    selected.value = undefined;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "拉取失败", true);
+  }
 }
 async function lookup() {
   const code = productForm.value.barcode.trim();
@@ -3161,6 +3278,15 @@ async function submitStatusDialog() {
                       ),
                     }"
                     >{{ display(row, col[0]) }}</span
+                  ><!-- IKAJSO：导入商品名旁亮「上游已更新」角标，抽屉/行内可一键拉取 -->
+                  <template
+                    v-else-if="col[0] === 'name' && section === 'products'"
+                    ><strong>{{ display(row, "name") }}</strong
+                    ><span
+                      v-if="(row as Product).upstreamChanged"
+                      class="status warning upstream-badge"
+                      >上游已更新</span
+                    ></template
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
                   ><!-- 流水数量列（含 IKA0UQ 出库负数） --><span
@@ -3198,6 +3324,19 @@ async function submitStatusDialog() {
                       改状态
                     </button>
                   </template>
+                  <!-- IKAJSO：上游有更新时行内一键拉取（校区视角） -->
+                  <button
+                    v-if="
+                      section === 'products' &&
+                      !isHqRole &&
+                      canWriteSection &&
+                      (row as Product).upstreamChanged
+                    "
+                    class="btn mini primary"
+                    @click="pullUpstreamRow(row)"
+                  >
+                    拉取更新
+                  </button>
                   <button
                     class="more"
                     aria-label="更多操作"
@@ -3437,11 +3576,12 @@ async function submitStatusDialog() {
                 <span>当前售价</span
                 ><strong>¥{{ fenToYuan(Number((selected as unknown as Record<string, unknown>)?.price ?? 0)) }}</strong>
               </div>
-              <div>
+              <!-- 库存/库位归校区（IKAJSM），官方库视图不展示 -->
+              <div v-if="!isHqRole">
                 <span>当前可售库存</span
                 ><strong>{{ display(selected, "availableStock") }}</strong>
               </div>
-              <div>
+              <div v-if="!isHqRole">
                 <span>当前库位</span
                 ><strong>{{ display(selected, "locationText") || "未配置" }}</strong>
               </div>
@@ -3498,13 +3638,13 @@ async function submitStatusDialog() {
                 v-model.number="productEdit.price"
                 type="number"
                 min="0" /></label
-            ><label
+            ><label v-if="!isHqRole"
               >可售库存<input
                 v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
             ><!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
-            <label
+            <label v-if="!isHqRole"
               >库位（字典选择）<select v-model="productEdit.location">
                 <option value="">未配置</option>
                 <option
@@ -3514,7 +3654,7 @@ async function submitStatusDialog() {
                 >
                   {{ opt.label }}
                 </option></select></label
-            ><label
+            ><label v-if="!isHqRole"
               >库位编号（选填）<input
                 v-model.trim="productEdit.locationCode"
                 type="text"
@@ -3583,7 +3723,14 @@ async function submitStatusDialog() {
         <div class="drawer-actions wrap">
           <template v-if="section === 'products' && canWriteSection">
             <button class="btn primary" @click="act('save')">
-              保存商品调整</button
+              {{ isHqRole ? "保存官方库资料" : "保存商品调整" }}</button
+            ><!-- IKAJSO：上游有更新，抽屉内也可一键拉取 -->
+            <button
+              v-if="!isHqRole && (selected as Product).upstreamChanged"
+              class="btn ghost"
+              @click="pullUpstreamRow(selected!)"
+            >
+              拉取官方库更新</button
           ></template>
           <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」 -->
           <template v-else-if="section === 'orders' && canWriteSection && orderInPicking"
@@ -3970,8 +4117,9 @@ async function submitStatusDialog() {
       <aside class="drawer product-create">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">BARCODE ENTRY</p>
-            <h2>扫码录入 SKU</h2>
+            <!-- IKAJSM：hq 视角是官方库建档；校区入口已换官方库导入弹窗 -->
+            <p class="eyebrow">{{ isHqRole ? "OFFICIAL CATALOG" : "BARCODE ENTRY" }}</p>
+            <h2>{{ isHqRole ? "官方库建档" : "扫码录入 SKU" }}</h2>
           </div>
           <button aria-label="关闭" @click="closeCreate">×</button>
         </div>
@@ -4029,7 +4177,8 @@ async function submitStatusDialog() {
               min="0"
               step="0.01"
           /></label>
-          <label
+          <!-- 初始库存/库位归校区（IKAJSM），官方库建档不展示 -->
+          <label v-if="!isHqRole"
             >初始库存<input
               v-model.number="productForm.stock"
               type="number"
@@ -4043,7 +4192,7 @@ async function submitStatusDialog() {
               step="0.001"
           /></label>
           <!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
-          <label
+          <label v-if="!isHqRole"
             >库位（字典选择）<select v-model="productForm.location">
               <option value="">未配置</option>
               <option
@@ -4054,7 +4203,7 @@ async function submitStatusDialog() {
                 {{ opt.label }}
               </option></select></label
           >
-          <label
+          <label v-if="!isHqRole"
             >库位编号（选填）<input
               v-model.trim="productForm.locationCode"
               maxlength="20"
@@ -4085,6 +4234,96 @@ async function submitStatusDialog() {
         <div class="drawer-actions">
           <button class="btn ghost" @click="closeCreate">取消</button
           ><button class="btn primary" @click="saveProduct">保存并上架</button>
+        </div>
+      </aside>
+    </div>
+    <!-- 官方库导入弹窗（IKAJSO）：搜索 + 多选，批量落地本校区 -->
+    <div v-if="importOpen" class="drawer-mask" @click.self="importOpen = false">
+      <aside class="drawer import-drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">OFFICIAL IMPORT</p>
+            <h2>从官方库导入</h2>
+          </div>
+          <button aria-label="关闭" @click="importOpen = false">×</button>
+        </div>
+        <div class="import-search">
+          <input
+            v-model.trim="importKeyword"
+            aria-label="搜索官方库商品"
+            placeholder="搜索商品名 / 条码..."
+            @keyup.enter="searchImport"
+          /><button class="btn ghost" @click="searchImport">搜索</button>
+        </div>
+        <p v-if="importResult" class="form-hint import-result">
+          成功导入 {{ importResult.importedCount }} 个（初始下架零库存，定价备货后自行上架）<template
+            v-if="importResult.skipped.length"
+            >；跳过 {{ importResult.skipped.length }} 个：</template
+          >
+        </p>
+        <ul v-if="importResult?.skipped.length" class="import-skips">
+          <li v-for="(skip, i) in importResult.skipped" :key="i">
+            {{ skip.name }}：{{ skip.reason }}
+          </li>
+        </ul>
+        <div v-if="importLoading" class="import-list-empty">官方库加载中...</div>
+        <ul v-else-if="importRows.length" class="import-list">
+          <li
+            v-for="item in importRows"
+            :key="item.id"
+            :class="{ picked: importSelected.includes(item.id) }"
+            @click="toggleImportSel(item.id)"
+          >
+            <img
+              v-if="item.image"
+              class="cell-thumb"
+              :src="resolveImageUrl(item.image)"
+              alt=""
+              loading="lazy"
+            /><span v-else class="cell-thumb import-thumb-blank"></span>
+            <div class="import-item-copy">
+              <strong>{{ item.name }}</strong>
+              <small
+                >{{
+                  categories.find((c) => c.id === item.categoryId)?.name ??
+                  item.categoryId
+                }}
+                · ¥{{ fenToYuan(item.price) }}</small
+              >
+            </div>
+            <input
+              type="checkbox"
+              :checked="importSelected.includes(item.id)"
+              aria-label="选择商品"
+              tabindex="-1"
+              @click.stop="toggleImportSel(item.id)"
+            />
+          </li>
+        </ul>
+        <div v-else class="import-list-empty">
+          官方库暂无匹配商品；可联系总部在官方库建档
+        </div>
+        <div class="import-pager">
+          <button :disabled="importPage === 1" @click="importPage--; loadImportRows()">
+            ←
+          </button>
+          <span>第 {{ importPage }} 页 / 共 {{ Math.max(1, Math.ceil(importTotal / 50)) }} 页</span>
+          <button
+            :disabled="importPage >= Math.ceil(importTotal / 50)"
+            @click="importPage++; loadImportRows()"
+          >
+            →
+          </button>
+        </div>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="importOpen = false">关闭</button
+          ><button
+            class="btn primary"
+            :disabled="!importSelected.length || importing"
+            @click="submitImport"
+          >
+            {{ importing ? "导入中..." : `导入所选（${importSelected.length}）` }}
+          </button>
         </div>
       </aside>
     </div>

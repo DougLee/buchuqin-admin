@@ -84,6 +84,10 @@ export interface Product {
   batchNo?: string;
   expiryDate?: string;
   warning?: boolean;
+  /** 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空。 */
+  sourceProductId?: string | null;
+  /** 上游已更新（IKAJSO）：官方库资料晚于本校区同步时间，可一键拉取。 */
+  upstreamChanged?: boolean;
 }
 
 export interface OrderAddress {
@@ -519,6 +523,8 @@ export interface DashboardData {
 export interface BarcodeLookup {
   found: boolean;
   exists?: boolean;
+  /** product-database 本校区库内 | official-library 官方库命中（IKAJSO 导入入口）| open-food-facts | manual */
+  source?: string;
   product: Partial<Product>;
 }
 

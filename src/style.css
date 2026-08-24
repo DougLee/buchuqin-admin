@@ -1360,3 +1360,103 @@ td {
   flex-direction: column;
   gap: 12px;
 }
+
+/* 官方库导入弹窗（IKAJSO）：搜索 + 多选列表 */
+.import-drawer {
+  width: 460px;
+}
+.import-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.import-search input {
+  flex: 1;
+}
+.import-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.import-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eef2f6;
+}
+.import-list li:last-child {
+  border-bottom: none;
+}
+.import-list li.picked {
+  background: #f0f9f1;
+}
+.import-item-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.import-item-copy strong {
+  font-size: 13px;
+  color: #17251d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-item-copy small {
+  color: #8b9991;
+  font-size: 12px;
+}
+.import-thumb-blank {
+  background: #f1f5f4;
+}
+.import-list-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: #8b9991;
+  font-size: 13px;
+}
+.import-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #5f6f66;
+  margin-bottom: 12px;
+}
+.import-pager button {
+  border: 1px solid #dbe4de;
+  background: #fff;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.import-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.import-result {
+  margin-bottom: 4px;
+}
+.import-skips {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  background: #fff8ec;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #9a6b1f;
+  max-height: 120px;
+  overflow-y: auto;
+}
+/* IKAJSO：商品名旁「上游已更新」角标 */
+.upstream-badge {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
