@@ -4,7 +4,7 @@ import { useRoute } from "vue-router";
 import { api, fetchAllPages } from "../api";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
-import { canWrite, ROLE_LABELS, type AdminRole } from "../session";
+import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
@@ -16,6 +16,7 @@ import type {
   BarcodeLookup,
   Banner,
   Building,
+  Campus,
   Category,
   CategoryRow,
   CommissionRule,
@@ -695,7 +696,14 @@ const ACCOUNT_ROLE_OPTIONS = [
   { value: "finance", label: "财务" },
   { value: "admin", label: "管理员" },
 ];
+/** IKAJSL：仅 hq 操作者可建总部角色（后端守卫兜底）。 */
+function accountRoleOptions() {
+  return isHqRole.value
+    ? [...ACCOUNT_ROLE_OPTIONS, { value: "hq", label: "总部长" }]
+    : ACCOUNT_ROLE_OPTIONS;
+}
 function openAccountCreate() {
+  void ensureCampusOptions().catch(() => {});
   openForm(
     {
       eyebrow: "NEW ADMIN ACCOUNT",
@@ -706,7 +714,21 @@ function openAccountCreate() {
         { key: "username", label: "账号", placeholder: "3-20 位字母/数字/下划线" },
         { key: "password", label: "初始密码", type: "password", placeholder: "至少 8 位" },
         { key: "nickname", label: "昵称", placeholder: "如：仓储小王" },
-        { key: "role", label: "角色", type: "select", options: () => ACCOUNT_ROLE_OPTIONS },
+        { key: "role", label: "角色", type: "select", options: accountRoleOptions },
+        // IKAJSL：hq 建号选归属（空 = 总部账号，角色须总部长）
+        {
+          key: "campusId",
+          label: "所属校区",
+          type: "select",
+          visible: () => isHqRole.value,
+          options: () => [
+            { value: "", label: "总部（仅总部长角色）" },
+            ...campusOptionsData.value.map((c) => ({
+              value: c.id,
+              label: c.shortName || c.name,
+            })),
+          ],
+        },
       ],
       save: async (d) =>
         void (await api.createAccount({
@@ -714,9 +736,10 @@ function openAccountCreate() {
           password: String(d.password || ""),
           nickname: String(d.nickname || "").trim(),
           role: String(d.role || ""),
+          ...(isHqRole.value ? { campusId: String(d.campusId ?? "") } : {}),
         })),
     },
-    { username: "", password: "", nickname: "", role: "operations" },
+    { username: "", password: "", nickname: "", role: "operations", campusId: "" },
   );
 }
 function openAccountEdit(row: AdminRow) {
@@ -730,7 +753,7 @@ function openAccountEdit(row: AdminRow) {
       done: "账号已更新",
       fields: [
         { key: "nickname", label: "昵称" },
-        { key: "role", label: "角色", type: "select", options: () => ACCOUNT_ROLE_OPTIONS },
+        { key: "role", label: "角色", type: "select", options: accountRoleOptions },
       ],
       save: async (d) =>
         void (await api.updateAccount(account.id, {
@@ -1061,9 +1084,9 @@ watch(
   (tab) => {
     if (
       section.value === "marketing" &&
-      ["coupons", "banners", "promotions"].includes(String(tab))
+      ["coupons", "promotions"].includes(String(tab))
     )
-      mktTab.value = String(tab) as "coupons" | "banners" | "promotions";
+      mktTab.value = String(tab) as "coupons" | "promotions";
   },
   { immediate: true },
 );
@@ -1080,6 +1103,8 @@ const BANNER_PLACEMENT_TEXT: Record<string, string> = {
 };
 function bannerPayload(d: Record<string, FormValue>) {
   return {
+    // IKAJSL：投放校区（空串 = 全部校区），仅 hq 操作者后端才采纳
+    campusId: String(d.campusId ?? ""),
     title: String(d.title || "").trim(),
     subtitle: String(d.subtitle || "").trim(),
     badge: String(d.badge || "").trim(),
@@ -1119,7 +1144,21 @@ const BANNER_PLACEMENT_FIELD: FieldDef = {
     { value: "pay-success", label: "支付成功页" },
   ],
 };
+/** 投放校区（IKAJSL）：空 = 全部校区；创建后不可改（避免误改投放面）。 */
+const BANNER_CAMPUS_FIELD: FieldDef = {
+  key: "campusId",
+  label: "投放校区",
+  type: "select",
+  options: () => [
+    { value: "", label: "全部校区" },
+    ...campusOptionsData.value.map((c) => ({
+      value: c.id,
+      label: c.shortName || c.name,
+    })),
+  ],
+};
 function openBannerCreate() {
+  void ensureCampusOptions();
   openForm(
     {
       eyebrow: "NEW BANNER",
@@ -1141,6 +1180,7 @@ function openBannerCreate() {
           ],
         },
         BANNER_PLACEMENT_FIELD,
+        BANNER_CAMPUS_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
@@ -1150,7 +1190,7 @@ function openBannerCreate() {
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", placement: "home", sort: 0, image: "", content: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: "home", campusId: "", sort: 0, image: "", content: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -1490,6 +1530,25 @@ const userBuildingFilter = ref(""),
   userOrderRows = ref<UserOrderRow[]>([]),
   userOrdersLoading = ref(false);
 watch(userBuildingFilter, () => resetAndLoad());
+/* ---------- IKAJSL：hq 跨校区视角的校区筛选（订单/用户/审计；校区角色无此下拉） ---------- */
+const campusFilter = ref("");
+const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
+const isHqRole = computed(() => role.value === "hq");
+watch(campusFilter, () => resetAndLoad());
+async function ensureCampusOptions() {
+  if (!campusOptionsData.value.length)
+    campusOptionsData.value = await api.campuses();
+  return campusOptionsData.value;
+}
+/** hq 选了校区就透传 campus 参数（后端对校区角色忽略该参数） */
+function campusQuery(query: ListQuery): ListQuery {
+  return isHqRole.value && campusFilter.value
+    ? { ...query, campusId: campusFilter.value }
+    : query;
+}
+function campusScope(): string | undefined {
+  return isHqRole.value ? campusFilter.value || undefined : undefined;
+}
 const usersConfig: SectionConfig = {
   title: "C 端用户",
   eyebrow: "CUSTOMER BASE",
@@ -1497,7 +1556,7 @@ const usersConfig: SectionConfig = {
   loader: (query) =>
     api
       .adminUsers({
-        ...query,
+        ...campusQuery(query),
         ...(userBuildingFilter.value ? { buildingId: userBuildingFilter.value } : {}),
       })
       .then(unwrap),
@@ -1511,6 +1570,132 @@ const usersConfig: SectionConfig = {
     ["createdAt", "注册时间"],
   ],
 };
+/* ---------- 校区本体管理（IKAJSL）：hq 视角的 campuses 板块 ---------- */
+const hqCampusesConfig: SectionConfig = {
+  title: "校区管理",
+  eyebrow: "CAMPUS NETWORK",
+  desc: "校区信息、启停与配送配置；楼栋与寝室由各校区后台自行维护。",
+  // 非分页端点：全量拉取后前端切片分页（与群码同模式）
+  loader: async (query) => {
+    const all = await api.campuses();
+    const start = (query.page - 1) * query.pageSize;
+    return {
+      rows: all.slice(start, start + query.pageSize) as unknown as AdminRow[],
+      total: all.length,
+    };
+  },
+  columns: [
+    ["name", "校区"],
+    ["shortName", "简称"],
+    ["warehouseName", "仓库"],
+    ["status", "状态"],
+    ["buildings", "楼栋数"],
+    ["users", "用户数"],
+  ],
+};
+/** 新建校区（仅 hq）：新校区接入后由总部在其后台建账号/楼栋。 */
+function openCampusCreate() {
+  openForm(
+    {
+      eyebrow: "NEW CAMPUS",
+      title: "新建校区",
+      submit: "创建校区",
+      done: "校区已创建，可在账号管理为其开后台账号",
+      fields: [
+        { key: "name", label: "校区全称", placeholder: "例如：湖北工业大学" },
+        { key: "shortName", label: "简称", placeholder: "例如：湖工大" },
+        { key: "warehouseName", label: "仓库名", placeholder: "例如：湖工大校园仓" },
+        { key: "address", label: "仓库地址（选填）" },
+        {
+          key: "instant",
+          label: "即时达配送费（元）",
+          type: "number",
+          min: 0,
+          step: 0.01,
+        },
+        {
+          key: "scheduled",
+          label: "预约达配送费（元）",
+          type: "number",
+          min: 0,
+          step: 0.01,
+        },
+        { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+      ],
+      save: async (d) => {
+        if (!String(d.name || "").trim() || !String(d.shortName || "").trim())
+          throw new Error("请填写校区全称与简称");
+        void (await api.createCampus({
+          name: String(d.name).trim(),
+          shortName: String(d.shortName).trim(),
+          warehouseName: String(d.warehouseName || "").trim() || String(d.shortName).trim() + "校园仓",
+          address: String(d.address || "").trim(),
+          // 表单输元，提交转分（IK8W5K）；三项与配送配置弹窗同口径
+          deliveryFeeInstant: yuanToFen(d.instant ?? 4),
+          deliveryFeeScheduled: yuanToFen(d.scheduled ?? 2),
+          deliveryThreshold: yuanToFen(d.threshold ?? 10),
+        }));
+      },
+    },
+    { name: "", shortName: "", warehouseName: "", address: "", instant: 4, scheduled: 2, threshold: 10 },
+  );
+}
+/** 编辑校区（仅 hq）：信息/启停/配送费。 */
+function openCampusEdit(row: AdminRow) {
+  const campus = row as unknown as Campus & {
+    deliveryFeeInstant?: number;
+    deliveryFeeScheduled?: number;
+    deliveryThreshold?: number;
+  };
+  selected.value = undefined;
+  openForm(
+    {
+      eyebrow: "EDIT CAMPUS",
+      title: `编辑校区 ${campus.shortName || campus.name}`,
+      submit: "保存修改",
+      done: "校区信息已更新",
+      fields: [
+        { key: "name", label: "校区全称" },
+        { key: "shortName", label: "简称" },
+        { key: "warehouseName", label: "仓库名" },
+        { key: "address", label: "仓库地址" },
+        {
+          key: "status",
+          label: "状态",
+          type: "select",
+          options: () => [
+            { value: "active", label: "在营" },
+            { value: "inactive", label: "停用" },
+          ],
+        },
+        { key: "instant", label: "即时达配送费（元）", type: "number", min: 0, step: 0.01 },
+        { key: "scheduled", label: "预约达配送费（元）", type: "number", min: 0, step: 0.01 },
+        { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+      ],
+      save: async (d) =>
+        void (await api.updateCampus(campus.id, {
+          name: String(d.name || "").trim(),
+          shortName: String(d.shortName || "").trim(),
+          warehouseName: String(d.warehouseName || "").trim(),
+          address: String(d.address || "").trim(),
+          status: String(d.status || "active") as "active" | "inactive",
+          deliveryFeeInstant: yuanToFen(d.instant ?? 0),
+          deliveryFeeScheduled: yuanToFen(d.scheduled ?? 0),
+          deliveryThreshold: yuanToFen(d.threshold ?? 0),
+        })),
+    },
+    {
+      name: campus.name,
+      shortName: campus.shortName,
+      warehouseName: campus.warehouseName,
+      address: campus.address ?? "",
+      status: campus.status,
+      instant: Number(fenToYuan(campus.deliveryFeeInstant ?? 400)),
+      scheduled: Number(fenToYuan(campus.deliveryFeeScheduled ?? 200)),
+      threshold: Number(fenToYuan(campus.deliveryThreshold ?? 1000)),
+    },
+  );
+}
 /* ---------- 微信群二维码（IKAJSY）：楼栋群 + 校级大群 ---------- */
 const wechatGroupsConfig: SectionConfig = {
   title: "微信群码",
@@ -1620,11 +1805,14 @@ const configs: Record<string, SectionConfig> = {
         ORDER_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
         ORDER_STATUS_TABS[0];
       return api
-        .orders(tab.statuses.length ? tab.statuses.join(",") : "all", query)
+        .orders(
+          tab.statuses.length ? tab.statuses.join(",") : "all",
+          campusQuery(query),
+        )
         .then(unwrap);
     },
     statusTabs: ORDER_STATUS_TABS,
-    countsLoader: () => api.orderStatusCounts(),
+    countsLoader: () => api.orderStatusCounts(campusScope()),
     columns: [
       ["orderNo", "订单编号"],
       ["statusText", "当前状态"],
@@ -1833,7 +2021,8 @@ const configs: Record<string, SectionConfig> = {
     title: "审计日志",
     eyebrow: "AUDIT TRAIL",
     desc: "追踪关键状态、金额与权限变更。",
-    loader: (query) => api.audits(query).then(unwrap),
+    // IKAJSL：hq 视角可按校区过滤（工具栏下拉）
+    loader: (query) => api.audits(campusQuery(query)).then(unwrap),
     columns: [
       ["createdAt", "时间"],
       ["operator", "操作人"],
@@ -1845,28 +2034,36 @@ const configs: Record<string, SectionConfig> = {
   accounts: {
     title: "账号管理",
     eyebrow: "ADMIN ACCOUNTS",
-    desc: "后台账号的创建、角色分配与密码重置（仅超管）。",
+    // IKAJSL：admin 管本校区职能账号；hq 管全部（含总部/各校区账号）
+    desc: "后台账号的创建、角色分配与密码重置（admin 管本校区，总部管全部）。",
     loader: (query) =>
       api.adminAccounts(query).then((res) => ({
         total: res.total,
         rows: res.items.map((x) => ({
           ...x,
           roleText: ROLE_LABELS[x.role as AdminRole] ?? x.role,
+          // hq 视角后端附 campusName；校区视角无该字段显示空
+          campusNameText:
+            x.campusId === ""
+              ? "总部"
+              : (x as AccountRow & { campusName?: string }).campusName || "本校区",
         })),
       })),
     columns: [
       ["username", "账号"],
       ["nickname", "昵称"],
       ["roleText", "角色"],
+      ["campusNameText", "校区"],
       ["createdAt", "创建时间"],
     ],
   },
 };
 /** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。 */
 const bannerConfig: SectionConfig = {
-  title: "首页 Banner",
-  eyebrow: "HOME BANNERS",
-  desc: "维护小程序首页轮播帧与图文详情；改图改文案保存后小程序即见。",
+  title: "Banner 投放",
+  eyebrow: "HQ BANNERS",
+  // IKAJSL：Banner 归总部投放（可选全部/指定校区），校区侧营销板块已无此 tab
+  desc: "总部统一投放小程序首页轮播与支付成功页广告；可选全部校区或定向。",
   loader: (query) =>
     api.banners(query).then((res) => ({
       rows: res.items.map((b) => ({
@@ -1879,6 +2076,7 @@ const bannerConfig: SectionConfig = {
   columns: [
     ["image", "图片"],
     ["title", "标题"],
+    ["campusName", "投放范围"],
     ["placementText", "展示位置"],
     ["badge", "角标"],
     ["color", "主题色"],
@@ -1935,19 +2133,23 @@ const section = computed(() => String(route.params.section)),
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
         : dispatchInvitesConfig;
-    if (section.value === "marketing" && mktTab.value === "banners")
-      return bannerConfig;
     if (section.value === "marketing" && mktTab.value === "promotions")
       return promotionConfig;
+    // IKAJSL：Banner 独立板块（总部导航）；校区 hq 分流校区配置
+    if (section.value === "banners") return bannerConfig;
+    if (section.value === "campuses" && isHqRole.value)
+      return hqCampusesConfig;
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
   /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
   createLabel = computed(() => {
     if (section.value === "marketing") {
-      if (mktTab.value === "banners") return createLabels.banners;
       if (mktTab.value === "promotions") return createLabels.promotions;
     }
+    // IKAJSL：campuses 板块两视角——hq 建校区，校区长建楼栋
+    if (section.value === "campuses" && isHqRole.value)
+      return "＋ 新建校区";
     return createLabels[section.value] ?? "";
   }),
   canCreate = computed(
@@ -1988,12 +2190,19 @@ async function load() {
   loadError.value = "";
   // IKAJSW：用户板块统计与楼栋下拉随列表加载（失败静默不阻塞）
   if (section.value === "users") {
-    void ensureBuildings();
+    // IKAJSL：hq 视角楼栋下拉无意义（跨校区），跳过
+    if (!isHqRole.value) void ensureBuildings();
     api
-      .userStats()
+      .userStats(campusScope())
       .then((s) => (userStatsData.value = s))
       .catch(() => {});
   }
+  // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/Banner/校区管理）
+  if (
+    isHqRole.value &&
+    ["orders", "users", "audit", "banners", "campuses"].includes(section.value)
+  )
+    void ensureCampusOptions().catch(() => {});
   try {
     // IKAJSP：Tab 角标随列表并行拉取，计数失败静默（角标回落 0，不阻塞列表）
     const [result, counts] = await Promise.all([
@@ -2506,11 +2715,13 @@ function openCreate() {
   } else if (section.value === "categories") openCategoryCreate();
   else if (section.value === "locations") openLocationCreate();
   else if (section.value === "marketing") {
-    if (mktTab.value === "banners") openBannerCreate();
-    else if (mktTab.value === "promotions") openPromotionCreate();
+    // IKAJSL：Banner 已拆独立板块（/banners），营销板块只剩券/促销
+    if (mktTab.value === "promotions") openPromotionCreate();
     else openCouponCreate();
   }
-  else if (section.value === "campuses") openBuildingCreate();
+  else if (section.value === "banners") openBannerCreate();
+  else if (section.value === "campuses")
+    isHqRole.value ? openCampusCreate() : openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
@@ -2768,9 +2979,9 @@ async function submitStatusDialog() {
         <p>{{ config.desc }}</p>
       </div>
       <div class="head-actions">
-        <!-- 配送费配置（IK9SO6）：校园组织板块的独立入口 -->
+        <!-- 配送费配置（IK9SO6）：校区侧入口；hq 在校区编辑表单里逐校配置 -->
         <button
-          v-if="section === 'campuses' && canWrite('campuses')"
+          v-if="section === 'campuses' && !isHqRole && canWrite('campuses')"
           class="btn ghost"
           @click="openDeliveryConfig"
         >
@@ -2795,13 +3006,11 @@ async function submitStatusDialog() {
         <button :class="{ active: mktTab === 'coupons' }" @click="switchMktTab('coupons')">
           优惠券
         </button>
-        <button :class="{ active: mktTab === 'banners' }" @click="switchMktTab('banners')">
-          首页 Banner
-        </button>
         <button :class="{ active: mktTab === 'promotions' }" @click="switchMktTab('promotions')">
           促销活动
         </button>
       </div>
+      <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
       <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力，订单先接入）；点 Tab 即服务端过滤 -->
       <div v-if="config.statusTabs" class="status-tabs" role="tablist">
         <button
@@ -2831,7 +3040,7 @@ async function submitStatusDialog() {
           section !== 'warehouse-orders' &&
           section !== 'users' &&
           section !== 'wechat-groups' &&
-          !(section === 'marketing' && mktTab === 'banners') &&
+          section !== 'banners' &&
           !(section === 'marketing' && mktTab === 'promotions')
         "
         v-model="statusFilter"
@@ -2857,7 +3066,7 @@ async function submitStatusDialog() {
       </select>
       <!-- IKAJSW：用户板块楼栋筛选（后端按地址命中聚合） -->
       <select
-        v-if="section === 'users'"
+        v-if="section === 'users' && !isHqRole"
         v-model="userBuildingFilter"
         class="filter-btn"
         aria-label="楼栋筛选"
@@ -2865,6 +3074,18 @@ async function submitStatusDialog() {
         <option value="">全部楼栋</option>
         <option v-for="b in buildings" :key="b.id" :value="b.id">
           {{ b.name }}
+        </option>
+      </select>
+      <!-- IKAJSL：hq 跨校区视角的校区筛选（订单/用户/审计） -->
+      <select
+        v-if="isHqRole && ['orders', 'users', 'audit'].includes(section)"
+        v-model="campusFilter"
+        class="filter-btn"
+        aria-label="校区筛选"
+      >
+        <option value="">全校区</option>
+        <option v-for="c in campusOptionsData" :key="c.id" :value="c.id">
+          {{ c.shortName || c.name }}
         </option>
       </select>
       <div class="toolbar-spacer"></div>
@@ -3390,6 +3611,18 @@ async function submitStatusDialog() {
               试点期售后由客服人工处理（不退款），本页仅留档查看。
             </p>
           </template>
+          <template v-else-if="section === 'banners' && canWriteSection">
+            <!-- IKAJSL：Banner 独立板块（总部投放） -->
+            <button class="btn primary" @click="openBannerEdit(selected)">
+              编辑 Banner
+            </button>
+            <button class="btn ghost" @click="toggleBanner">
+              {{ bannerHidden ? "启用 Banner" : "隐藏 Banner" }}
+            </button>
+            <button class="btn danger-btn" @click="removeBannerRow">
+              {{ confirmDelete ? "确认删除" : "删除 Banner" }}
+            </button>
+          </template>
           <template v-else-if="section === 'marketing' && canWriteSection">
             <!-- 优惠券 tab -->
             <template v-if="mktTab === 'coupons'">
@@ -3400,19 +3633,8 @@ async function submitStatusDialog() {
                 定向发放
               </button>
             </template>
-            <!-- Banner tab（IK9RX2） -->
-            <template v-else-if="mktTab === 'banners'">
-              <button class="btn primary" @click="openBannerEdit(selected)">
-                编辑 Banner
-              </button>
-              <button class="btn ghost" @click="toggleBanner">
-                {{ bannerHidden ? "启用 Banner" : "隐藏 Banner" }}
-              </button>
-              <button class="btn danger-btn" @click="removeBannerRow">
-                {{ confirmDelete ? "确认删除" : "删除 Banner" }}
-              </button>
-            </template>
-            <!-- 促销活动 tab（IKAHFF/ADR-0006）：无删除留审计 -->
+            <!-- 促销活动 tab（IKAHFF/ADR-0006）：无删除留审计；
+                 Banner 已拆 /banners 板块（IKAJSL） -->
             <template v-else>
               <button class="btn primary" @click="openPromotionEdit(selected)">
                 编辑促销
@@ -3432,17 +3654,26 @@ async function submitStatusDialog() {
             </button></template
           >
           <template v-else-if="section === 'campuses' && canWriteSection">
+            <!-- IKAJSL：hq 管校区本体（信息/启停/配送费），楼栋归校区后台 -->
             <button
+              v-if="isHqRole"
               class="btn primary"
-              @click="openBuildingEdit(selected as Building)"
+              @click="openCampusEdit(selected)"
             >
-              编辑楼栋</button
-            ><button class="btn ghost" @click="openRooms(selected as Building)">
-              寝室管理
-            </button
-            ><button class="btn danger-btn" @click="removeBuilding">
-              {{ confirmDelete ? "确认删除" : "删除楼栋" }}
-            </button>
+              编辑校区</button
+            ><template v-else
+              ><button
+                class="btn primary"
+                @click="openBuildingEdit(selected as Building)"
+              >
+                编辑楼栋</button
+              ><button class="btn ghost" @click="openRooms(selected as Building)">
+                寝室管理
+              </button
+              ><button class="btn danger-btn" @click="removeBuilding">
+                {{ confirmDelete ? "确认删除" : "删除楼栋" }}
+              </button></template
+            >
           </template>
           <template v-else-if="section === 'staff' && canWriteSection">
             <button class="btn primary" @click="openStaffEdit(selected as Staff)">

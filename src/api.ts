@@ -15,6 +15,7 @@ import type {
   CommissionRule,
   Coupon,
   DashboardData,
+  HqDashboardData,
   DispatchInvitation,
   InventoryTxn,
   LeaveRequest,
@@ -58,6 +59,8 @@ function listQuery(query?: ListQuery): string {
     `pageSize=${query.pageSize}`,
     query.keyword ? `keyword=${encodeURIComponent(query.keyword)}` : "",
     query.buildingId ? `buildingId=${encodeURIComponent(query.buildingId)}` : "",
+    // IKAJSL：hq 跨校区视角的校区筛选
+    query.campusId ? `campus=${encodeURIComponent(query.campusId)}` : "",
   ]
     .filter(Boolean)
     .join("&");
@@ -154,7 +157,11 @@ export async function uploadImage(file: File, folder?: string): Promise<string> 
 }
 
 export const api = {
-  dashboard: () => request<DashboardData>("/admin/dashboard"),
+  /** IKAJSL：hq 不带 campus = 跨校区汇总；带 campus = 单校区明细 */
+  dashboard: (campusId?: string) =>
+    request<DashboardData | HqDashboardData>(
+      `/admin/dashboard${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
+    ),
   products: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
       `/admin/products${withQuery(listQuery(query))}`,
@@ -217,9 +224,11 @@ export const api = {
     request<PagedResponse<Order>>(
       `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
     ),
-  /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量。 */
-  orderStatusCounts: () =>
-    request<Record<string, number>>("/admin/orders/status-counts"),
+  /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
+  orderStatusCounts: (campusId?: string) =>
+    request<Record<string, number>>(
+      `/admin/orders/status-counts${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
+    ),
   orderAction: (id: string, action: string) =>
     request<Order>(`/admin/orders/${id}/actions/${action}`, { method: "POST" }),
   /** 手动改订单状态（IKA0UT）：原因进审计日志。 */
@@ -332,10 +341,42 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  /** 校区列表（IKAJSL）：后端返回全量数组（非分页信封），keyword 过滤。 */
   campuses: (query?: ListQuery) =>
-    request<PagedResponse<Campus>>(
+    request<Campus[]>(
       `/admin/campuses${withQuery(listQuery(query))}`,
     ),
+  /** 校区本体增改（IKAJSL）：仅 hq；新校区接入入口。 */
+  createCampus: (data: {
+    name: string;
+    shortName: string;
+    warehouseName: string;
+    address?: string;
+    deliveryFeeInstant?: number;
+    deliveryFeeScheduled?: number;
+    deliveryThreshold?: number;
+  }) =>
+    request<Campus>("/admin/campuses", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateCampus: (
+    id: string,
+    data: Partial<{
+      name: string;
+      shortName: string;
+      warehouseName: string;
+      address: string;
+      status: "active" | "inactive";
+      deliveryFeeInstant: number;
+      deliveryFeeScheduled: number;
+      deliveryThreshold: number;
+    }>,
+  ) =>
+    request<Campus>(`/admin/campuses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   buildings: (query?: ListQuery) =>
     request<PagedResponse<Building>>(
       `/admin/buildings${withQuery(listQuery(query))}`,
@@ -473,8 +514,11 @@ export const api = {
     request<PagedResponse<AdminUser>>(
       `/admin/users${withQuery(listQuery(query))}`,
     ),
-  /* C 端用户管理（IKAJSW）：统计 + 单用户订单流水 */
-  userStats: () => request<UserStats>("/admin/users/stats"),
+  /* C 端用户管理（IKAJSW）：统计 + 单用户订单流水；hq 可带校区（IKAJSL） */
+  userStats: (campusId?: string) =>
+    request<UserStats>(
+      `/admin/users/stats${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
+    ),
   userOrders: (id: string) =>
     request<UserOrderRow[]>(`/admin/users/${id}/orders`),
   /* 微信群二维码（IKAJSY） */
@@ -500,6 +544,8 @@ export const api = {
     password: string;
     nickname?: string;
     role: string;
+    /** IKAJSL：仅 hq 操作者生效（空串 = 总部账号）。 */
+    campusId?: string;
   }) =>
     request<AdminAccount>("/admin/accounts", {
       method: "POST",

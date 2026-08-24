@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
-import { canSee, clearSession, roleLabel, sessionUser } from "./session";
+import { canSee, clearSession, role, roleLabel, sessionUser } from "./session";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
@@ -69,7 +69,39 @@ async function submitPassword() {
 }
 /* 登录页不走后台外壳：无侧边栏/顶栏，只渲染登录卡片（RouterView 即 Login） */
 const isLogin = computed(() => route.path === "/login");
-const groups = [
+/* IKAJSL：一套系统按身份分流——hq 登录见总部板块（跨校区汇总/官方库/Banner 投放/
+   校区与账号管理），校区角色维持原导航。 */
+const hqGroups = [
+  {
+    label: "总部总览",
+    items: [
+      ["/", "dashboard", "跨校区总览"],
+      ["/orders", "orders", "订单总览"],
+    ],
+  },
+  {
+    label: "总部商品",
+    items: [
+      // IKAJSM：hq 的商品板块是官方商品库（商品源头），校区经导入落本地
+      ["/products", "products", "官方商品库"],
+      ["/categories", "categories", "商品类别"],
+    ],
+  },
+  {
+    label: "总部投放",
+    items: [["/banners", "marketing", "Banner 投放"]],
+  },
+  {
+    label: "校区与账号",
+    items: [
+      ["/campuses", "campus", "校区管理"],
+      ["/accounts", "accounts", "账号管理"],
+      ["/users", "staff", "C端用户"],
+      ["/audit", "audit", "审计日志"],
+    ],
+  },
+];
+const campusGroups = [
   {
     label: "运营中心",
     items: [
@@ -115,9 +147,10 @@ const groups = [
     items: [["/accounts", "accounts", "账号管理"]],
   },
 ];
+const groups = computed(() => (role.value === "hq" ? hqGroups : campusGroups));
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块。 */
 const visibleGroups = computed(() =>
-  groups
+  groups.value
     .map((group) => ({
       ...group,
       items: group.items.filter((item) =>
@@ -194,7 +227,11 @@ watch(
         </button>
         <div class="campus-select">
           <span class="live-dot"></span>
-          <div><small>当前运营校园</small><b>湖北工业大学</b></div>
+          <!-- IKAJSL：hq 是跨校区视角（订单/用户页内另有校区筛选） -->
+          <div v-if="role === 'hq'">
+            <small>总部运营</small><b>全校区视角</b>
+          </div>
+          <div v-else><small>当前运营校园</small><b>湖北工业大学</b></div>
           <strong>⌄</strong>
         </div>
         <div class="header-actions">
@@ -205,7 +242,9 @@ watch(
             placeholder="搜索订单 / SKU / 人员"
             @keyup.enter="search"
           />
+          <!-- IKAJSL：售后是校区板块，hq 无入口 -->
           <button
+            v-if="canSee('after-sales')"
             class="notification"
             aria-label="查看待处理售后"
             @click="router.push('/after-sales')"

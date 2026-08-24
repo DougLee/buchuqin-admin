@@ -19,6 +19,8 @@ export interface ListQuery extends PageQuery {
   keyword?: string;
   /** 楼栋筛选（IKAJSW 用户列表）。 */
   buildingId?: string;
+  /** 校区筛选（IKAJSL：hq 跨校区视角选单校区；校区角色后端忽略）。 */
+  campusId?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
@@ -102,6 +104,8 @@ export interface Order {
   orderNo: string;
   userId: string;
   campusId: string;
+  /** IKAJSL：跨校区列表的校区列（单校区视角冗余）。 */
+  campusName?: string;
   status: string;
   statusText: string;
   createdAt: string;
@@ -152,6 +156,8 @@ export interface Staff {
 export interface Banner {
   id: string;
   campusId: string;
+  /** IKAJSL：总部视角列表的投放范围（空 campusId = 全部校区）。 */
+  campusName?: string;
   title: string;
   subtitle: string;
   badge: string;
@@ -339,6 +345,8 @@ export interface AdminAccount {
   role: string;
   campusId: string;
   createdAt: string;
+  /** IKAJSL：hq 视角附校区名（空 campusId = 总部）。 */
+  campusName?: string;
 }
 /** 账号管理板块表格行：附角色中文文案。 */
 export type AccountRow = AdminAccount & { roleText: string };
@@ -469,6 +477,29 @@ export interface DashboardKpis {
   fulfillmentRate: number;
   exceptions: number;
   onTimeRate: number;
+}
+
+/** hq 跨校区汇总看板（IKAJSL）：每校区今日概览 + 总部合计。 */
+export interface HqDashboardData {
+  campusRows: Array<{
+    campusId: string;
+    name: string;
+    shortName: string;
+    status: string;
+    buildings: number;
+    revenue: number;
+    orders: number;
+    newUsers: number;
+    exceptions: number;
+  }>;
+  kpis: {
+    revenue: number;
+    orders: number;
+    newUsers: number;
+    exceptions: number;
+    campuses: number;
+  };
+  caliber: Record<string, string>;
 }
 
 export interface DashboardData {

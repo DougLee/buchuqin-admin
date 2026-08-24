@@ -2,21 +2,56 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
-import type { DashboardActivity, DashboardData, TrendPoint } from "../types";
+import { role } from "../session";
+import type {
+  DashboardActivity,
+  DashboardData,
+  HqDashboardData,
+  TrendPoint,
+} from "../types";
 import { fenToYuan } from "../utils/money";
 const data = ref<DashboardData>(),
   loading = ref(true),
   loadError = ref("");
 const router = useRouter();
-onMounted(async () => {
+/* IKAJSL：hq 登录先看跨校区汇总，点校区行下钻单校区明细（复用本页模板） */
+const isHq = computed(() => role.value === "hq");
+const hqData = ref<HqDashboardData>();
+const drillCampus = ref("");
+const drillName = ref("");
+async function load() {
+  loading.value = true;
+  loadError.value = "";
   try {
-    data.value = await api.dashboard();
+    if (isHq.value && !drillCampus.value) {
+      data.value = undefined;
+      hqData.value = (await api.dashboard()) as HqDashboardData;
+    } else {
+      hqData.value = undefined;
+      // hq 下钻带 campus 返回单校区 DashboardData（与校区角色同构）
+      data.value = (await api.dashboard(
+        isHq.value ? drillCampus.value : undefined,
+      )) as DashboardData;
+    }
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "加载失败";
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(load);
+function drillInto(campusId: string, name: string) {
+  drillCampus.value = campusId;
+  drillName.value = name;
+  load();
+}
+function backToSummary() {
+  drillCampus.value = "";
+  drillName.value = "";
+  load();
+}
+/** hq 汇总视角：隐藏单校区导出/履约入口（下钻后恢复） */
+const isHqSummary = computed(() => isHq.value && !drillCampus.value);
 
 /* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段（paidAmount 为分，统一转元后绘图） */
 const trend = computed<TrendPoint[]>(() => {
@@ -96,7 +131,7 @@ const ACTIVITY_ROUTES: Record<string, string> = {
   staff: "/staff",
   "wechat-group": "/wechat-groups",
   coupon: "/marketing",
-  banner: "/marketing?tab=banners",
+  banner: "/banners",
   "admin-account": "/accounts",
   campus: "/campuses",
   building: "/campuses",
@@ -166,10 +201,25 @@ function exportReport() {
     <div class="page-head">
       <div>
         <p class="eyebrow">OPERATIONS PULSE · 实时经营</p>
-        <h1>校园运营总览</h1>
-        <p>从交易到寝室交付，掌握每一个履约节点。</p>
+        <h1>{{ isHqSummary ? "跨校区运营总览" : "校园运营总览" }}</h1>
+        <p>{{
+          isHqSummary
+            ? "总部视角：各校区今日经营与异常一览。"
+            : "从交易到寝室交付，掌握每一个履约节点。"
+        }}</p>
       </div>
-      <div class="head-actions">
+      <div v-if="isHqSummary" class="head-actions">
+        <button class="btn primary" @click="router.push('/campuses')">
+          <span>→</span> 管理校区
+        </button>
+      </div>
+      <div v-else-if="drillCampus" class="head-actions">
+        <button class="btn ghost" @click="backToSummary">← 返回汇总</button
+        ><button class="btn primary" @click="router.push('/orders')">
+          <span>→</span> 查看履约任务
+        </button>
+      </div>
+      <div v-else class="head-actions">
         <button class="btn ghost" @click="exportReport">导出日报</button
         ><button class="btn primary" @click="router.push('/orders')">
           <span>→</span> 查看履约任务
@@ -183,6 +233,86 @@ function exportReport() {
       <span>看板加载失败：{{ loadError }}</span>
       <button class="btn ghost" @click="router.go(0)">刷新重试</button>
     </div>
+    <!-- IKAJSL：hq 汇总视角——合计 KPI + 校区对比表（点行下钻单校区明细） -->
+    <template v-else-if="hqData">
+      <section class="kpi-grid">
+        <article class="kpi hero-kpi">
+          <p :title="hqData.caliber.revenue">今日营业额（全校区）</p>
+          <strong
+            ><small>¥</small>{{ fenToYuan(hqData.kpis.revenue, true) }}</strong
+          >
+          <div class="orb"></div>
+        </article>
+        <article class="kpi">
+          <p :title="hqData.caliber.orders">今日订单</p>
+          <strong>{{ hqData.kpis.orders }}<small> 单</small></strong>
+        </article>
+        <article class="kpi">
+          <p :title="hqData.caliber.newUsers">今日新用户</p>
+          <strong>{{ hqData.kpis.newUsers }}<small> 人</small></strong>
+        </article>
+        <article class="kpi alert-kpi">
+          <p :title="hqData.caliber.exceptions">待处理异常</p>
+          <strong>{{ hqData.kpis.exceptions }}<small> 项</small></strong>
+          <button @click="router.push('/orders')">立即处理 →</button>
+        </article>
+        <article class="kpi">
+          <p>在营校区</p>
+          <strong>{{ hqData.kpis.campuses }}<small> 个</small></strong>
+        </article>
+      </section>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <small>CAMPUS OVERVIEW</small>
+            <h2>校区今日概览</h2>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>校区</th>
+              <th>状态</th>
+              <th>楼栋</th>
+              <th>今日营业额</th>
+              <th>今日订单</th>
+              <th>今日新用户</th>
+              <th>异常</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in hqData.campusRows" :key="row.campusId">
+              <td><strong>{{ row.name }}</strong></td>
+              <td>
+                <span class="status" :class="row.status === 'active' ? 'success' : ''">{{
+                  row.status === "active" ? "在营" : "停用"
+                }}</span>
+              </td>
+              <td>{{ row.buildings }}</td>
+              <td>¥{{ fenToYuan(row.revenue, true) }}</td>
+              <td>{{ row.orders }}</td>
+              <td>{{ row.newUsers }}</td>
+              <td>
+                <span
+                  class="status"
+                  :class="row.exceptions ? 'warning' : 'success'"
+                  >{{ row.exceptions }}</span
+                >
+              </td>
+              <td>
+                <button
+                  class="text-btn"
+                  @click="drillInto(row.campusId, row.shortName || row.name)"
+                >
+                  查看校区 →
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
     <template v-else-if="data"
       ><section class="kpi-grid">
         <!-- IKAJSU：一卡一指标。营业额/订单/履约完成率/新用户/异常各占一卡；
