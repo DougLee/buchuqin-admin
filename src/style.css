@@ -96,6 +96,12 @@ a {
 .shell nav {
   padding-top: 10px;
   overflow-y: auto;
+  /* 滚动条隐藏（2026-08-24）：IKAJT1 全展开后菜单超一屏，内嵌滚动条
+     破坏深色侧栏整体感；滚轮/触控板仍可滚，仅不再显形占位 */
+  scrollbar-width: none;
+}
+.shell nav::-webkit-scrollbar {
+  display: none;
 }
 .shell nav section {
   margin-bottom: 6px;
