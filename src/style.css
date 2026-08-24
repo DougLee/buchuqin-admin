@@ -544,7 +544,8 @@ a {
 .skeleton-grid,
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* IKAJSU：一卡一指标后 5 张卡（营业额/订单/履约/新用户/异常） */
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
 }
 .skeleton-grid i {
@@ -680,6 +681,10 @@ a {
 }
 .alert-kpi > strong {
   color: #ba5d21;
+}
+/* IKAJSU：摘掉明细 ul 后按钮独占卡底，与其它卡 delta 行对齐 */
+.alert-kpi button {
+  margin-top: 20px;
 }
 .alert-kpi ul {
   list-style: none;
@@ -1138,6 +1143,12 @@ td {
 @keyframes pulse {
   to {
     background-position: -200%;
+  }
+}
+/* 5 卡版（IKAJSU）断点：1360 以下 3 列（3+2 换行），1100 以下双列 */
+@media (max-width: 1360px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 @media (max-width: 1100px) {

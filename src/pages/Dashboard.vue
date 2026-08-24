@@ -71,6 +71,13 @@ const revenueDelta = computed(() =>
     pctChange(last.value?.paidAmount, prev.value?.paidAmount),
   ),
   ordersDelta = computed(() => pctChange(last.value?.orders, prev.value?.orders));
+/* 新用户环比（IKAJSU）：昨日基数来自 trend 倒数第二天的 newUsers 分桶 */
+const newUsersDelta = computed(() =>
+  pctChange(
+    trend.value[trend.value.length - 1]?.newUsers,
+    trend.value[trend.value.length - 2]?.newUsers,
+  ),
+);
 const miniBars = computed(() => {
   const list = trend.value.map((t) => Number(t.orders) || 0);
   const max = Math.max(1, ...list);
@@ -144,7 +151,7 @@ function exportReport() {
       </div>
     </div>
     <div v-if="loading" class="skeleton-grid">
-      <i v-for="i in 4" :key="i"></i>
+      <i v-for="i in 5" :key="i"></i>
     </div>
     <div v-else-if="loadError" class="load-error">
       <span>看板加载失败：{{ loadError }}</span>
@@ -152,8 +159,10 @@ function exportReport() {
     </div>
     <template v-else-if="data"
       ><section class="kpi-grid">
+        <!-- IKAJSU：一卡一指标。营业额/订单/履约完成率/新用户/异常各占一卡；
+             卡内明细（准时率/待拣货/退款）不堆叠，水位面板与 CSV 日报里有 -->
         <article class="kpi hero-kpi">
-          <p :title="data.caliber.revenue">今日支付金额</p>
+          <p :title="data.caliber.revenue">今日营业额</p>
           <strong
             ><small>¥</small>{{ fenToYuan(data.kpis.revenue, true) }}</strong
           >
@@ -190,25 +199,23 @@ function exportReport() {
           >
             <strong>{{ data.kpis.fulfillmentRate }}%</strong>
           </div>
-          <div class="delta up" :title="data.caliber.onTimeRate">
-            当日达准时率 {{ data.kpis.onTimeRate }}%
+        </article>
+        <article class="kpi">
+          <p :title="data.caliber.newUsers">今日新用户</p>
+          <strong>{{ data.kpis.newUsers }}<small> 人</small></strong>
+          <div
+            class="delta"
+            :class="(newUsersDelta ?? 0) >= 0 ? 'up' : 'down'"
+          >
+            <template v-if="deltaText(newUsersDelta)"
+              >{{ deltaText(newUsersDelta) }}
+              <span>较昨日</span></template
+            ><span v-else>暂无环比数据</span>
           </div>
         </article>
         <article class="kpi alert-kpi">
-          <p>待处理异常</p>
+          <p :title="data.caliber.timeout">待处理异常</p>
           <strong>{{ data.kpis.exceptions }}<small> 项</small></strong>
-          <ul>
-            <li :title="data.caliber.timeout">
-              <span></span>配送异常 {{ data.kpis.exceptions }} 单
-            </li>
-            <li><span></span>待拣货 {{ data.fulfillment.waitingPick }} 单</li>
-            <li :title="data.caliber.newUsers">
-              <span></span>今日新用户 {{ data.kpis.newUsers }} 人
-            </li>
-            <li :title="data.caliber.refundedAmount">
-              <span></span>今日退款 ¥{{ fenToYuan(data.kpis.refundedAmount) }}
-            </li>
-          </ul>
           <button @click="router.push('/orders')">立即处理 →</button>
         </article>
       </section>
@@ -261,7 +268,7 @@ function exportReport() {
                 <span v-for="t in trend" :key="t.date">{{ t.date }}</span>
               </div>
               <p v-if="!trend.length" class="chart-empty">
-                暂无趋势数据，等待接口返回 trend 字段
+                近 7 日暂无交易数据
               </p>
             </div>
           </div>
@@ -356,7 +363,7 @@ function exportReport() {
               </p>
             </div>
             <p v-if="!activities.length" class="empty-cell">
-              暂无实时动态，等待接口返回 activities 字段
+              暂无实时动态
             </p>
           </div>
         </article>
