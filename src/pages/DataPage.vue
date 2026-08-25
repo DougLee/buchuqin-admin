@@ -1836,12 +1836,34 @@ const configs: Record<string, SectionConfig> = {
           tab.statuses.length ? tab.statuses.join(",") : "all",
           campusQuery(query),
         )
-        .then(unwrap);
+        .then((res) => ({
+          // IKB1XM：列表补商品/用户两列（数据本就随行返回，前端派生展示）
+          total: res.total,
+          rows: res.items.map((o) => {
+            const names = (o.items ?? [])
+              .map((line) => line.product?.name ?? "")
+              .filter(Boolean);
+            const user = (o as Order & { user?: { nickname?: string } }).user;
+            return {
+              ...o,
+              // 品名口径与仓库订单列一致：前 2 个 +「等」
+              itemsText: names.length
+                ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
+                : "—",
+              userText:
+                [user?.nickname?.trim(), o.userPhone]
+                  .filter(Boolean)
+                  .join(" ") || "—",
+            };
+          }),
+        }));
     },
     statusTabs: ORDER_STATUS_TABS,
     countsLoader: () => api.orderStatusCounts(campusScope()),
     columns: [
       ["orderNo", "订单编号"],
+      ["itemsText", "商品"],
+      ["userText", "用户"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
       ["estimatedArrival", "时效"],

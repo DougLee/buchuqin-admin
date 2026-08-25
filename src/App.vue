@@ -76,7 +76,7 @@ const hqGroups = [
     label: "总部总览",
     items: [
       ["/", "dashboard", "跨校区总览"],
-      ["/orders", "orders", "订单总览"],
+      ["/orders", "orders", "订单配送"],
     ],
   },
   {
