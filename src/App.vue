@@ -106,7 +106,7 @@ const campusGroups = [
     label: "运营中心",
     items: [
       ["/", "dashboard", "经营总览"],
-      ["/orders", "orders", "订单履约"],
+      ["/orders", "orders", "订单配送"],
       ["/after-sales", "after", "售后退款"],
     ],
   },
