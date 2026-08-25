@@ -997,7 +997,7 @@ function toTxnRow(t: InventoryTxn): AdminRow {
  * 按库位指引拣货复核，确认出库后一步转「待配送」，库存不二次扣（支付已扣）。
  */
 const warehouseOrdersConfig: SectionConfig = {
-  title: "仓库订单",
+  title: "拣货任务",
   eyebrow: "WAREHOUSE OUTBOUND",
   desc: "待出库订单按库位拣货复核，确认出库后转待配送，配送员即可接单。",
   loader: async (query) => {
@@ -3757,7 +3757,7 @@ async function submitStatusDialog() {
           <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」 -->
           <template v-else-if="section === 'orders' && canWriteSection && orderInPicking"
             ><p class="form-hint plain processed-hint">
-              出库操作已归入「仓储中心 · 仓库订单」，本页仅跟踪订单状态。
+              出库操作已归入「仓储中心 · 拣货任务」，本页仅跟踪订单状态。
             </p></template
           >
           <template v-else-if="section === 'orders' && canWriteSection"
