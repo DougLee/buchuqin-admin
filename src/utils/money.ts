@@ -22,7 +22,7 @@ export function fenToYuan(
  * 由调用方先行校验。
  */
 export function yuanToFen(
-  yuan: number | string | boolean | null | undefined,
+  yuan: number | string | boolean | string[] | null | undefined,
 ): number {
   const value =
     typeof yuan === "number" ? yuan : Number(String(yuan ?? "").trim());

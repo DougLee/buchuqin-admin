@@ -97,7 +97,7 @@ const PAGE_SIZES = [10, 20, 50];
 let cameraStream: MediaStream | undefined;
 
 /* ---------- 通用表单抽屉（新建/编辑：优惠券、楼栋、员工、库存操作） ---------- */
-type FormValue = string | number | boolean;
+type FormValue = string | number | boolean | string[];
 interface FieldDef {
   key: string;
   label: string;
@@ -110,7 +110,8 @@ interface FieldDef {
     | "checkbox"
     | "password"
     | "image"
-    | "textarea";
+    | "textarea"
+    | "campus-multi";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
@@ -120,6 +121,8 @@ interface FieldDef {
   optionalLabel?: string;
   /** 条件显隐（IK9U3Y）：按当前表单值判断，如角色=配送员时隐藏绑定楼栋。 */
   visible?: (data: Record<string, FormValue>) => boolean;
+  /** 字段级动态风险提醒（IKB3K1）：返回 undefined 不渲染。 */
+  hint?: (data: Record<string, FormValue>) => string | undefined;
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
   folder?: string;
 }
@@ -481,7 +484,20 @@ function openCouponCreate() {
       done: "优惠券已创建并启用",
       fields: [
         { key: "name", label: "券名称", placeholder: "例如：满 20 减 5 寝室券", wide: true },
-        { key: "amount", label: "面额（元）", type: "number", min: 0.01, step: 0.01 },
+        {
+          key: "amount",
+          label: "面额（元）",
+          type: "number",
+          min: 0.01,
+          step: 0.01,
+          // IKB3K1：面额≥门槛的风险提醒（无门槛券恒触发，重点提示大面额）
+          hint: (d) =>
+            Number(d.amount) >= Number(d.threshold || 0)
+              ? Number(d.threshold) > 0
+                ? "面额≥使用门槛：小额订单可能被减到 0 元以下，这类订单将无法使用此券，请确认配置"
+                : "无门槛券每单立减全额面额，面额过大易产生 0 元订单，请慎重配置"
+              : undefined,
+        },
         { key: "threshold", label: "使用门槛（元）", type: "number", min: 0, step: 0.01 },
         { key: "total", label: "发放总量", type: "number", min: 1 },
         { key: "expiresAt", label: "有效期至", type: "date" },
@@ -702,6 +718,17 @@ function accountRoleOptions() {
     ? [...ACCOUNT_ROLE_OPTIONS, { value: "hq", label: "总部长" }]
     : ACCOUNT_ROLE_OPTIONS;
 }
+/* IKB3KG 方案A：可运营校区多选（FormValue 扩 string[]，模板勾选驱动） */
+function campusMultiValue(key: string): string[] {
+  const value = formData.value[key];
+  return Array.isArray(value) ? value : [];
+}
+function toggleCampusMulti(key: string, campusId: string) {
+  const current = campusMultiValue(key);
+  formData.value[key] = current.includes(campusId)
+    ? current.filter((x) => x !== campusId)
+    : [...current, campusId];
+}
 function openAccountCreate() {
   void ensureCampusOptions().catch(() => {});
   openForm(
@@ -729,6 +756,14 @@ function openAccountCreate() {
             })),
           ],
         },
+        // IKB3KG 方案A：hq 授权多校区（登录后顶栏可切换）；所属校区始终在授权内
+        {
+          key: "campusIds",
+          label: "可运营校区",
+          type: "campus-multi",
+          wide: true,
+          visible: (d) => isHqRole.value && String(d.role || "") !== "hq",
+        },
       ],
       save: async (d) =>
         void (await api.createAccount({
@@ -737,9 +772,19 @@ function openAccountCreate() {
           nickname: String(d.nickname || "").trim(),
           role: String(d.role || ""),
           ...(isHqRole.value ? { campusId: String(d.campusId ?? "") } : {}),
+          ...(isHqRole.value && String(d.role || "") !== "hq"
+            ? { campusIds: campusMultiValue("campusIds") }
+            : {}),
         })),
     },
-    { username: "", password: "", nickname: "", role: "operations", campusId: "" },
+    {
+      username: "",
+      password: "",
+      nickname: "",
+      role: "operations",
+      campusId: "",
+      campusIds: [] as string[],
+    },
   );
 }
 function openAccountEdit(row: AdminRow) {
@@ -754,14 +799,30 @@ function openAccountEdit(row: AdminRow) {
       fields: [
         { key: "nickname", label: "昵称" },
         { key: "role", label: "角色", type: "select", options: accountRoleOptions },
+        // IKB3KG 方案A：hq 重设可运营校区（整体替换授权；至少保留一个）
+        {
+          key: "campusIds",
+          label: "可运营校区",
+          type: "campus-multi",
+          wide: true,
+          visible: () =>
+            isHqRole.value && account.role !== "hq" && !!account.campusId,
+        },
       ],
       save: async (d) =>
         void (await api.updateAccount(account.id, {
           nickname: String(d.nickname || "").trim(),
           role: String(d.role || ""),
+          ...(isHqRole.value && account.role !== "hq" && account.campusId
+            ? { campusIds: campusMultiValue("campusIds") }
+            : {}),
         })),
     },
-    { nickname: account.nickname, role: account.role },
+    {
+      nickname: account.nickname,
+      role: account.role,
+      campusIds: (account.campusIds ?? []).slice(),
+    },
   );
 }
 function openAccountResetPassword(row: AdminRow) {
@@ -1794,23 +1855,47 @@ const ORDER_STATUS_TABS: StatusTab[] = [
     statuses: ["cancelled", "refunded", "exception"],
   },
 ];
+/* IKB3K9：商品状态 Tab（口径含售罄映射——在售但库存 0 = 售罄）。 */
+const PRODUCT_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "on-sale", label: "在售", statuses: ["on-sale"] },
+  { key: "off-sale", label: "已下架", statuses: ["off-sale"] },
+  { key: "sold-out", label: "售罄", statuses: ["sold-out"] },
+];
+/* 官方库 Tab 无售罄（库存归校区，官方行不参与售罄映射）。 */
+const HQ_PRODUCT_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "on-sale", label: "在售", statuses: ["on-sale"] },
+  { key: "off-sale", label: "已下架", statuses: ["off-sale"] },
+];
 /* IKAJSM：hq 商品板块 = 官方商品库（源头档案）——无库存/库位列（库存归校区），
    建档/改档经同一 products 端点（后端按角色落 campus-official）。 */
 const hqProductsConfig: SectionConfig = {
   title: "官方商品库",
   eyebrow: "OFFICIAL CATALOG",
   desc: "总部维护统一商品档案，校区从这里导入落地；同码可与校区商品并存。",
-  loader: (query) =>
-    api.products(query).then((res) => ({
-      rows: res.items.map((p) => ({
-        ...p,
-        locationText:
-          [p.location, (p as Product & { locationCode?: string }).locationCode]
-            .filter(Boolean)
-            .join("-") || "",
-      })),
-      total: res.total,
-    })),
+  loader: (query) => {
+    const tab =
+      HQ_PRODUCT_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
+      HQ_PRODUCT_STATUS_TABS[0];
+    return api
+      .products({
+        ...query,
+        status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+      })
+      .then((res) => ({
+        rows: res.items.map((p) => ({
+          ...p,
+          locationText:
+            [p.location, (p as Product & { locationCode?: string }).locationCode]
+              .filter(Boolean)
+              .join("-") || "",
+        })),
+        total: res.total,
+      }));
+  },
+  statusTabs: HQ_PRODUCT_STATUS_TABS,
+  countsLoader: () => api.productStatusCounts(),
   columns: [
     ["skuNo", "SKU"],
     ["name", "商品"],
@@ -1875,18 +1960,30 @@ const configs: Record<string, SectionConfig> = {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
     desc: "维护商品资料、校园售价与销售状态。",
-    loader: (query) =>
-      api.products(query).then((res) => ({
-        rows: res.items.map((p) => ({
-          ...p,
-          // 库位展示（IKA0VG）：区域-编号拼接，空 = 未配置
-          locationText:
-            [p.location, (p as Product & { locationCode?: string }).locationCode]
-              .filter(Boolean)
-              .join("-") || "",
-        })),
-        total: res.total,
-      })),
+    loader: (query) => {
+      // IKB3K9：状态 Tab 服务端过滤（同订单页 Tab 机制）
+      const tab =
+        PRODUCT_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
+        PRODUCT_STATUS_TABS[0];
+      return api
+        .products({
+          ...query,
+          status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+        })
+        .then((res) => ({
+          rows: res.items.map((p) => ({
+            ...p,
+            // 库位展示（IKA0VG）：区域-编号拼接，空 = 未配置
+            locationText:
+              [p.location, (p as Product & { locationCode?: string }).locationCode]
+                .filter(Boolean)
+                .join("-") || "",
+          })),
+          total: res.total,
+        }));
+    },
+    statusTabs: PRODUCT_STATUS_TABS,
+    countsLoader: () => api.productStatusCounts(),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -2495,7 +2592,13 @@ watch(
   { immediate: true },
 );
 /* 关键词搜索：防抖后随请求发送（服务端分页下每次输入都要重新取数） */
+let suppressKeywordLoad = false;
 watch(keyword, () => {
+  // IKB3KE：切板块清空搜索词时不触发防抖重载（由板块切换统一重载一次）
+  if (suppressKeywordLoad) {
+    suppressKeywordLoad = false;
+    return;
+  }
   if (keywordTimer.value) clearTimeout(keywordTimer.value);
   keywordTimer.value = setTimeout(resetAndLoad, 350);
 });
@@ -2506,6 +2609,11 @@ watch(
     selected.value = undefined;
     dispTab.value = "leaves";
     mktTab.value = "coupons";
+    // IKB3KE：搜索词跨板块串扰——切板块清空，各板块条件相互独立
+    if (keyword.value) {
+      suppressKeywordLoad = true;
+      keyword.value = "";
+    }
     // IKAJSP：订单 Tab key 不是通用状态值，切板块必须归位 all（值变时由
     // statusFilter watcher 接管重载，避免双请求）
     resetStatusFilterAndLoad();
@@ -2545,6 +2653,17 @@ const MONEY_KEYS = [
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
+  if (key === "status" && section.value === "products")
+    // IKB3K9：商品状态列中文化（在售/已下架/售罄）
+    return (
+      (
+        {
+          "on-sale": "在售",
+          "off-sale": "已下架",
+          "sold-out": "售罄",
+        } as Record<string, string>
+      )[String(v)] ?? String(v ?? "—")
+    );
   if (key === "categoryId")
     // 类别字典 id → 名称（商品列表/抽屉展示）
     return (
@@ -2751,31 +2870,35 @@ async function exportData() {
     exporting.value = false;
   }
 }
+/** 手动新建商品表单（IKB3K9 与官方库导入并存）：hq=官方库建档，校区=本校区自建。 */
+function openProductCreate() {
+  creating.value = true;
+  scanError.value = "";
+  productForm.value = {
+    barcode: "",
+    name: "",
+    subtitle: "",
+    categoryId: "snack",
+    price: 0,
+    originalPrice: 0,
+    stock: 0,
+    tag: "新品",
+    image: "",
+    location: "",
+    locationCode: "",
+    images: [],
+    weight: 0,
+    description: "",
+  };
+}
 function openCreate() {
   if (section.value === "products") {
-    // IKAJSM：校区禁自建——入口换成官方库导入弹窗；hq 保留扫码建档
+    // IKB3K9：校区双入口——主按钮官方库导入，次按钮手动自建（openProductCreate）
     if (!isHqRole.value) {
       openImportModal();
       return;
     }
-    creating.value = true;
-    scanError.value = "";
-    productForm.value = {
-      barcode: "",
-      name: "",
-      subtitle: "",
-      categoryId: "snack",
-      price: 0,
-      originalPrice: 0,
-      stock: 0,
-      tag: "新品",
-      image: "",
-      location: "",
-      locationCode: "",
-      images: [],
-      weight: 0,
-      description: "",
-    };
+    openProductCreate();
   } else if (section.value === "categories") openCategoryCreate();
   else if (section.value === "locations") openLocationCreate();
   else if (section.value === "marketing") {
@@ -3113,7 +3236,6 @@ async function submitStatusDialog() {
   <div class="workspace">
     <div class="page-head">
       <div>
-        <p class="eyebrow">{{ config.eyebrow }}</p>
         <h1>{{ config.title }}</h1>
         <p>{{ config.desc }}</p>
       </div>
@@ -3128,6 +3250,14 @@ async function submitStatusDialog() {
         </button>
         <button v-if="canCreate" class="btn primary" @click="openCreate">
           {{ createLabel || "＋ 新建记录" }}
+        </button>
+        <!-- IKB3K9：校区商品双入口——手动自建与官方库导入并存 -->
+        <button
+          v-if="section === 'products' && !isHqRole && canWriteSection"
+          class="btn ghost"
+          @click="openProductCreate"
+        >
+          ＋ 手动新建
         </button>
       </div>
     </div>
@@ -3293,10 +3423,10 @@ async function submitStatusDialog() {
                     class="status"
                     :class="{
                       success: String(display(row, col[0])).match(
-                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付|已接受|已通过/,
+                        /在线|完成|active|on-sale|confirmed|approved|启用|已确认|已支付|已接受|已通过|在售/,
                       ),
                       warning: String(display(row, col[0])).match(
-                        /待|pending|paused|已暂停|复核/,
+                        /待|pending|paused|已暂停|复核|已下架|售罄/,
                       ),
                     }"
                     >{{ display(row, col[0]) }}</span
@@ -3414,7 +3544,6 @@ async function submitStatusDialog() {
       <aside class="drawer" :class="{ 'product-create': section === 'after-sales' }">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">RECORD DETAIL</p>
             <h2>记录详情与操作</h2>
           </div>
           <button aria-label="关闭" @click="selected = undefined">×</button>
@@ -3909,7 +4038,6 @@ async function submitStatusDialog() {
       <aside class="drawer product-create">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">{{ formMeta?.eyebrow }}</p>
             <h2>{{ formMeta?.title }}</h2>
           </div>
           <button aria-label="关闭" @click="formOpen = false">×</button>
@@ -3961,6 +4089,22 @@ async function submitStatusDialog() {
                 "
               ></textarea>
             </div>
+            <!-- 可运营校区多选（IKB3KG 方案A）：账号授权范围勾选 -->
+            <div
+              v-else-if="field.type === 'campus-multi'"
+              :class="{ wide: field.wide }"
+            >
+              <span class="field-label">{{ field.label }}</span>
+              <div class="campus-checks">
+                <label v-for="c in campusOptionsData" :key="c.id">
+                  <input
+                    type="checkbox"
+                    :checked="campusMultiValue(field.key).includes(c.id)"
+                    @change="toggleCampusMulti(field.key, c.id)"
+                  />{{ c.shortName || c.name }}
+                </label>
+              </div>
+            </div>
             <label v-else :class="{ wide: field.wide }"
               >{{ field.label
               }}<input
@@ -3969,7 +4113,12 @@ async function submitStatusDialog() {
                 :min="field.min"
                 :step="field.step"
                 :placeholder="field.placeholder"
-            /></label>
+            />
+              <!-- IKB3K1：字段级动态风险提醒（券面额≥门槛等） -->
+              <p v-if="field.hint?.(formData)" class="form-hint">
+                {{ field.hint(formData) }}
+              </p></label
+            >
           </template>
         </div>
         <p v-if="formError" class="form-hint">{{ formError }}</p>
@@ -3986,7 +4135,6 @@ async function submitStatusDialog() {
       <aside class="drawer product-create">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">ROOM MANAGEMENT</p>
             <h2>寝室管理 · {{ roomsBuilding?.name }}</h2>
           </div>
           <button aria-label="关闭" @click="roomsOpen = false">×</button>
@@ -4025,7 +4173,6 @@ async function submitStatusDialog() {
       <aside class="drawer product-create">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">TARGETED ISSUE</p>
             <h2>定向发放 · {{ issueCouponRow?.name }}</h2>
           </div>
           <button aria-label="关闭" @click="issueOpen = false">×</button>
@@ -4079,7 +4226,6 @@ async function submitStatusDialog() {
       <aside class="drawer status-dialog">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">MANUAL STATUS</p>
             <h2>修改订单状态</h2>
           </div>
           <button aria-label="关闭" @click="statusDialogOpen = false">×</button>
@@ -4140,7 +4286,6 @@ async function submitStatusDialog() {
         <div class="drawer-head">
           <div>
             <!-- IKAJSM：hq 视角是官方库建档；校区入口已换官方库导入弹窗 -->
-            <p class="eyebrow">{{ isHqRole ? "OFFICIAL CATALOG" : "BARCODE ENTRY" }}</p>
             <h2>{{ isHqRole ? "官方库建档" : "扫码录入 SKU" }}</h2>
           </div>
           <button aria-label="关闭" @click="closeCreate">×</button>
@@ -4264,7 +4409,6 @@ async function submitStatusDialog() {
       <aside class="drawer import-drawer">
         <div class="drawer-head">
           <div>
-            <p class="eyebrow">OFFICIAL IMPORT</p>
             <h2>从官方库导入</h2>
           </div>
           <button aria-label="关闭" @click="importOpen = false">×</button>

@@ -21,6 +21,8 @@ export interface ListQuery extends PageQuery {
   buildingId?: string;
   /** 校区筛选（IKAJSL：hq 跨校区视角选单校区；校区角色后端忽略）。 */
   campusId?: string;
+  /** 逗号状态过滤（IKB3K9 商品状态 Tab；订单走独立 status 路径参数）。 */
+  status?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
@@ -351,6 +353,8 @@ export interface AdminAccount {
   createdAt: string;
   /** IKAJSL：hq 视角附校区名（空 campusId = 总部）。 */
   campusName?: string;
+  /** IKB3KG 方案A：可运营校区全集（campusId=当前登录校区）。 */
+  campusIds?: string[];
 }
 /** 账号管理板块表格行：附角色中文文案。 */
 export type AccountRow = AdminAccount & { roleText: string };

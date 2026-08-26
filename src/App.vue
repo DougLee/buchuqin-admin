@@ -3,7 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
-import { canSee, clearSession, role, roleLabel, sessionUser } from "./session";
+import {
+  applySession,
+  canSee,
+  clearSession,
+  role,
+  roleLabel,
+  sessionUser,
+} from "./session";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
@@ -182,6 +189,38 @@ watch(
       expandedGroups.value = [...expandedGroups.value, label];
   },
 );
+/* IKB3KG 方案A：campus 侧顶栏校区切换（授权范围内自选，切换换发 token 整页刷新）。
+ *   单校区账号显示静态校名（去掉写死的"湖北工业大学"）；hq 保持跨校区视角。 */
+const campusChoices = ref<
+  { id: string; name: string; shortName: string; current: boolean }[]
+>([]);
+const campusName = ref("湖北工业大学");
+const campusSwitching = ref(false);
+onMounted(async () => {
+  if (!role.value || role.value === "hq") return;
+  try {
+    campusChoices.value = await api.adminCampuses();
+    const hit =
+      campusChoices.value.find((c) => c.current) ??
+      campusChoices.value.find((c) => c.id === sessionUser.value?.campusId);
+    if (hit) campusName.value = hit.shortName || hit.name;
+  } catch {
+    /* 取不到授权列表保持静态展示，不阻塞后台 */
+  }
+});
+async function switchCampus(event: Event) {
+  const campusId = (event.target as HTMLSelectElement).value;
+  if (!campusId || campusId === sessionUser.value?.campusId) return;
+  campusSwitching.value = true;
+  try {
+    const result = await api.switchAdminCampus(campusId);
+    applySession(result.user);
+    window.location.reload();
+  } catch (error) {
+    campusSwitching.value = false;
+    alert(error instanceof Error ? error.message : "校区切换失败");
+  }
+}
 </script>
 <template>
   <RouterView v-if="isLogin" />
@@ -189,7 +228,7 @@ watch(
     <aside>
       <div class="brand">
         <div class="brand-mark"><span></span></div>
-        <div class="brand-copy"><b>不出寝</b><small>OPERATIONS</small></div>
+        <div class="brand-copy"><b>不出寝食社</b></div>
       </div>
       <nav>
         <section v-for="group in visibleGroups" :key="group.label">
@@ -231,8 +270,26 @@ watch(
           <div v-if="role === 'hq'">
             <small>总部运营</small><b>全校区视角</b>
           </div>
-          <div v-else><small>当前运营校园</small><b>湖北工业大学</b></div>
-          <strong>⌄</strong>
+          <!-- IKB3KG 方案A：授权多校区出现下拉，单校区显示静态校名 -->
+          <div v-else-if="campusChoices.length > 1" class="campus-picker">
+            <small>当前运营校园</small>
+            <select
+              :value="sessionUser?.campusId"
+              :disabled="campusSwitching"
+              aria-label="切换运营校区"
+              @change="switchCampus"
+            >
+              <option
+                v-for="c in campusChoices"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.shortName || c.name }}
+              </option>
+            </select>
+          </div>
+          <div v-else><small>当前运营校园</small><b>{{ campusName }}</b></div>
+          <strong v-if="role !== 'hq' && campusChoices.length > 1">⌄</strong>
         </div>
         <div class="header-actions">
           <input

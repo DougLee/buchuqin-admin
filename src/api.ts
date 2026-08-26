@@ -61,6 +61,8 @@ function listQuery(query?: ListQuery): string {
     query.buildingId ? `buildingId=${encodeURIComponent(query.buildingId)}` : "",
     // IKAJSL：hq 跨校区视角的校区筛选
     query.campusId ? `campus=${encodeURIComponent(query.campusId)}` : "",
+    // IKB3K9：商品状态 Tab 的服务端过滤
+    query.status ? `status=${encodeURIComponent(query.status)}` : "",
   ]
     .filter(Boolean)
     .join("&");
@@ -166,6 +168,9 @@ export const api = {
     request<PagedResponse<Product>>(
       `/admin/products${withQuery(listQuery(query))}`,
     ),
+  /** 商品状态计数（IKB3K9 列表 Tab 角标）：口径同列表（含售罄映射）。 */
+  productStatusCounts: () =>
+    request<Record<string, number>>("/admin/products/status-counts"),
   /** 官方库浏览（IKAJSO 导入弹窗）：只读官方库行，校区角色可查。 */
   officialProducts: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
@@ -566,6 +571,8 @@ export const api = {
     role: string;
     /** IKAJSL：仅 hq 操作者生效（空串 = 总部账号）。 */
     campusId?: string;
+    /** IKB3KG 方案A：可运营校区全集（仅 hq 生效；缺省=[campusId]）。 */
+    campusIds?: string[];
   }) =>
     request<AdminAccount>("/admin/accounts", {
       method: "POST",
@@ -573,7 +580,13 @@ export const api = {
     }),
   updateAccount: (
     id: string,
-    data: { nickname?: string; role?: string; password?: string },
+    data: {
+      nickname?: string;
+      role?: string;
+      password?: string;
+      /** IKB3KG 方案A：整体替换可运营校区（仅 hq 生效）。 */
+      campusIds?: string[];
+    },
   ) =>
     request<AdminAccount>(`/admin/accounts/${id}`, {
       method: "PATCH",
@@ -587,4 +600,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ oldPassword, newPassword }),
     }),
+  /** IKB3KG 方案A：我的可运营校区（>1 时顶栏出现切换下拉）。 */
+  adminCampuses: () =>
+    request<
+      { id: string; name: string; shortName: string; current: boolean }[]
+    >("/auth/admin/campuses"),
+  /** IKB3KG 方案A：切换运营校区（授权范围内），换发 token 后整页刷新。 */
+  switchAdminCampus: async (campusId: string) => {
+    const result = await request<LoginResult>("/auth/admin/campuses/select", {
+      method: "POST",
+      body: JSON.stringify({ campusId }),
+    });
+    token = result.token;
+    localStorage.setItem("adminToken", token);
+    return result;
+  },
 };

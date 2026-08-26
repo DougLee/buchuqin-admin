@@ -306,6 +306,23 @@ a {
 .campus-select strong {
   margin-left: 10px;
 }
+/* IKB3KG 方案A：多校区授权账号的顶栏切换下拉 */
+.campus-select select {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #1d2b24);
+  background: transparent;
+  border: 1px solid #e2e8e2;
+  border-radius: 8px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.campus-select select:focus-visible {
+  outline: 2px solid var(--brand, #2f7d4f);
+  outline-offset: 1px;
+}
 .live-dot {
   width: 8px;
   height: 8px;
@@ -838,8 +855,15 @@ a {
   color: #829087;
   font-size: 9px;
 }
+/* IKB3KE：水位口径说明（超时横向指标不可加总） */
+.flow-caliber {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #667069;
+}
 .flow-list {
-  margin-top: 20px;
+  margin-top: 14px;
 }
 .flow-row {
   display: grid;

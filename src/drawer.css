@@ -343,6 +343,26 @@
   accent-color: var(--brand);
   margin: 8px 0 0;
 }
+/* IKB3KG 方案A：账号可运营校区多选（复选卡片横排） */
+.campus-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 6px;
+}
+.campus-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #153628;
+  cursor: pointer;
+}
+.campus-checks input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
 .inv-tabs button {
   height: 34px;
   padding: 0 14px;

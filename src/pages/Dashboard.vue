@@ -159,14 +159,16 @@ function deltaText(value: number | null) {
   if (value === null || !Number.isFinite(value)) return null;
   return `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`;
 }
+/* IKB3KE：水位命名与订单配送 Tab/状态机文案统一（同桶同名），
+   超时是横向监控指标非订单状态。 */
 const FLOW_LABELS: Record<string, string> = {
-  waitingPick: "待拣货",
-  waitingFirstMile: "骑手待接单",
-  firstMile: "一级配送",
+  waitingPick: "待出库",
+  waitingFirstMile: "待配送员接单",
+  firstMile: "骑手配送中",
   waitingHandover: "楼下待交接",
-  lastMile: "二级配送",
-  delivered: "已送达待确认",
-  timeout: "超时异常",
+  lastMile: "楼长送往寝室",
+  delivered: "已送达",
+  timeout: "履约超时",
 };
 function flowLabel(key: string): string {
   return FLOW_LABELS[key] ?? key;
@@ -200,7 +202,7 @@ function exportReport() {
   <div class="workspace">
     <div class="page-head">
       <div>
-        <p class="eyebrow">OPERATIONS PULSE · 实时经营</p>
+        <p class="eyebrow">实时经营</p>
         <h1>{{ isHqSummary ? "跨校区运营总览" : "校园运营总览" }}</h1>
         <p>{{
           isHqSummary
@@ -264,7 +266,6 @@ function exportReport() {
       <section class="panel">
         <div class="panel-head">
           <div>
-            <small>CAMPUS OVERVIEW</small>
             <h2>校区今日概览</h2>
           </div>
         </div>
@@ -379,7 +380,6 @@ function exportReport() {
         <article class="panel chart-panel">
           <div class="panel-head">
             <div>
-              <small>REVENUE TREND</small>
               <h2>近 7 日交易趋势</h2>
             </div>
             <span class="status success">交易金额</span>
@@ -432,13 +432,18 @@ function exportReport() {
         <article class="panel flow-panel">
           <div class="panel-head">
             <div>
-              <small>FULFILLMENT FLOW</small>
-              <h2>实时履约水位</h2>
+              <h2>实时订单统计</h2>
             </div>
             <button class="text-btn" @click="router.push('/orders')">
-              查看看板 →
+              查看详情 →
             </button>
           </div>
+          <!-- IKB3KE：口径说明——各节点为全量在途单（与订单配送 Tab 同口径），
+               超时是横向指标有重叠，避免被当成状态加总 -->
+          <p class="flow-caliber">
+            各节点为当前在途订单数（与「订单配送」列表同口径，按状态分桶）；
+            履约超时为支付后超 60 分钟未送达的横向监控，与其他节点有重叠，不可加总。
+          </p>
           <div class="flow-list">
             <template v-for="(value, key, index) in data.fulfillment" :key="key">
               <!-- IKAJSS：行可点下钻（作业人数/平均停留；超时节点列单号直达） -->
@@ -498,7 +503,6 @@ function exportReport() {
         <article class="panel">
           <div class="panel-head">
             <div>
-              <small>BUILDING RANK</small>
               <h2>楼栋经营排行</h2>
             </div>
             <button class="text-btn" @click="router.push('/orders')">
@@ -540,7 +544,6 @@ function exportReport() {
         <article class="panel activity">
           <div class="panel-head">
             <div>
-              <small>LIVE SIGNAL</small>
               <h2>实时动态</h2>
             </div>
             <span class="live"><i></i> LIVE</span>
