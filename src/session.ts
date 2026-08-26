@@ -69,12 +69,14 @@ export const PERMISSIONS: Record<
     writable: ["products", "categories", "banners", "campuses", "accounts"],
   },
   admin: {
-    sections: [...ALL_SECTIONS, "dispatch", "rules", "accounts"],
+    // 2026-08-26 道哥决策：admin 平台超管全菜单开放（含总部投放 Banner）
+    sections: [...ALL_SECTIONS, "dispatch", "rules", "accounts", "banners"],
     writable: [
       ...ALL_SECTIONS.filter((s) => s !== "after-sales"),
       "dispatch",
       "rules",
       "accounts",
+      "banners",
     ],
   },
   // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。

@@ -154,7 +154,22 @@ const campusGroups = [
     items: [["/accounts", "accounts", "账号管理"]],
   },
 ];
-const groups = computed(() => (role.value === "hq" ? hqGroups : campusGroups));
+/* Banner 投放（总部投放板块）：2026-08-26 道哥决策，平台超管 admin 与 hq 同见 */
+const hqBannerGroup = {
+  label: "总部投放",
+  items: [["/banners", "marketing", "Banner 投放"]],
+};
+const groups = computed(() => {
+  if (role.value === "hq") return hqGroups;
+  // admin 插在组织营销之后，与 hq 的总部投放同入口
+  if (role.value === "admin")
+    return [
+      ...campusGroups.slice(0, 3),
+      hqBannerGroup,
+      ...campusGroups.slice(3),
+    ];
+  return campusGroups;
+});
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块。 */
 const visibleGroups = computed(() =>
   groups.value

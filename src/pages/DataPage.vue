@@ -2349,10 +2349,12 @@ async function load() {
       .then((s) => (userStatsData.value = s))
       .catch(() => {});
   }
-  // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/Banner/校区管理）
+  // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
+  // Banner 投放表单的投放校区下拉对 admin 同样需要（2026-08-26 全菜单开放）
   if (
-    isHqRole.value &&
-    ["orders", "users", "audit", "banners", "campuses"].includes(section.value)
+    (isHqRole.value &&
+      ["orders", "users", "audit", "campuses"].includes(section.value)) ||
+    section.value === "banners"
   )
     void ensureCampusOptions().catch(() => {});
   try {
