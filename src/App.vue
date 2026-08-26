@@ -76,8 +76,17 @@ async function submitPassword() {
 }
 /* 登录页不走后台外壳：无侧边栏/顶栏，只渲染登录卡片（RouterView 即 Login） */
 const isLogin = computed(() => route.path === "/login");
-/* IKAJSL：一套系统按身份分流——hq 登录见总部板块（跨校区汇总/官方库/Banner 投放/
+/* IKAJSL：一套系统按身份分流——hq 登录见总部板块（跨校区汇总/官方库/营销活动/
    校区与账号管理），校区角色维持原导航。 */
+/* IKB5PB：一级「营销活动」= Banner 配置 + 优惠券配置 + 限时秒杀 + 支付广告位；
+ *  权限矩阵不变——banners 类归 hq/admin，marketing 类（券/秒杀）归校区角色，
+ *  visibleGroups 按 canSee 逐项过滤后各角色只看到自己的子集。 */
+const MARKETING_ITEMS: [string, string, string][] = [
+  ["/banners", "marketing", "Banner 配置"],
+  ["/coupons", "marketing", "优惠券配置"],
+  ["/promotions", "marketing", "限时秒杀"],
+  ["/pay-ads", "marketing", "支付广告位"],
+];
 const hqGroups = [
   {
     label: "总部总览",
@@ -94,10 +103,8 @@ const hqGroups = [
       ["/categories", "categories", "商品类别"],
     ],
   },
-  {
-    label: "总部投放",
-    items: [["/banners", "marketing", "Banner 投放"]],
-  },
+  // hq 无校区营销权限（券/秒杀归校区），营销活动组只剩 Banner 两项
+  { label: "营销活动", items: [MARKETING_ITEMS[0], MARKETING_ITEMS[3]] },
   {
     label: "校区与账号",
     items: [
@@ -129,15 +136,20 @@ const campusGroups = [
       ["/locations", "locations", "库位管理"],
     ],
   },
+  // IKB5PB：营销拆出独立一级组（见 MARKETING_ITEMS）
   {
-    label: "组织营销",
+    label: "营销活动",
+    items: MARKETING_ITEMS,
+  },
+  {
+    // IKB5PB：组织营销 → 组织管理（营销项已迁出）
+    label: "组织管理",
     items: [
       ["/staff", "staff", "履约人员"],
       ["/campuses", "campus", "校园组织"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
       ["/wechat-groups", "campus", "微信群码"],
-      ["/marketing", "marketing", "营销活动"],
       ["/dispatch", "dispatch", "调配与请假"],
     ],
   },
@@ -154,23 +166,10 @@ const campusGroups = [
     items: [["/accounts", "accounts", "账号管理"]],
   },
 ];
-/* Banner 投放（总部投放板块）：2026-08-26 道哥决策，平台超管 admin 与 hq 同见 */
-const hqBannerGroup = {
-  label: "总部投放",
-  items: [["/banners", "marketing", "Banner 投放"]],
-};
-const groups = computed(() => {
-  if (role.value === "hq") return hqGroups;
-  // admin 插在组织营销之后，与 hq 的总部投放同入口
-  if (role.value === "admin")
-    return [
-      ...campusGroups.slice(0, 3),
-      hqBannerGroup,
-      ...campusGroups.slice(3),
-    ];
-  return campusGroups;
-});
-/** 按 PRD §2.2 权限矩阵过滤侧边栏板块。 */
+const groups = computed(() =>
+  role.value === "hq" ? hqGroups : campusGroups,
+);
+/** 按 PRD §2.2 权限矩阵过滤侧边栏板块（含 IKB5PB 路由别名映射，见 session.ts）。 */
 const visibleGroups = computed(() =>
   groups.value
     .map((group) => ({

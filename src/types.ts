@@ -75,6 +75,8 @@ export interface Product {
   images?: string[] | null;
   /** 库位（IK9U40）：区域代码+序号（如 冷A-03），拣货指引。 */
   location?: string;
+  /** 库位编号（IKA0VG）：与区域拼接展示（零食区-001）；订单回查实时库位用。 */
+  locationCode?: string;
   weight: number;
   /** 商品介绍（IKAHAU）：纯文本 ≤2000 字，空串/null = 详情页不渲染。 */
   description?: string | null;
@@ -429,6 +431,8 @@ export interface AfterSaleRow {
   description: string;
   images: string[];
   status: string;
+  /** IKB5PA：状态中文（待处理/已取消），列表状态列用。 */
+  statusText?: string;
   createdAt: string;
   order?: Order;
 }

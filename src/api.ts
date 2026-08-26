@@ -284,8 +284,14 @@ export const api = {
     request<{ id: string }>(`/admin/locations/${id}`, {
       method: "DELETE",
     }),
-  staff: (query?: ListQuery) =>
-    request<PagedResponse<Staff>>(`/admin/staff${withQuery(listQuery(query))}`),
+  /** IKB5PA：status 过滤（online/paused/offline，状态 Tab 用）。 */
+  staff: (query?: ListQuery, status?: string) =>
+    request<PagedResponse<Staff>>(
+      `/admin/staff${withQuery(
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
+    ),
   createStaff: (data: Record<string, unknown>) =>
     request<Staff>("/admin/staff", {
       method: "POST",
@@ -298,14 +304,20 @@ export const api = {
     }),
   deleteStaff: (id: string) =>
     request<Staff>(`/admin/staff/${id}`, { method: "DELETE" }),
-  afterSales: (query?: ListQuery) =>
+  /** IKB5PA：status 过滤（pending/cancelled，状态 Tab 用）。 */
+  afterSales: (query?: ListQuery, status?: string) =>
     request<PagedResponse<AfterSale>>(
-      `/admin/after-sales${withQuery(listQuery(query))}`,
+      `/admin/after-sales${withQuery(
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
     ),
-  settlements: (month?: string, query?: ListQuery) =>
+  /** IKB5PA：status 过滤（pending-review/confirmed/paid，状态 Tab 用）。 */
+  settlements: (month?: string, query?: ListQuery, status?: string) =>
     request<PagedResponse<Settlement>>(
       `/admin/settlements${withQuery(
         month ? `month=${month}` : "",
+        status ? `status=${status}` : "",
         listQuery(query),
       )}`,
     ),
@@ -315,13 +327,21 @@ export const api = {
     }),
   paySettlement: (id: string) =>
     request<Settlement>(`/admin/settlements/${id}/pay`, { method: "POST" }),
-  leaveRequests: (query?: ListQuery) =>
+  /** IKB5PA：status 过滤（pending/approved/rejected/cancelled，状态 Tab 用）。 */
+  leaveRequests: (query?: ListQuery, status?: string) =>
     request<PagedResponse<LeaveRequest>>(
-      `/admin/leave-requests${withQuery(listQuery(query))}`,
+      `/admin/leave-requests${withQuery(
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
     ),
-  dispatchInvitations: (query?: ListQuery) =>
+  /** IKB5PA：status 过滤（invited/accepted/rejected/cancelled，状态 Tab 用）。 */
+  dispatchInvitations: (query?: ListQuery, status?: string) =>
     request<PagedResponse<DispatchInvitation>>(
-      `/admin/dispatch-invitations${withQuery(listQuery(query))}`,
+      `/admin/dispatch-invitations${withQuery(
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
     ),
   createDispatchInvitation: (data: {
     targetStaffId: string;
@@ -448,9 +468,13 @@ export const api = {
     request<Room>(`/admin/buildings/${buildingId}/rooms/${roomId}`, {
       method: "DELETE",
     }),
-  coupons: (query?: ListQuery) =>
+  /** IKB5PA：status 过滤（active/paused，状态 Tab 用）。 */
+  coupons: (query?: ListQuery, status?: string) =>
     request<PagedResponse<Coupon>>(
-      `/admin/coupons${withQuery(listQuery(query))}`,
+      `/admin/coupons${withQuery(
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
     ),
   /** amount / threshold 为整数分（表单输元，经 yuanToFen 转换后提交）。 */
   createCoupon: (data: {
@@ -474,10 +498,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userIds }),
     }),
-  /** 首页 Banner（IK9RX2）：营销活动板块内 tab 管理。 */
-  banners: (query?: ListQuery) =>
+  /** 首页 Banner（IK9RX2）：营销活动板块内 tab 管理。
+   *  IKB5PB：placement 过滤（支付广告位菜单只看 pay-success）；
+   *  IKB5PA：status 过滤（启用/隐藏 Tab）。 */
+  banners: (query?: ListQuery, placement?: string, status?: string) =>
     request<PagedResponse<Banner>>(
-      `/admin/banners${withQuery(listQuery(query))}`,
+      `/admin/banners${withQuery(
+        placement ? `placement=${placement}` : "",
+        status ? `status=${status}` : "",
+        listQuery(query),
+      )}`,
     ),
   createBanner: (data: Record<string, unknown>) =>
     request<Banner>("/admin/banners", {
@@ -492,9 +522,13 @@ export const api = {
   deleteBanner: (id: string) =>
     request<Banner>(`/admin/banners/${id}`, { method: "DELETE" }),
   /** 促销活动（ADR-0006 / IKAHFF）：price 为促销价（分），无删除（留审计）。 */
-  promotions: (query?: ListQuery) =>
+  /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗判定）。 */
+  promotions: (query?: ListQuery, state?: string) =>
     request<PagedResponse<Promotion>>(
-      `/admin/promotions${withQuery(listQuery(query))}`,
+      `/admin/promotions${withQuery(
+        state ? `state=${state}` : "",
+        listQuery(query),
+      )}`,
     ),
   createPromotion: (data: {
     productId: string;

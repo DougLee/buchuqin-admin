@@ -150,13 +150,23 @@ export function isBackendRole(value: string): value is AdminRole {
   );
 }
 
+/** IKB5PB：营销拆分路由的权限映射——/coupons//promotions 归 marketing，
+ *  /pay-ads 归 banners；权限矩阵本身不变，只是路由别名。 */
+const SECTION_ALIAS: Record<string, string> = {
+  coupons: "marketing",
+  promotions: "marketing",
+  "pay-ads": "banners",
+};
+
 export function canSee(section: string): boolean {
-  return Boolean(role.value && PERMISSIONS[role.value].sections.includes(section));
+  const key = SECTION_ALIAS[section] ?? section;
+  return Boolean(role.value && PERMISSIONS[role.value].sections.includes(key));
 }
 
 export function canWrite(section: string): boolean {
+  const key = SECTION_ALIAS[section] ?? section;
   return Boolean(
-    role.value && PERMISSIONS[role.value].writable.includes(section),
+    role.value && PERMISSIONS[role.value].writable.includes(key),
   );
 }
 

@@ -1057,38 +1057,61 @@ function toTxnRow(t: InventoryTxn): AdminRow {
  * 仓库订单（IKA0UQ，IK9U3Z 出库动作延续）：待出库订单（paid+picking 历史单）
  * 按库位指引拣货复核，确认出库后一步转「待配送」，库存不二次扣（支付已扣）。
  */
+/** IKB5P5：拣货任务状态 Tab（待出库=paid 主链路，拣货中=picking 历史单）。 */
+const PICKING_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: ["paid", "picking"] },
+  { key: "paid", label: "待出库", statuses: ["paid"] },
+  { key: "picking", label: "拣货中", statuses: ["picking"] },
+];
 const warehouseOrdersConfig: SectionConfig = {
   title: "拣货任务",
   eyebrow: "WAREHOUSE OUTBOUND",
   desc: "待出库订单按库位拣货复核，确认出库后转待配送，配送员即可接单。",
-  loader: async (query) => {
-    // paid（主链路）+ picking（历史单）合并，按下单时间倒序。
-    const [paid, picking] = await Promise.all([
-      api.orders("paid", query),
-      api.orders("picking", query),
-    ]);
-    const rows = [...paid.items, ...picking.items]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .map((o) => {
+  loader: (query) => {
+    // IKB5P5：Tab 即过滤条件（全部= paid+picking 合并逗号状态，服务端分页）
+    const tab =
+      PICKING_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
+      PICKING_STATUS_TABS[0];
+    return api.orders(tab.statuses.join(","), query).then((res) => ({
+      rows: res.items.map((o) => {
         const names = (o.items ?? [])
           .map((line) => line.product?.name ?? "")
           .filter(Boolean);
+        // IKB5P5：库位列——各商品实时库位（后端按 productId 回查），去重列出；
+        // 任一商品缺库位该商品不计，全部未配置显示「未配置」
+        const locations = [
+          ...new Set(
+            (o.items ?? [])
+              .map((line) =>
+                [line.product?.location, line.product?.locationCode]
+                  .filter(Boolean)
+                  .join("-"),
+              )
+              .filter(Boolean),
+          ),
+        ];
         return {
           ...o,
           itemsText: names.length
             ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
             : "—",
+          locationText: locations.length
+            ? locations.slice(0, 2).join("、") +
+              (locations.length > 2 ? " 等" : "")
+            : "未配置",
         };
-      });
-    return { rows, total: rows.length };
+      }),
+      total: res.total,
+    }));
   },
+  statusTabs: PICKING_STATUS_TABS,
+  countsLoader: () => api.orderStatusCounts(campusScope()),
   columns: [
     ["orderNo", "订单编号"],
     ["itemsText", "商品"],
+    ["locationText", "库位"],
     ["totalQuantity", "件数"],
+    ["statusText", "状态"],
     ["payableAmount", "实付金额"],
     ["createdAt", "下单时间"],
   ],
@@ -1218,7 +1241,8 @@ const BANNER_CAMPUS_FIELD: FieldDef = {
     })),
   ],
 };
-function openBannerCreate() {
+/** IKB5PB：placement 默认值——支付广告位菜单新建默认 pay-success，其余默认 home。 */
+function openBannerCreate(defaultPlacement = "home") {
   void ensureCampusOptions();
   openForm(
     {
@@ -1251,7 +1275,7 @@ function openBannerCreate() {
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", placement: "home", campusId: "", sort: 0, image: "", content: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, campusId: "", sort: 0, image: "", content: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -1485,6 +1509,11 @@ function toAfterSaleRow(a: AfterSale): AfterSaleRow {
     description: a.description,
     images: Array.isArray(a.images) ? a.images : [],
     status: a.status,
+    // IKB5PA：状态列中文化（原始 pending/cancelled 不再外露）
+    statusText:
+      ({ pending: "待处理", cancelled: "已取消" } as Record<string, string>)[
+        a.status
+      ] ?? a.status,
     createdAt: a.createdAt,
     ...(a.order ? { order: a.order } : {}),
   };
@@ -1527,14 +1556,44 @@ const afterSaleOrderAmount = computed(() =>
   afterSaleOrder.value ? `¥${fenToYuan(afterSaleOrder.value.payableAmount)}` : "—",
 );
 
+/* IKB5PA：调配两视图的状态 Tab（声明前置：dispatch 配置在此引用）。 */
+const LEAVE_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending", label: "待审核", statuses: ["pending"] },
+  { key: "approved", label: "已通过", statuses: ["approved"] },
+  { key: "rejected", label: "已驳回", statuses: ["rejected"] },
+  { key: "cancelled", label: "已撤销", statuses: ["cancelled"] },
+];
+const INVITE_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "invited", label: "待响应", statuses: ["invited"] },
+  { key: "accepted", label: "已接受", statuses: ["accepted"] },
+  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
+  { key: "cancelled", label: "已取消", statuses: ["cancelled"] },
+];
+/** 促销 Tab（IKB5PA）：key 即后端 state 过滤值（时间窗读时判定）。 */
+const PROMOTION_STATE_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "live", label: "进行中", statuses: ["live"] },
+  { key: "upcoming", label: "未开始", statuses: ["upcoming"] },
+  { key: "ended", label: "已结束", statuses: ["ended"] },
+  { key: "disabled", label: "已停用", statuses: ["disabled"] },
+];
 const dispatchLeavesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
   desc: "楼长请假与跨楼调配邀请，保障楼栋服务覆盖。",
+  // IKB5PA：状态 Tab 化（审核状态），服务端过滤 + 角标
   loader: async (query) => {
-    const res = await api.leaveRequests(query);
+    const res = await api.leaveRequests(query, tabStatusOf(LEAVE_STATUS_TABS));
     return { rows: res.items.map(toLeaveRow), total: res.total };
   },
+  statusTabs: LEAVE_STATUS_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) => api.leaveRequests({ page: 1, pageSize: 1 }, s),
+      ["pending", "approved", "rejected", "cancelled"],
+    ),
   columns: [
     ["staffName", "楼长"],
     ["staffNo", "工号"],
@@ -1550,10 +1609,20 @@ const dispatchInvitesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
   desc: "已发出的调配邀请与楼长接受状态，仅待接受可取消。",
+  // IKB5PA：状态 Tab 化（响应状态），服务端过滤 + 角标
   loader: async (query) => {
-    const res = await api.dispatchInvitations(query);
+    const res = await api.dispatchInvitations(
+      query,
+      tabStatusOf(INVITE_STATUS_TABS),
+    );
     return { rows: res.items.map(toInviteRow), total: res.total };
   },
+  statusTabs: INVITE_STATUS_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) => api.dispatchInvitations({ page: 1, pageSize: 1 }, s),
+      ["invited", "accepted", "rejected", "cancelled"],
+    ),
   columns: [
     ["staffName", "目标楼长"],
     ["roleText", "现任"],
@@ -1906,9 +1975,44 @@ const hqProductsConfig: SectionConfig = {
   ],
 };
 
+/* ---------- IKB5PA：各板块状态 Tab（服务端 status 过滤 + total 角标） ---------- */
+const STAFF_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "online", label: "在线", statuses: ["online"] },
+  { key: "paused", label: "暂停", statuses: ["paused"] },
+  { key: "offline", label: "离线", statuses: ["offline"] },
+];
+const STAFF_STATUS_LABEL: Record<string, string> = {
+  online: "在线",
+  paused: "暂停接单",
+  offline: "离线",
+};
+const AFTER_SALE_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending", label: "待处理", statuses: ["pending"] },
+  { key: "cancelled", label: "已取消", statuses: ["cancelled"] },
+];
+const COUPON_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "active", label: "发放中", statuses: ["active"] },
+  { key: "paused", label: "已暂停", statuses: ["paused"] },
+];
+const BANNER_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "active", label: "启用", statuses: ["active"] },
+  { key: "hidden", label: "已隐藏", statuses: ["hidden"] },
+];
+const BILL_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending-review", label: "待确认", statuses: ["pending-review"] },
+  { key: "confirmed", label: "已确认", statuses: ["confirmed"] },
+  { key: "paid", label: "已打款", statuses: ["paid"] },
+];
+
 const configs: Record<string, SectionConfig> = {
   orders: {
-    title: "订单与履约",
+    // IKB5P9：标题与侧边栏菜单统一为「订单配送」
+    title: "订单配送",
     eyebrow: "ORDER CONTROL",
     desc: "监控订单全生命周期与两段配送进度。",
     // IKAJSP：Tab 即过滤条件（服务端逗号状态），statusFilter 存 Tab key
@@ -1929,16 +2033,19 @@ const configs: Record<string, SectionConfig> = {
               .map((line) => line.product?.name ?? "")
               .filter(Boolean);
             const user = (o as Order & { user?: { nickname?: string } }).user;
+            // IKB5P9：用户列带楼栋房间（张同学 / 3栋302）；地址缺失回落手机号
+            const address = o.address;
+            const building = [address?.buildingName, address?.room]
+              .filter(Boolean)
+              .join("");
+            const userMain = user?.nickname?.trim() || o.userPhone || "";
             return {
               ...o,
               // 品名口径与仓库订单列一致：前 2 个 +「等」
               itemsText: names.length
                 ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
                 : "—",
-              userText:
-                [user?.nickname?.trim(), o.userPhone]
-                  .filter(Boolean)
-                  .join(" ") || "—",
+              userText: [userMain, building].filter(Boolean).join(" / ") || "—",
             };
           }),
         }));
@@ -2068,11 +2175,27 @@ const configs: Record<string, SectionConfig> = {
       ["createdAt", "创建时间"],
     ],
   },
+  /* IKB5PA：状态 Tab 化（在线/暂停/离线），服务端过滤 + 角标计数 */
   staff: {
     title: "履约人员",
     eyebrow: "TEAM PERFORMANCE",
     desc: "楼长与配送员账号状态、绩效和服务范围。",
-    loader: (query) => api.staff(query).then(unwrap),
+    loader: (query) =>
+      api
+        .staff(query, tabStatusOf(STAFF_STATUS_TABS))
+        .then((res) => ({
+          rows: res.items.map((x) => ({
+            ...x,
+            statusText: STAFF_STATUS_LABEL[x.status] ?? x.status,
+          })),
+          total: res.total,
+        })),
+    statusTabs: STAFF_STATUS_TABS,
+    countsLoader: () =>
+      countByStatus(
+        (s) => api.staff({ page: 1, pageSize: 1 }, s),
+        ["online", "paused", "offline"],
+      ),
     columns: [
       ["staffNo", "工号"],
       ["name", "姓名"],
@@ -2080,17 +2203,27 @@ const configs: Record<string, SectionConfig> = {
       ["building", "服务范围"],
       ["completedToday", "今日完成"],
       ["onTimeRate", "准时率"],
-      ["online", "状态"],
+      ["statusText", "状态"],
     ],
   },
   "after-sales": {
     title: "售后与退款",
     eyebrow: "AFTER-SALES DESK",
     desc: "集中审核质量投诉、退款与异常凭证。",
+    // IKB5PA：状态 Tab 化（待处理/已取消），服务端过滤 + 角标
     loader: async (query) => {
-      const res = await api.afterSales(query);
+      const res = await api.afterSales(
+        query,
+        tabStatusOf(AFTER_SALE_STATUS_TABS),
+      );
       return { rows: res.items.map(toAfterSaleRow), total: res.total };
     },
+    statusTabs: AFTER_SALE_STATUS_TABS,
+    countsLoader: () =>
+      countByStatus(
+        (s) => api.afterSales({ page: 1, pageSize: 1 }, s),
+        ["pending", "cancelled"],
+      ),
     columns: [
       ["id", "售后单号"],
       ["userId", "用户"],
@@ -2098,14 +2231,23 @@ const configs: Record<string, SectionConfig> = {
       ["typeText", "类型"],
       ["description", "问题描述"],
       ["createdAt", "申请时间"],
-      ["status", "状态"],
+      ["statusText", "状态"],
     ],
   },
   finance: {
     title: "财务结算",
     eyebrow: "FINANCE SETTLEMENT",
     desc: "月度账单确认、打款与跨期调整（月份可筛选）。",
-    loader: (query) => api.settlements(month.value, query).then(unwrap),
+    // IKB5PA：账单状态 Tab（待确认/已确认/已打款），随当前账期计数
+    loader: (query) =>
+      api.settlements(month.value, query, tabStatusOf(BILL_STATUS_TABS))
+        .then(unwrap),
+    statusTabs: BILL_STATUS_TABS,
+    countsLoader: () =>
+      countByStatus(
+        (s) => api.settlements(month.value, { page: 1, pageSize: 1 }, s),
+        ["pending-review", "confirmed", "paid"],
+      ),
     columns: [
       ["staffName", "人员"],
       ["roleText", "角色"],
@@ -2151,7 +2293,39 @@ const configs: Record<string, SectionConfig> = {
     title: "营销活动",
     eyebrow: "GROWTH CAMPAIGNS",
     desc: "配置优惠券预算、领取门槛与核销效果。",
-    loader: (query) => api.coupons(query).then(unwrap),
+    // IKB5PA：状态 Tab 化（发放中/已暂停），服务端过滤 + 角标
+    loader: (query) =>
+      api.coupons(query, tabStatusOf(COUPON_STATUS_TABS)).then(unwrap),
+    statusTabs: COUPON_STATUS_TABS,
+    countsLoader: () =>
+      countByStatus(
+        (s) => api.coupons({ page: 1, pageSize: 1 }, s),
+        ["active", "paused"],
+      ),
+    columns: [
+      ["name", "优惠券"],
+      ["amount", "面额"],
+      ["threshold", "门槛"],
+      ["total", "总量"],
+      ["remain", "剩余"],
+      ["claimed", "领取"],
+      ["used", "核销"],
+      ["status", "状态"],
+    ],
+  },
+  /* IKB5PB：优惠券独立菜单（营销板块 coupons tab 拆出），列与表单复用 marketing 口径 */
+  coupons: {
+    title: "优惠券配置",
+    eyebrow: "COUPONS",
+    desc: "配置优惠券预算、领取门槛与核销效果。",
+    loader: (query) =>
+      api.coupons(query, tabStatusOf(COUPON_STATUS_TABS)).then(unwrap),
+    statusTabs: COUPON_STATUS_TABS,
+    countsLoader: () =>
+      countByStatus(
+        (s) => api.coupons({ page: 1, pageSize: 1 }, s),
+        ["active", "paused"],
+      ),
     columns: [
       ["name", "优惠券"],
       ["amount", "面额"],
@@ -2170,10 +2344,11 @@ const configs: Record<string, SectionConfig> = {
     // IKAJSL：hq 视角可按校区过滤（工具栏下拉）
     loader: (query) => api.audits(campusQuery(query)).then(unwrap),
     columns: [
+      // IKB5P8：人话化字段（后端附 operatorName/actionText/entityText），原始代码只留 entityId 备查
       ["createdAt", "时间"],
-      ["operator", "操作人"],
-      ["action", "动作"],
-      ["entityType", "对象"],
+      ["operatorName", "操作人"],
+      ["actionText", "动作"],
+      ["entityText", "对象"],
       ["entityId", "对象 ID"],
     ],
   },
@@ -2185,15 +2360,24 @@ const configs: Record<string, SectionConfig> = {
     loader: (query) =>
       api.adminAccounts(query).then((res) => ({
         total: res.total,
-        rows: res.items.map((x) => ({
-          ...x,
-          roleText: ROLE_LABELS[x.role as AdminRole] ?? x.role,
-          // hq 视角后端附 campusName；校区视角无该字段显示空
-          campusNameText:
-            x.campusId === ""
-              ? "总部"
-              : (x as AccountRow & { campusName?: string }).campusName || "本校区",
-        })),
+        rows: res.items.map((x) => {
+          const withNames = x as AccountRow & {
+            campusName?: string;
+            campusNames?: string[];
+          };
+          return {
+            ...x,
+            roleText: ROLE_LABELS[x.role as AdminRole] ?? x.role,
+            // IKB5PC：hq 视角后端附 campusNames（多校区账号全量列出）；
+            // 校区视角无该字段回落「本校区」
+            campusNameText:
+              x.campusId === ""
+                ? "总部"
+                : withNames.campusNames?.length
+                  ? withNames.campusNames.join("、")
+                  : withNames.campusName || "本校区",
+          };
+        }),
       })),
     columns: [
       ["username", "账号"],
@@ -2206,12 +2390,14 @@ const configs: Record<string, SectionConfig> = {
 };
 /** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。 */
 const bannerConfig: SectionConfig = {
-  title: "Banner 投放",
+  // IKB5PB：随菜单改名「Banner 配置」
+  title: "Banner 配置",
   eyebrow: "HQ BANNERS",
   // IKAJSL：Banner 归总部投放（可选全部/指定校区），校区侧营销板块已无此 tab
   desc: "总部统一投放小程序首页轮播与支付成功页广告；可选全部校区或定向。",
   loader: (query) =>
-    api.banners(query).then((res) => ({
+    // IKB5PA：状态 Tab（启用/已隐藏）服务端过滤 + 角标
+    api.banners(query, undefined, tabStatusOf(BANNER_STATUS_TABS)).then((res) => ({
       rows: res.items.map((b) => ({
         ...b,
         contentText: b.content ? `${b.content.length} 字` : "—",
@@ -2219,6 +2405,12 @@ const bannerConfig: SectionConfig = {
       })),
       total: res.total,
     })),
+  statusTabs: BANNER_STATUS_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) => api.banners({ page: 1, pageSize: 1 }, undefined, s),
+      ["active", "hidden"],
+    ),
   columns: [
     ["image", "图片"],
     ["title", "标题"],
@@ -2231,24 +2423,72 @@ const bannerConfig: SectionConfig = {
     ["status", "状态"],
   ],
 };
-/** 促销活动（IKAHFF/ADR-0006）：营销板块 promotions tab 的表格配置。 */
+/** 支付广告位（IKB5PB）：Banner 配置的 pay-success 子视图（独立菜单），
+ *  新建默认展示在支付成功页（openBannerCreate("pay-success")）。 */
+const payAdsConfig: SectionConfig = {
+  ...bannerConfig,
+  title: "支付广告位",
+  eyebrow: "PAY-SUCCESS ADS",
+  desc: "支付成功页广告位素材与投放；可全部校区或定向。",
+  loader: (query) =>
+    // IKB5PA：状态 Tab（启用/已隐藏）随 placement 一起服务端过滤
+    api.banners(query, "pay-success", tabStatusOf(BANNER_STATUS_TABS)).then(
+      (res) => ({
+        rows: res.items.map((b) => ({
+          ...b,
+          contentText: b.content ? `${b.content.length} 字` : "—",
+        })),
+        total: res.total,
+      }),
+    ),
+  statusTabs: BANNER_STATUS_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) => api.banners({ page: 1, pageSize: 1 }, "pay-success", s),
+      ["active", "hidden"],
+    ),
+  columns: [
+    ["image", "图片"],
+    ["title", "标题"],
+    ["campusName", "投放范围"],
+    ["badge", "角标"],
+    ["color", "主题色"],
+    ["contentText", "图文详情"],
+    ["sort", "排序"],
+    ["status", "状态"],
+  ],
+};
+/** 促销活动（IKAHFF/ADR-0006）：限时秒杀菜单（IKB5PB 拆分）的表格配置。
+ *  IKB5PA：状态 Tab（时间窗判定，服务端 state 过滤 + 角标）。 */
 const promotionConfig: SectionConfig = {
-  title: "促销活动",
+  title: "限时秒杀",
   eyebrow: "PROMOTIONS",
   desc: "限时秒杀 / 临期特惠统一管理；进行中停用立即生效，无删除留审计。",
-  loader: (query) =>
-    api.promotions(query).then((res) => ({
-      rows: res.items.map((p) => ({
-        ...p,
-        productName: p.product?.name ?? "—",
-        typeText: PROMO_TYPE_TEXT[p.type] ?? p.type,
-        priceText: `¥${fenToYuan(p.price)}`,
-        basePriceText: p.product ? `¥${fenToYuan(p.product.price)}` : "—",
-        windowText: promoWindowText(p),
-        stateText: promoState(p),
-      })),
-      total: res.total,
-    })),
+  loader: (query) => {
+    const tab =
+      PROMOTION_STATE_TABS.find((t) => t.key === statusFilter.value) ??
+      PROMOTION_STATE_TABS[0];
+    return api
+      .promotions(query, tab.statuses.length ? tab.key : undefined)
+      .then((res) => ({
+        rows: res.items.map((p) => ({
+          ...p,
+          productName: p.product?.name ?? "—",
+          typeText: PROMO_TYPE_TEXT[p.type] ?? p.type,
+          priceText: `¥${fenToYuan(p.price)}`,
+          basePriceText: p.product ? `¥${fenToYuan(p.product.price)}` : "—",
+          windowText: promoWindowText(p),
+          stateText: promoState(p),
+        })),
+        total: res.total,
+      }));
+  },
+  statusTabs: PROMOTION_STATE_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) => api.promotions({ page: 1, pageSize: 1 }, s),
+      ["live", "upcoming", "ended", "disabled"],
+    ),
   columns: [
     ["productName", "商品"],
     ["typeText", "类型"],
@@ -2263,8 +2503,11 @@ const createLabels: Record<string, string> = {
   categories: "＋ 新建类别",
   locations: "＋ 新建库位",
   marketing: "＋ 新建优惠券",
+  // IKB5PB：营销拆分独立菜单（券/秒杀/支付广告位）
+  coupons: "＋ 新建优惠券",
   banners: "＋ 新建 Banner",
   promotions: "＋ 新建促销",
+  "pay-ads": "＋ 新建广告",
   campuses: "＋ 新建楼栋",
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
@@ -2283,6 +2526,8 @@ const section = computed(() => String(route.params.section)),
       return promotionConfig;
     // IKAJSL：Banner 独立板块（总部导航）；校区 hq 分流校区配置
     if (section.value === "banners") return bannerConfig;
+    // IKB5PB：支付广告位 = Banner 的 pay-success 子视图（独立菜单）
+    if (section.value === "pay-ads") return payAdsConfig;
     if (section.value === "campuses" && isHqRole.value)
       return hqCampusesConfig;
     // IKAJSM：hq 商品板块 = 官方商品库视图（无库存/库位列）
@@ -2337,6 +2582,25 @@ function statusTabCount(tab: StatusTab) {
     ? sum(tab.statuses)
     : Object.values(counts).reduce((a, b) => a + b, 0);
 }
+/** IKB5PA：小列表 Tab 角标——各状态并行拉 total（pageSize=1 只要计数），
+ *  单次失败回落 0 不阻塞。适用于无专用 counts 端点的板块。 */
+async function countByStatus(
+  fetch: (status: string) => Promise<{ total: number }>,
+  statuses: string[],
+): Promise<Record<string, number>> {
+  const entries = await Promise.all(
+    statuses.map(async (s) => {
+      const res = await fetch(s).catch(() => ({ total: 0 }));
+      return [s, res.total] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+/** IKB5PA：当前 Tab 的服务端状态过滤值（无 tab 或「全部」= undefined 不过滤）。 */
+function tabStatusOf(tabs: StatusTab[]): string | undefined {
+  const tab = tabs.find((t) => t.key === statusFilter.value) ?? tabs[0];
+  return tab.statuses.length ? tab.statuses.join(",") : undefined;
+}
 async function load() {
   loading.value = true;
   loadError.value = "";
@@ -2350,11 +2614,13 @@ async function load() {
       .catch(() => {});
   }
   // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
-  // Banner 投放表单的投放校区下拉对 admin 同样需要（2026-08-26 全菜单开放）
+  // Banner 投放表单的投放校区下拉对 admin 同样需要（2026-08-26 全菜单开放）；
+  // IKB5PB：支付广告位同用 Banner 表单
   if (
     (isHqRole.value &&
       ["orders", "users", "audit", "campuses"].includes(section.value)) ||
-    section.value === "banners"
+    section.value === "banners" ||
+    section.value === "pay-ads"
   )
     void ensureCampusOptions().catch(() => {});
   try {
@@ -2632,6 +2898,13 @@ const STATUS_TEXT: Record<string, string> = {
   paused: "已暂停",
   disabled: "已停用",
   hidden: "已隐藏",
+  // IKB5PA：状态 Tab 化后新增的展示值
+  cancelled: "已取消",
+  invited: "待响应",
+  accepted: "已接受",
+  online: "在线",
+  offline: "离线",
+  completed: "已完成",
 };
 /** 金额字段（契约：整数分），统一经 fenToYuan 展示为 ¥xx.xx。 */
 const MONEY_KEYS = [
@@ -2908,6 +3181,10 @@ function openCreate() {
     if (mktTab.value === "promotions") openPromotionCreate();
     else openCouponCreate();
   }
+  // IKB5PB：营销拆分独立菜单
+  else if (section.value === "coupons") openCouponCreate();
+  else if (section.value === "promotions") openPromotionCreate();
+  else if (section.value === "pay-ads") openBannerCreate("pay-success");
   else if (section.value === "banners") openBannerCreate();
   else if (section.value === "campuses")
     isHqRole.value ? openCampusCreate() : openBuildingCreate();
@@ -3304,27 +3581,9 @@ async function submitStatusDialog() {
           placeholder="搜索当前列表..."
         />
       </div>
-      <select
-        v-if="
-          !config.statusTabs &&
-          section !== 'inventory-txns' &&
-          section !== 'warehouse-orders' &&
-          section !== 'users' &&
-          section !== 'wechat-groups' &&
-          section !== 'banners' &&
-          !(section === 'marketing' && mktTab === 'promotions')
-        "
-        v-model="statusFilter"
-        class="filter-btn"
-        aria-label="状态筛选"
-      >
-        <option value="all">全部状态</option>
-        <option value="on-sale">销售中</option>
-        <option value="pending">待处理</option>
-        <option value="completed">已完成</option>
-        <option value="true">在线</option>
-        <option value="false">离线</option>
-      </select>
+      <!-- IKB5PA：通用「全部状态」下拉已移除——各板块状态过滤统一走
+           statusTabs（服务端过滤+角标），无状态语义的板块不再渲染筛选器，
+           彻底消除跨板块选项串入（售后出现「在线/离线」等）。 -->
       <select
         v-if="section === 'finance'"
         v-model="month"
@@ -3842,7 +4101,7 @@ async function submitStatusDialog() {
               >{{ txnQuantity(selected) }}</strong
             ><strong v-else>{{ display(selected, col[0]) }}</strong>
           </div>
-          <!-- 拣货清单（IK9U40）：库位指引找货，新单起快照携带库位 -->
+          <!-- 拣货清单（IK9U40）：库位指引找货；IKB5P5 起订单接口回查实时库位，历史单同样有指引 -->
           <div
             v-if="section === 'warehouse-orders' && pickingItems.length"
             class="wide pick-list-wrap"
@@ -3911,8 +4170,12 @@ async function submitStatusDialog() {
               试点期售后由客服人工处理（不退款），本页仅留档查看。
             </p>
           </template>
-          <template v-else-if="section === 'banners' && canWriteSection">
-            <!-- IKAJSL：Banner 独立板块（总部投放） -->
+          <template
+            v-else-if="
+              (section === 'banners' || section === 'pay-ads') && canWriteSection
+            "
+          >
+            <!-- IKAJSL：Banner 独立板块；IKB5PB：支付广告位同入口（pay-success 子视图） -->
             <button class="btn primary" @click="openBannerEdit(selected)">
               编辑 Banner
             </button>
@@ -3923,9 +4186,18 @@ async function submitStatusDialog() {
               {{ confirmDelete ? "确认删除" : "删除 Banner" }}
             </button>
           </template>
-          <template v-else-if="section === 'marketing' && canWriteSection">
-            <!-- 优惠券 tab -->
-            <template v-if="mktTab === 'coupons'">
+          <template
+            v-else-if="
+              (section === 'marketing' ||
+                section === 'coupons' ||
+                section === 'promotions') &&
+              canWriteSection
+            "
+          >
+            <!-- 优惠券（marketing coupons tab / IKB5PB 优惠券配置菜单） -->
+            <template
+              v-if="section === 'coupons' || mktTab === 'coupons'"
+            >
               <button class="btn primary" @click="toggleCoupon">
                 {{ couponPaused ? "启用优惠券" : "暂停发放" }}
               </button>
@@ -3933,8 +4205,8 @@ async function submitStatusDialog() {
                 定向发放
               </button>
             </template>
-            <!-- 促销活动 tab（IKAHFF/ADR-0006）：无删除留审计；
-                 Banner 已拆 /banners 板块（IKAJSL） -->
+            <!-- 促销（marketing promotions tab / IKB5PB 限时秒杀菜单）：
+                 无删除留审计，停用立即回落原价 -->
             <template v-else>
               <button class="btn primary" @click="openPromotionEdit(selected)">
                 编辑促销
