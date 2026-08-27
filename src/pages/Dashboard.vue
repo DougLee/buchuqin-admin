@@ -123,14 +123,15 @@ const activities = computed<DashboardActivity[]>(() => {
   const list = data.value?.activities;
   return Array.isArray(list) ? list : [];
 });
-/* IKAJSS：动态流直达路由——按 entityType（订单/促销/商品/员工/群码…）跳对应处理页 */
+/* IKAJSS：动态流直达路由——按 entityType（订单/促销/商品/员工/群码…）跳对应处理页。
+ *  IKBDK7：营销拆分后 promotion/coupon 直达新菜单（旧 /marketing 仅剩历史深链兼容）。 */
 const ACTIVITY_ROUTES: Record<string, string> = {
   order: "/orders",
-  promotion: "/marketing?tab=promotions",
+  promotion: "/promotions",
   product: "/products",
   staff: "/staff",
   "wechat-group": "/wechat-groups",
-  coupon: "/marketing",
+  coupon: "/coupons",
   banner: "/banners",
   "admin-account": "/accounts",
   campus: "/campuses",

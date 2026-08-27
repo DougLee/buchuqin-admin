@@ -2524,6 +2524,8 @@ const section = computed(() => String(route.params.section)),
         : dispatchInvitesConfig;
     if (section.value === "marketing" && mktTab.value === "promotions")
       return promotionConfig;
+    // IKBDK7：/promotions 独立菜单（IKB5PB 拆分）——漏接会回落 orders 列表
+    if (section.value === "promotions") return promotionConfig;
     // IKAJSL：Banner 独立板块（总部导航）；校区 hq 分流校区配置
     if (section.value === "banners") return bannerConfig;
     // IKB5PB：支付广告位 = Banner 的 pay-success 子视图（独立菜单）
@@ -2945,8 +2947,11 @@ function display(row: AdminRow, key: string) {
       categories.value.find((c) => c.id === v)?.name ?? String(v ?? "—")
     );
   if (key === "hasElevator") return record.hasElevator ? "有电梯" : "无电梯";
-  if (key === "color" && section.value === "marketing")
-    // Banner 主题色：预置键转中文，自定义 hex 原样
+  if (
+    key === "color" &&
+    ["marketing", "banners", "pay-ads"].includes(section.value)
+  )
+    // Banner 主题色（IKBDK7：/banners 与 /pay-ads 同样翻译）：预置键转中文，自定义 hex 原样
     return BANNER_COLOR_TEXT[String(v)] ?? String(v ?? "—");
   if (key === "gender")
     return (
