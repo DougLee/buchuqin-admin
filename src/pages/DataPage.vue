@@ -742,12 +742,12 @@ function openAccountCreate() {
         { key: "password", label: "初始密码", type: "password", placeholder: "至少 8 位" },
         { key: "nickname", label: "昵称", placeholder: "如：仓储小王" },
         { key: "role", label: "角色", type: "select", options: accountRoleOptions },
-        // IKAJSL：hq 建号选归属（空 = 总部账号，角色须总部长）
+        // IKBFJ4：平台账号（hq/admin）建号选归属（空 = 总部账号，角色须总部长）
         {
           key: "campusId",
           label: "所属校区",
           type: "select",
-          visible: () => isHqRole.value,
+          visible: () => isPlatformAdmin.value,
           options: () => [
             { value: "", label: "总部（仅总部长角色）" },
             ...campusOptionsData.value.map((c) => ({
@@ -762,7 +762,8 @@ function openAccountCreate() {
           label: "可运营校区",
           type: "campus-multi",
           wide: true,
-          visible: (d) => isHqRole.value && String(d.role || "") !== "hq",
+          visible: (d) =>
+            isPlatformAdmin.value && String(d.role || "") !== "hq",
         },
       ],
       save: async (d) =>
@@ -771,8 +772,10 @@ function openAccountCreate() {
           password: String(d.password || ""),
           nickname: String(d.nickname || "").trim(),
           role: String(d.role || ""),
-          ...(isHqRole.value ? { campusId: String(d.campusId ?? "") } : {}),
-          ...(isHqRole.value && String(d.role || "") !== "hq"
+          ...(isPlatformAdmin.value
+            ? { campusId: String(d.campusId ?? "") }
+            : {}),
+          ...(isPlatformAdmin.value && String(d.role || "") !== "hq"
             ? { campusIds: campusMultiValue("campusIds") }
             : {}),
         })),
@@ -790,6 +793,7 @@ function openAccountCreate() {
 function openAccountEdit(row: AdminRow) {
   const account = row as AccountRow;
   selected.value = undefined;
+  void ensureCampusOptions().catch(() => {});
   openForm(
     {
       eyebrow: "EDIT ADMIN ACCOUNT",
@@ -806,14 +810,18 @@ function openAccountEdit(row: AdminRow) {
           type: "campus-multi",
           wide: true,
           visible: () =>
-            isHqRole.value && account.role !== "hq" && !!account.campusId,
+            isPlatformAdmin.value &&
+            account.role !== "hq" &&
+            !!account.campusId,
         },
       ],
       save: async (d) =>
         void (await api.updateAccount(account.id, {
           nickname: String(d.nickname || "").trim(),
           role: String(d.role || ""),
-          ...(isHqRole.value && account.role !== "hq" && account.campusId
+          ...(isPlatformAdmin.value &&
+          account.role !== "hq" &&
+          account.campusId
             ? { campusIds: campusMultiValue("campusIds") }
             : {}),
         })),
@@ -1664,6 +1672,10 @@ watch(userBuildingFilter, () => resetAndLoad());
 const campusFilter = ref("");
 const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 const isHqRole = computed(() => role.value === "hq");
+/** IKBFJ4：平台超管 admin 与 hq 同权（账号管理表单按此放开校区选择）。 */
+const isPlatformAdmin = computed(
+  () => role.value === "hq" || role.value === "admin",
+);
 watch(campusFilter, () => resetAndLoad());
 async function ensureCampusOptions() {
   if (!campusOptionsData.value.length)
@@ -2356,7 +2368,7 @@ const configs: Record<string, SectionConfig> = {
     title: "账号管理",
     eyebrow: "ADMIN ACCOUNTS",
     // IKAJSL：admin 管本校区职能账号；hq 管全部（含总部/各校区账号）
-    desc: "后台账号的创建、角色分配与密码重置（admin 管本校区，总部管全部）。",
+    desc: "后台账号的创建、角色分配与密码重置（平台超管 admin 与总部 hq 管全部账号）。",
     loader: (query) =>
       api.adminAccounts(query).then((res) => ({
         total: res.total,
