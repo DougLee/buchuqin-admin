@@ -3465,8 +3465,8 @@ async function outbound() {
   if (!selected.value) return;
   try {
     await api.orderAction(selected.value.id, "outbound");
-    // IKBT6N：出库顺手打——后端出库成功即自动推送芯烨云（未配置打印机时静默跳过）
-    notify("已出库，订单转待配送，小票自动打印中");
+    // IKBT6N：小票已改支付成功时自动打印，出库不再重复出票
+    notify("已出库，订单转待配送，配送员可接单");
     selected.value = undefined;
     await load();
   } catch (error) {
@@ -3491,8 +3491,7 @@ async function reprintReceipt() {
 async function outboundRow(row: AdminRow) {
   try {
     await api.orderAction(row.id, "outbound");
-    // IKBT6N：出库顺手打，后端自动推送小票
-    notify("已出库，订单转待配送，小票自动打印中");
+    notify("已出库，订单转待配送");
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "出库失败", true);
