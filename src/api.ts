@@ -262,6 +262,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status, reason }),
     }),
+  /** 补打小票（IKBT6N）：芯烨云重推订单小票，写审计日志。 */
+  printReceipt: (id: string) =>
+    request<{ printed: boolean; orderNo: string }>(
+      `/admin/orders/${id}/print-receipt`,
+      { method: "POST" },
+    ),
   /* ---------- 库位管理（IKA0VG） ---------- */
   adminLocations: () =>
     request<Array<{ id: string; name: string; note: string; sort: number; createdAt: string }>>(

@@ -3465,18 +3465,34 @@ async function outbound() {
   if (!selected.value) return;
   try {
     await api.orderAction(selected.value.id, "outbound");
-    notify("已出库，订单转待配送，配送员可接单");
+    // IKBT6N：出库顺手打——后端出库成功即自动推送芯烨云（未配置打印机时静默跳过）
+    notify("已出库，订单转待配送，小票自动打印中");
     selected.value = undefined;
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "出库失败", true);
   }
 }
+/** 补打小票（IKBT6N）：订单/拣货抽屉重推芯烨云打印（缺纸/卡纸兜底）。 */
+const printing = ref(false);
+async function reprintReceipt() {
+  if (!selected.value || printing.value) return;
+  printing.value = true;
+  try {
+    await api.printReceipt(selected.value.id);
+    notify("小票已发送打印机");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "打印失败", true);
+  } finally {
+    printing.value = false;
+  }
+}
 /** 列表内联出库（IKA0UT）：不进抽屉，一键出库。 */
 async function outboundRow(row: AdminRow) {
   try {
     await api.orderAction(row.id, "outbound");
-    notify("已出库，订单转待配送");
+    // IKBT6N：出库顺手打，后端自动推送小票
+    notify("已出库，订单转待配送，小票自动打印中");
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "出库失败", true);
@@ -4171,7 +4187,10 @@ async function submitStatusDialog() {
             ><button class="btn primary" @click="act('advance')">
               推进履约</button
             ><button class="btn danger-btn" @click="act('mark-exception')">
-              标记异常
+              标记异常</button
+            ><!-- 补打小票（IKBT6N）：芯烨云重推，缺纸/卡纸兜底 -->
+            <button class="btn ghost" :disabled="printing" @click="reprintReceipt">
+              {{ printing ? "打印中..." : "补打小票" }}
             </button></template
           >
           <!-- 确认出库（IKA0UQ）：一步转待配送 + 出库流水 -->
@@ -4181,6 +4200,10 @@ async function submitStatusDialog() {
             "
           >
             <button class="btn primary" @click="outbound">确认出库</button>
+            <!-- 补打小票（IKBT6N） -->
+            <button class="btn ghost" :disabled="printing" @click="reprintReceipt">
+              {{ printing ? "打印中..." : "补打小票" }}
+            </button>
           </template>
           <template v-else-if="section === 'after-sales'">
             <p class="form-hint plain processed-hint">
