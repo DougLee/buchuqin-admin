@@ -41,7 +41,9 @@ a {
 .shell.collapsed {
   grid-template-columns: 84px minmax(0, 1fr);
 }
-.shell aside {
+/* 侧边栏限定直接子级（IKBVRY）：裸 `.shell aside` 会连坐内容区里的
+   <aside class="drawer">，把全部抽屉染成深绿底，写死的深色文字隐身。 */
+.shell > aside {
   position: sticky;
   top: 0;
   height: 100vh;
@@ -1254,7 +1256,7 @@ td {
   .shell {
     grid-template-columns: 1fr;
   }
-  .shell aside {
+  .shell > aside {
     display: none;
   }
   .shell header {
