@@ -1170,6 +1170,13 @@ function switchMktTab(tab: "coupons" | "banners" | "promotions") {
   mktTab.value = tab;
   resetStatusFilterAndLoad();
 }
+/* ---------- 校区板块双视角（IKBWRT）：admin 平台超管可切平台级校区管理 ----------
+   楼栋管理 tab 保持原校区角色视图（楼栋/寝室），能力不回退；hq 恒为校区管理。 */
+const campusTab = ref<"campuses" | "buildings">("campuses");
+function switchCampusTab(tab: "campuses" | "buildings") {
+  campusTab.value = tab;
+  resetStatusFilterAndLoad();
+}
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
 watch(
   () => route.query.tab,
@@ -1675,6 +1682,12 @@ const isHqRole = computed(() => role.value === "hq");
 /** IKBFJ4：平台超管 admin 与 hq 同权（账号管理表单按此放开校区选择）。 */
 const isPlatformAdmin = computed(
   () => role.value === "hq" || role.value === "admin",
+);
+/** IKBWRT：campuses 板块平台级视图——hq 恒真；admin 走双 tab 切换（校区管理时为真）。 */
+const campusPlatformView = computed(
+  () =>
+    isHqRole.value ||
+    (role.value === "admin" && campusTab.value === "campuses"),
 );
 watch(campusFilter, () => resetAndLoad());
 async function ensureCampusOptions() {
@@ -2542,7 +2555,8 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "banners") return bannerConfig;
     // IKB5PB：支付广告位 = Banner 的 pay-success 子视图（独立菜单）
     if (section.value === "pay-ads") return payAdsConfig;
-    if (section.value === "campuses" && isHqRole.value)
+    // IKBWRT：admin 平台超管在校区 tab 同用 hq 校区管理视图
+    if (section.value === "campuses" && campusPlatformView.value)
       return hqCampusesConfig;
     // IKAJSM：hq 商品板块 = 官方商品库视图（无库存/库位列）
     if (section.value === "products" && isHqRole.value)
@@ -2555,8 +2569,8 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "marketing") {
       if (mktTab.value === "promotions") return createLabels.promotions;
     }
-    // IKAJSL：campuses 板块两视角——hq 建校区，校区长建楼栋
-    if (section.value === "campuses" && isHqRole.value)
+    // IKAJSL：campuses 板块两视角——hq/admin（校区 tab）建校区，校区角色建楼栋
+    if (section.value === "campuses" && campusPlatformView.value)
       return "＋ 新建校区";
     // IKAJSM：商品板块两视角——hq 官方库建档，校区从官方库导入（禁自建）
     if (section.value === "products")
@@ -2633,6 +2647,8 @@ async function load() {
   if (
     (isHqRole.value &&
       ["orders", "users", "audit", "campuses"].includes(section.value)) ||
+    // IKBWRT：admin 校区管理 tab 同 hq 预载校区下拉
+    (section.value === "campuses" && campusPlatformView.value) ||
     section.value === "banners" ||
     section.value === "pay-ads"
   )
@@ -3204,7 +3220,7 @@ function openCreate() {
   else if (section.value === "pay-ads") openBannerCreate("pay-success");
   else if (section.value === "banners") openBannerCreate();
   else if (section.value === "campuses")
-    isHqRole.value ? openCampusCreate() : openBuildingCreate();
+    campusPlatformView.value ? openCampusCreate() : openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
@@ -3551,9 +3567,9 @@ async function submitStatusDialog() {
         <p>{{ config.desc }}</p>
       </div>
       <div class="head-actions">
-        <!-- 配送费配置（IK9SO6）：校区侧入口；hq 在校区编辑表单里逐校配置 -->
+        <!-- 配送费配置（IK9SO6）：校区侧入口；hq/admin 校区 tab 在编辑表单里逐校配置 -->
         <button
-          v-if="section === 'campuses' && !isHqRole && canWrite('campuses')"
+          v-if="section === 'campuses' && !campusPlatformView && canWrite('campuses')"
           class="btn ghost"
           @click="openDeliveryConfig"
         >
@@ -3588,6 +3604,24 @@ async function submitStatusDialog() {
         </button>
         <button :class="{ active: mktTab === 'promotions' }" @click="switchMktTab('promotions')">
           促销活动
+        </button>
+      </div>
+      <!-- IKBWRT：admin 平台超管校区双视角——校区管理（平台级，同 hq）/楼栋管理（本校区） -->
+      <div
+        v-if="section === 'campuses' && role === 'admin'"
+        class="segmented inv-tabs"
+      >
+        <button
+          :class="{ active: campusTab === 'campuses' }"
+          @click="switchCampusTab('campuses')"
+        >
+          校区管理
+        </button>
+        <button
+          :class="{ active: campusTab === 'buildings' }"
+          @click="switchCampusTab('buildings')"
+        >
+          楼栋管理
         </button>
       </div>
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
@@ -4265,9 +4299,10 @@ async function submitStatusDialog() {
             </button></template
           >
           <template v-else-if="section === 'campuses' && canWriteSection">
-            <!-- IKAJSL：hq 管校区本体（信息/启停/配送费），楼栋归校区后台 -->
+            <!-- IKAJSL：hq 管校区本体（信息/启停/配送费），楼栋归校区后台；
+                 IKBWRT：admin 校区管理 tab 同 hq，楼栋 tab 走校区角色分支 -->
             <button
-              v-if="isHqRole"
+              v-if="campusPlatformView"
               class="btn primary"
               @click="openCampusEdit(selected)"
             >
