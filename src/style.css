@@ -309,6 +309,7 @@ a {
   margin-left: 10px;
 }
 /* IKB3KG 方案A：多校区授权账号的顶栏切换下拉 */
+/* IKBW0B：appearance:none 收掉浏览器原生下拉箭头，否则与右侧 ⌄ 组成双图标 */
 .campus-select select {
   display: block;
   margin-top: 2px;
@@ -318,8 +319,10 @@ a {
   background: transparent;
   border: 1px solid #e2e8e2;
   border-radius: 8px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 .campus-select select:focus-visible {
   outline: 2px solid var(--brand, #2f7d4f);
@@ -1485,4 +1488,16 @@ td {
 .upstream-badge {
   margin-left: 8px;
   flex-shrink: 0;
+}
+
+/* IKBW0C：订单号末 8 位（用户端可见部分）高亮，客服与客户肉眼对读 */
+.order-no__tail {
+  color: #1d6b40;
+  background: #e6f5ec;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+/* IKBW0C/D：商品列多商品每行一个（itemsText 以 \n 连接） */
+.cell-lines {
+  white-space: pre-line;
 }

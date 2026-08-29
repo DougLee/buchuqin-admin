@@ -100,9 +100,11 @@
   color: #b65322;
 }
 .toast {
+  /* IKBW0D：全局 Toast 统一居中展示（原右下角不明显） */
   position: fixed;
-  right: 28px;
-  bottom: 28px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 80;
   background: var(--deep);
   color: #fff;

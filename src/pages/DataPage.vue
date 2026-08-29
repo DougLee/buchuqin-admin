@@ -18,6 +18,7 @@ import type {
   Building,
   Campus,
   Category,
+  Printer,
   CategoryRow,
   CommissionRule,
   Coupon,
@@ -381,21 +382,25 @@ const ROLE_OPTIONS = [
   { value: "parttime-rider", label: "兼职配送员" },
 ];
 function staffPayload(d: Record<string, FormValue>) {
-  const payload: Record<string, FormValue> = {
+  // IKBW0E：payload 需容纳显式 null（清空楼栋绑定），故放宽为 FormValue | null
+  const payload: Record<string, FormValue | null> = {
     name: String(d.name || "").trim(),
     role: String(d.role || ""),
     staffNo: String(d.staffNo || "").trim(),
     status: String(d.status || "online"),
   };
-  // IK9U3Y：楼栋仅楼长角色携带；骑手不绑楼栋（后端同样校验）
-  if (d.role === "building-manager" && d.buildingId)
-    payload.buildingId = d.buildingId;
+  // IK9U3Y：楼栋仅楼长角色携带；骑手不绑楼栋（后端同样校验）。
+  // IKBW0E：清空绑定必须显式传 null——省略字段会被后端视为「未修改」，
+  // 造成保存假成功、原绑定实际未解除
+  if (d.role === "building-manager")
+    payload.buildingId = d.buildingId ? d.buildingId : null;
   return payload;
 }
-/** IK9U3Y：绑定楼栋仅楼长可见——配送员系统派单、不绑特定楼栋。 */
+/** IK9U3Y：绑定楼栋仅楼长可见——配送员系统派单、不绑特定楼栋。
+ *  IKBW0E：楼长可清空绑定解绑（后端置「待分配」，一楼一在职楼长校验不变）。 */
 const STAFF_BUILDING_FIELD: FieldDef = {
   key: "buildingId",
-  label: "绑定楼栋（楼长必选，一楼一在职楼长）",
+  label: "绑定楼栋（一楼一在职楼长；清空保存=解绑为待分配）",
   type: "select",
   wide: true,
   optional: true,
@@ -1100,9 +1105,8 @@ const warehouseOrdersConfig: SectionConfig = {
         ];
         return {
           ...o,
-          itemsText: names.length
-            ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
-            : "—",
+          // IKBW0D：商品逐行，与订单列表口径一致
+          itemsText: names.length ? names.join("\n") : "—",
           locationText: locations.length
             ? locations.slice(0, 2).join("、") +
               (locations.length > 2 ? " 等" : "")
@@ -1202,8 +1206,7 @@ const BANNER_PLACEMENT_TEXT: Record<string, string> = {
 };
 function bannerPayload(d: Record<string, FormValue>) {
   return {
-    // IKAJSL：投放校区（空串 = 全部校区），仅 hq 操作者后端才采纳
-    campusId: String(d.campusId ?? ""),
+    // IKBW0A：投放范围字段已废止——归属校区由后端按操作者本校区落库
     title: String(d.title || "").trim(),
     subtitle: String(d.subtitle || "").trim(),
     badge: String(d.badge || "").trim(),
@@ -1243,22 +1246,9 @@ const BANNER_PLACEMENT_FIELD: FieldDef = {
     { value: "pay-success", label: "支付成功页" },
   ],
 };
-/** 投放校区（IKAJSL）：空 = 全部校区；创建后不可改（避免误改投放面）。 */
-const BANNER_CAMPUS_FIELD: FieldDef = {
-  key: "campusId",
-  label: "投放校区",
-  type: "select",
-  options: () => [
-    { value: "", label: "全部校区" },
-    ...campusOptionsData.value.map((c) => ({
-      value: c.id,
-      label: c.shortName || c.name,
-    })),
-  ],
-};
-/** IKB5PB：placement 默认值——支付广告位菜单新建默认 pay-success，其余默认 home。 */
+/** IKB5PB：placement 默认值——支付广告位菜单新建默认 pay-success，其余默认 home。
+ *  IKBW0A：投放范围选择已从表单移除，归属校区由后端按操作者本校区落库。 */
 function openBannerCreate(defaultPlacement = "home") {
-  void ensureCampusOptions();
   openForm(
     {
       eyebrow: "NEW BANNER",
@@ -1280,7 +1270,6 @@ function openBannerCreate(defaultPlacement = "home") {
           ],
         },
         BANNER_PLACEMENT_FIELD,
-        BANNER_CAMPUS_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_CONTENT_FIELD,
@@ -1290,7 +1279,7 @@ function openBannerCreate(defaultPlacement = "home") {
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, campusId: "", sort: 0, image: "", content: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, sort: 0, image: "", content: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -2066,11 +2055,12 @@ const configs: Record<string, SectionConfig> = {
             const userMain = user?.nickname?.trim() || o.userPhone || "";
             return {
               ...o,
-              // 品名口径与仓库订单列一致：前 2 个 +「等」
-              itemsText: names.length
-                ? names.slice(0, 2).join("、") + (names.length > 2 ? " 等" : "")
-                : "—",
+              // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
+              itemsText: names.length ? names.join("\n") : "—",
               userText: [userMain, building].filter(Boolean).join(" / ") || "—",
+              // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
+              slaText:
+                o.deliveryMode === "instant" ? "立即配送" : "2小时送达",
             };
           }),
         }));
@@ -2083,7 +2073,8 @@ const configs: Record<string, SectionConfig> = {
       ["userText", "用户"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
-      ["estimatedArrival", "时效"],
+      // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
+      ["slaText", "时效"],
     ],
   },
   users: usersConfig,
@@ -2413,13 +2404,13 @@ const configs: Record<string, SectionConfig> = {
     ],
   },
 };
-/** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。 */
+/** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。
+ *  IKBW0A：Banner 校区自管，投放范围概念废止（仅作用本校区）。 */
 const bannerConfig: SectionConfig = {
   // IKB5PB：随菜单改名「Banner 配置」
   title: "Banner 配置",
-  eyebrow: "HQ BANNERS",
-  // IKAJSL：Banner 归总部投放（可选全部/指定校区），校区侧营销板块已无此 tab
-  desc: "总部统一投放小程序首页轮播与支付成功页广告；可选全部校区或定向。",
+  eyebrow: "CAMPUS BANNERS",
+  desc: "管理本校区小程序首页轮播与支付成功页广告，内容仅作用于本校区。",
   loader: (query) =>
     // IKB5PA：状态 Tab（启用/已隐藏）服务端过滤 + 角标
     api.banners(query, undefined, tabStatusOf(BANNER_STATUS_TABS)).then((res) => ({
@@ -2439,7 +2430,6 @@ const bannerConfig: SectionConfig = {
   columns: [
     ["image", "图片"],
     ["title", "标题"],
-    ["campusName", "投放范围"],
     ["placementText", "展示位置"],
     ["badge", "角标"],
     ["color", "主题色"],
@@ -2449,12 +2439,13 @@ const bannerConfig: SectionConfig = {
   ],
 };
 /** 支付广告位（IKB5PB）：Banner 配置的 pay-success 子视图（独立菜单），
- *  新建默认展示在支付成功页（openBannerCreate("pay-success")）。 */
+ *  新建默认展示在支付成功页（openBannerCreate("pay-success")）。
+ *  IKBW0A：校区自管，投放范围概念废止。 */
 const payAdsConfig: SectionConfig = {
   ...bannerConfig,
   title: "支付广告位",
   eyebrow: "PAY-SUCCESS ADS",
-  desc: "支付成功页广告位素材与投放；可全部校区或定向。",
+  desc: "管理本校区支付成功页广告位素材，内容仅作用于本校区。",
   loader: (query) =>
     // IKB5PA：状态 Tab（启用/已隐藏）随 placement 一起服务端过滤
     api.banners(query, "pay-success", tabStatusOf(BANNER_STATUS_TABS)).then(
@@ -2475,12 +2466,33 @@ const payAdsConfig: SectionConfig = {
   columns: [
     ["image", "图片"],
     ["title", "标题"],
-    ["campusName", "投放范围"],
     ["badge", "角标"],
     ["color", "主题色"],
     ["contentText", "图文详情"],
     ["sort", "排序"],
     ["status", "状态"],
+  ],
+};
+/** 校区打印机（IKBW0Q）：一校区一台小票机，绑定/换绑/测试打印/解绑。 */
+const printersConfig: SectionConfig = {
+  title: "打印机",
+  eyebrow: "RECEIPT PRINTER",
+  desc: "绑定本校区小票打印机（芯烨云）：支付成功自动出票，订单抽屉可补打；绑定后先测试打印验证连通。",
+  loader: async () => {
+    const rows = await api.printers();
+    return {
+      rows: rows.map((r) => ({
+        ...r,
+        createdAtText: String(r.createdAt).replace("T", " ").slice(0, 16),
+      })),
+      total: rows.length,
+    };
+  },
+  columns: [
+    ["name", "名称"],
+    ["sn", "终端号 (SN)"],
+    ["status", "状态"],
+    ["createdAtText", "绑定时间"],
   ],
 };
 /** 促销活动（IKAHFF/ADR-0006）：限时秒杀菜单（IKB5PB 拆分）的表格配置。
@@ -2538,6 +2550,8 @@ const createLabels: Record<string, string> = {
   dispatch: "＋ 邀请调配",
   rules: "＋ 新建提成规则",
   accounts: "＋ 新建后台账号",
+  // IKBW0Q：打印机板块新建 = 绑定打印机
+  printers: "＋ 绑定打印机",
   // IKAJSY：群码上传（users 为只读板块，无新建入口）
   "wechat-groups": "＋ 上传群码",
 };
@@ -2555,6 +2569,8 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "banners") return bannerConfig;
     // IKB5PB：支付广告位 = Banner 的 pay-success 子视图（独立菜单）
     if (section.value === "pay-ads") return payAdsConfig;
+    // IKBW0Q：校区打印机（系统域，校区自管）
+    if (section.value === "printers") return printersConfig;
     // IKBWRT：admin 平台超管在校区 tab 同用 hq 校区管理视图
     if (section.value === "campuses" && campusPlatformView.value)
       return hqCampusesConfig;
@@ -2642,15 +2658,12 @@ async function load() {
       .catch(() => {});
   }
   // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
-  // Banner 投放表单的投放校区下拉对 admin 同样需要（2026-08-26 全菜单开放）；
-  // IKB5PB：支付广告位同用 Banner 表单
+  // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
     (isHqRole.value &&
       ["orders", "users", "audit", "campuses"].includes(section.value)) ||
     // IKBWRT：admin 校区管理 tab 同 hq 预载校区下拉
-    (section.value === "campuses" && campusPlatformView.value) ||
-    section.value === "banners" ||
-    section.value === "pay-ads"
+    (section.value === "campuses" && campusPlatformView.value)
   )
     void ensureCampusOptions().catch(() => {});
   try {
@@ -3222,6 +3235,8 @@ function openCreate() {
   else if (section.value === "campuses")
     campusPlatformView.value ? openCampusCreate() : openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
+  // IKBW0Q：打印机板块新建 = 绑定（已绑定时走行内/抽屉「换绑」）
+  else if (section.value === "printers") openPrinterBind();
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
   else if (section.value === "accounts") openAccountCreate();
@@ -3513,6 +3528,67 @@ async function outboundRow(row: AdminRow) {
     notify(error instanceof Error ? error.message : "出库失败", true);
   }
 }
+/* ---------- 校区打印机（IKBW0Q）：绑定/测试打印/解绑 ---------- */
+/** 绑定/换绑表单（IKBW0Q）：SN/KEY 见机身铭牌或自检页；换绑覆盖本校区原绑定。 */
+function openPrinterBind(row?: Printer) {
+  openForm(
+    {
+      eyebrow: row ? "REBIND PRINTER" : "BIND PRINTER",
+      title: row ? "换绑 / 改名" : "绑定打印机",
+      submit: row ? "保存绑定" : "绑定",
+      done: "打印机已绑定",
+      fields: [
+        { key: "name", label: "名称", placeholder: "例如：仓内前台小票机" },
+        {
+          key: "sn",
+          label: "终端号 (SN)",
+          placeholder: "机身铭牌 / 自检页上的 SN",
+        },
+        {
+          key: "key",
+          label: "终端 Key",
+          placeholder: "与 SN 成对（机身二维码可得）",
+        },
+      ],
+      save: async (d) => {
+        if (!String(d.name || "").trim()) throw new Error("请填写名称");
+        if (!String(d.sn || "").trim()) throw new Error("请填写终端号 (SN)");
+        if (!String(d.key || "").trim()) throw new Error("请填写终端 Key");
+        await api.bindPrinter({
+          name: String(d.name).trim(),
+          sn: String(d.sn).trim(),
+          key: String(d.key).trim(),
+        });
+      },
+    },
+    { name: row?.name ?? "", sn: row?.sn ?? "", key: row?.key ?? "" },
+  );
+}
+/** 测试打印（IKBW0Q）：行内/抽屉一键验证连通，云端失败原样提示。 */
+async function testPrintRow(row: Printer) {
+  try {
+    await api.testPrintPrinter(row.id);
+    notify("测试小票已发送，请在打印机旁确认出纸");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "测试打印失败", true);
+  }
+}
+/** 解绑（IKBW0Q）：两步确认，仅删本校区绑定记录（芯烨云侧保留，重绑幂等）。 */
+async function unbindPrinterRow(row: Printer) {
+  if (!confirmDelete.value) {
+    confirmDelete.value = true;
+    return;
+  }
+  try {
+    await api.unbindPrinter(row.id);
+    notify("打印机已解绑");
+    selected.value = undefined;
+    confirmDelete.value = false;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "解绑失败", true);
+  }
+}
 /* ---------- 手动改订单状态（IKA0UT）：12 态白名单 + 原因进审计日志 ---------- */
 const ORDER_STATUS_OPTIONS: Array<[string, string]> = [
   ["pending-payment", "等待支付"],
@@ -3766,8 +3842,25 @@ async function submitStatusDialog() {
                       class="status warning upstream-badge"
                       >上游已更新</span
                     ></template
+                  ><!-- IKBW0C：订单号末 8 位（用户端可见部分）高亮，客服与客户可肉眼对读 -->
+                  <strong
+                    v-else-if="
+                      col[0] === 'orderNo' &&
+                      (section === 'orders' || section === 'warehouse-orders')
+                    "
+                    class="order-no"
+                    ><span>{{
+                      String(display(row, "orderNo")).slice(0, -8)
+                    }}</span
+                    ><span class="order-no__tail">{{
+                      String(display(row, "orderNo")).slice(-8)
+                    }}</span></strong
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
+                  ><!-- IKBW0C/D：商品列多商品每行一个 --><span
+                    v-else-if="col[0] === 'itemsText'"
+                    class="cell-lines"
+                    >{{ display(row, col[0]) }}</span
                   ><!-- 流水数量列（含 IKA0UQ 出库负数） --><span
                     v-else-if="col[0] === 'quantity' && section === 'inventory-txns'"
                     >{{ txnQuantity(row) }}</span
@@ -3815,6 +3908,14 @@ async function submitStatusDialog() {
                     @click="pullUpstreamRow(row)"
                   >
                     拉取更新
+                  </button>
+                  <!-- IKBW0Q：打印机行内一键测试打印 -->
+                  <button
+                    v-if="section === 'printers' && canWriteSection"
+                    class="btn mini primary"
+                    @click="testPrintRow(row as Printer)"
+                  >
+                    测试打印
                   </button>
                   <button
                     class="more"
@@ -4258,6 +4359,47 @@ async function submitStatusDialog() {
             <button class="btn danger-btn" @click="removeBannerRow">
               {{ confirmDelete ? "确认删除" : "删除 Banner" }}
             </button>
+          </template>
+          <!-- 打印机详情（IKBW0Q）：绑定信息 + 测试打印/换绑/解绑 -->
+          <template v-else-if="section === 'printers'">
+            <div class="drawer-fields">
+              <div>
+                <span>名称</span
+                ><strong>{{ (selected as Printer).name }}</strong>
+              </div>
+              <div>
+                <span>终端号 (SN)</span
+                ><strong>{{ (selected as Printer).sn }}</strong>
+              </div>
+              <div>
+                <span>状态</span
+                ><strong>{{
+                  (selected as Printer).status === "active" ? "已启用" : "已停用"
+                }}</strong>
+              </div>
+              <div>
+                <span>绑定时间</span
+                ><strong>{{
+                  String((selected as Printer).createdAt)
+                    .replace("T", " ")
+                    .slice(0, 16)
+                }}</strong>
+              </div>
+            </div>
+            <div v-if="canWriteSection" class="drawer-actions wrap">
+              <button class="btn primary" @click="testPrintRow(selected as Printer)">
+                测试打印
+              </button>
+              <button class="btn ghost" @click="openPrinterBind(selected as Printer)">
+                换绑 / 改名
+              </button>
+              <button
+                class="btn danger-btn"
+                @click="unbindPrinterRow(selected as Printer)"
+              >
+                {{ confirmDelete ? "确认解绑" : "解绑打印机" }}
+              </button>
+            </div>
           </template>
           <template
             v-else-if="

@@ -103,8 +103,7 @@ const hqGroups = [
       ["/categories", "categories", "商品类别"],
     ],
   },
-  // hq 无校区营销权限（券/秒杀归校区），营销活动组只剩 Banner 两项
-  { label: "营销活动", items: [MARKETING_ITEMS[0], MARKETING_ITEMS[3]] },
+  // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放
   {
     label: "校区与账号",
     items: [
@@ -163,7 +162,11 @@ const campusGroups = [
   },
   {
     label: "系统",
-    items: [["/accounts", "accounts", "账号管理"]],
+    items: [
+      ["/accounts", "accounts", "账号管理"],
+      // IKBW0Q：校区自主绑定小票打印机
+      ["/printers", "printers", "打印机"],
+    ],
   },
 ];
 const groups = computed(() =>

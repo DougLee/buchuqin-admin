@@ -18,6 +18,7 @@ import type {
   HqDashboardData,
   DispatchInvitation,
   InventoryTxn,
+  Printer,
   LeaveRequest,
   ListQuery,
   Order,
@@ -655,4 +656,20 @@ export const api = {
     localStorage.setItem("adminToken", token);
     return result;
   },
+  /* ---------- 校区打印机（IKBW0Q）：绑定/测试打印/解绑 ---------- */
+  /** 本校区打印机（一校区一台，未绑定为空数组）。 */
+  printers: () => request<Printer[]>("/admin/printers"),
+  /** 绑定/换绑（upsert 本校区记录；后端先把终端加进芯烨云账号）。 */
+  bindPrinter: (data: { name: string; sn: string; key: string }) =>
+    request<Printer>("/admin/printers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  unbindPrinter: (id: string) =>
+    request<Printer>(`/admin/printers/${id}`, { method: "DELETE" }),
+  testPrintPrinter: (id: string) =>
+    request<{ printed: boolean; sn: string }>(
+      `/admin/printers/${id}/test-print`,
+      { method: "POST", body: "{}" },
+    ),
 };

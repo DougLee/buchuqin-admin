@@ -178,6 +178,19 @@ export interface Banner {
   sort: number;
   status: string;
 }
+
+/** 校区打印机（IKBW0Q）：一校区一台小票机（芯烨云终端）。 */
+export interface Printer {
+  id: string;
+  campusId: string;
+  name: string;
+  sn: string;
+  /** 终端 Key（换绑表单回显用；仅校区管理员可见）。 */
+  key: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
 /** 促销活动（ADR-0006 / IKAHFF）：type 区分秒杀/临期，price 为促销价（分）。 */
 export interface Promotion {
   id: string;
@@ -545,6 +558,7 @@ export type AdminRow =
   | Coupon
   | Banner
   | Promotion
+  | Printer
   | Building
   | Room
   | InventoryTxn

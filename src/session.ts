@@ -42,14 +42,14 @@ const ALL_SECTIONS = [
   "audit",
 ];
 
-/** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + Banner 投放 + 校区/账号/用户/审计。
- *  products 对 hq 是官方商品库视图（IKAJSM）；orders/users/audit 只读跨校区。 */
+/** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
+ *  products 对 hq 是官方商品库视图（IKAJSM）；orders/users/audit 只读跨校区。
+ *  IKBW0A：Banner/广告位移出 hq——投放范围概念废止，校区自管。 */
 const HQ_SECTIONS = [
   "dashboard",
   "orders",
   "products",
   "categories",
-  "banners",
   "campuses",
   "accounts",
   "users",
@@ -64,19 +64,28 @@ export const PERMISSIONS: Record<
   { sections: string[]; writable: string[] }
 > = {
   // 总部长（IKAJSL）：总部板块；订单/用户/审计只读，不参与校区履约与本地营销。
+  // IKBW0A：banners 移出 hq（总部不做投放，Banner/广告位校区自管）。
   hq: {
     sections: HQ_SECTIONS,
-    writable: ["products", "categories", "banners", "campuses", "accounts"],
+    writable: ["products", "categories", "campuses", "accounts"],
   },
   admin: {
-    // 2026-08-26 道哥决策：admin 平台超管全菜单开放（含总部投放 Banner）
-    sections: [...ALL_SECTIONS, "dispatch", "rules", "accounts", "banners"],
+    // 平台超管全菜单开放（2026-08-26 道哥决策）；IKBW0A 起 banners 归本校区自管
+    sections: [
+      ...ALL_SECTIONS,
+      "dispatch",
+      "rules",
+      "accounts",
+      "banners",
+      "printers",
+    ],
     writable: [
       ...ALL_SECTIONS.filter((s) => s !== "after-sales"),
       "dispatch",
       "rules",
       "accounts",
       "banners",
+      "printers",
     ],
   },
   // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。
