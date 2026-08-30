@@ -62,6 +62,10 @@ const route = useRoute(),
     tag: "",
     weight: 0,
     price: 0,
+    // IKC1AC 价格三层：进货价/批发价仅 hq 编辑；status 上下架（IKC1AB）
+    costPrice: 0,
+    wholesalePrice: 0,
+    status: "on-sale" as "on-sale" | "off-sale",
     stock: 0,
     image: "",
     location: "",
@@ -77,6 +81,9 @@ const route = useRoute(),
     categoryId: "snack",
     price: 0,
     originalPrice: 0,
+    // IKC1AC：官方库建档的三层价格（进货价/批发价格）
+    costPrice: 0,
+    wholesalePrice: 0,
     stock: 0,
     tag: "新品",
     image: "",
@@ -1206,27 +1213,28 @@ const BANNER_PLACEMENT_TEXT: Record<string, string> = {
 };
 function bannerPayload(d: Record<string, FormValue>) {
   return {
-    // IKBW0A：投放范围字段已废止——归属校区由后端按操作者本校区落库
-    title: String(d.title || "").trim(),
+    // IKBW0A：投放范围字段已废止——归属校区由后端按操作者本校区落库。
+    // IKC1AD：标题/副标题/角标为内部字段（用户端不渲染），title 缺省给辨识名
+    title: String(d.title || "").trim() || "未命名 Banner",
     subtitle: String(d.subtitle || "").trim(),
     badge: String(d.badge || "").trim(),
     color: String(d.color || "green").trim(),
     ...(d.image ? { image: String(d.image) } : {}),
-    // IK9SNN：图文详情多行文本；空串语义清空（Banner 回到不可点）
-    content: String(d.content ?? "").trim(),
+    // IKC1AD：详情长图为主口径（空串语义清空 = Banner 回到不可点）；
+    // 旧逐行文字 content 不再从表单进出（编辑保存即归零，统一新口径）
+    detailImage: String(d.detailImage ?? "").trim(),
+    content: "",
     placement: String(d.placement || "home"),
     sort: Number(d.sort ?? 0),
   };
 }
-/** Banner 图文详情字段（IK9SNO）：每行一段文案，https:// 行在用户端渲染为图片。 */
-const BANNER_CONTENT_FIELD: FieldDef = {
-  key: "content",
-  label: "图文详情（用户端点击 Banner 进入，选填）",
-  type: "textarea",
+/** Banner 详情长图字段（IKC1AD）：替代原逐行文字 textarea，上传一张长图。 */
+const BANNER_DETAIL_IMAGE_FIELD: FieldDef = {
+  key: "detailImage",
+  label: "详情长图（用户端点击 Banner 进入，选填；留空 = 不可点击）",
+  type: "image",
   wide: true,
-  optional: true,
-  placeholder:
-    "每行一段文案；https:// 开头的行会渲染为图片（可粘贴 COS 图链）。\n留空 = Banner 不可点击。",
+  folder: "app/banner-detail",
 };
 /** Banner 背景图（IK9VBI）：落 COS app/ 目录（小程序素材），商品图/类别图仍走 uploads/。 */
 const BANNER_IMAGE_FIELD: FieldDef = {
@@ -1256,9 +1264,21 @@ function openBannerCreate(defaultPlacement = "home") {
       submit: "保存并启用",
       done: "Banner 已创建",
       fields: [
-        { key: "title", label: "标题", placeholder: "例如：今日爆款" },
-        { key: "subtitle", label: "副标题", placeholder: "例如：零食饮料 寝室直达" },
-        { key: "badge", label: "角标文案", placeholder: "例如：最快 30 分钟到寝" },
+        {
+          key: "title",
+          label: "标题（内部字段，用户端不显示）",
+          placeholder: "供运营辨识，例如：今日爆款",
+        },
+        {
+          key: "subtitle",
+          label: "副标题（内部字段，用户端不显示）",
+          placeholder: "选填",
+        },
+        {
+          key: "badge",
+          label: "角标（内部字段，用户端不显示）",
+          placeholder: "选填",
+        },
         {
           key: "color",
           label: "主题色",
@@ -1272,14 +1292,13 @@ function openBannerCreate(defaultPlacement = "home") {
         BANNER_PLACEMENT_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
-        BANNER_CONTENT_FIELD,
+        BANNER_DETAIL_IMAGE_FIELD,
       ],
       save: async (d) => {
-        if (!String(d.title || "").trim()) throw new Error("请填写标题");
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, sort: 0, image: "", content: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, sort: 0, image: "", detailImage: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -1292,9 +1311,9 @@ function openBannerEdit(row: AdminRow) {
       submit: "保存修改",
       done: "Banner 已更新",
       fields: [
-        { key: "title", label: "标题" },
-        { key: "subtitle", label: "副标题" },
-        { key: "badge", label: "角标文案" },
+        { key: "title", label: "标题（内部字段，用户端不显示）" },
+        { key: "subtitle", label: "副标题（内部字段，用户端不显示）" },
+        { key: "badge", label: "角标（内部字段，用户端不显示）" },
         {
           key: "color",
           label: "主题色",
@@ -1308,7 +1327,7 @@ function openBannerEdit(row: AdminRow) {
         BANNER_PLACEMENT_FIELD,
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
-        BANNER_CONTENT_FIELD,
+        BANNER_DETAIL_IMAGE_FIELD,
         {
           key: "status",
           label: "状态",
@@ -1320,7 +1339,6 @@ function openBannerEdit(row: AdminRow) {
         },
       ],
       save: async (d) => {
-        if (!String(d.title || "").trim()) throw new Error("请填写标题");
         void (await api.updateBanner(record.id, {
           ...bannerPayload(d),
           status: String(d.status || "active"),
@@ -1335,7 +1353,7 @@ function openBannerEdit(row: AdminRow) {
       placement: record.placement ?? "home",
       sort: Number(record.sort ?? 0),
       image: record.image ?? "",
-      content: record.content ?? "",
+      detailImage: record.detailImage ?? "",
       status: record.status,
     },
   );
@@ -1983,7 +2001,9 @@ const hqProductsConfig: SectionConfig = {
     ["skuNo", "SKU"],
     ["name", "商品"],
     ["categoryId", "分类"],
-    ["price", "官方售价"],
+    // IKC1AC：价格三层（进货价仅总部可见；官方售价更名批发价格）
+    ["costPrice", "进货价"],
+    ["price", "批发价格"],
     ["originalPrice", "建议零售价"],
     ["status", "状态"],
   ],
@@ -2112,6 +2132,9 @@ const configs: Record<string, SectionConfig> = {
       ["name", "商品"],
       ["categoryId", "分类"],
       ["price", "售价"],
+      // IKC1AC：校区可见批发价快照与建议零售价，不见进货价
+      ["wholesalePrice", "批发价格"],
+      ["originalPrice", "建议零售价"],
       ["availableStock", "可售库存"],
       ["locationText", "库位"],
       ["status", "状态"],
@@ -2416,7 +2439,8 @@ const bannerConfig: SectionConfig = {
     api.banners(query, undefined, tabStatusOf(BANNER_STATUS_TABS)).then((res) => ({
       rows: res.items.map((b) => ({
         ...b,
-        contentText: b.content ? `${b.content.length} 字` : "—",
+        // IKC1AD：详情改长图口径，列表显示配置状态
+        detailText: b.detailImage ? "已配置" : "—",
         placementText: BANNER_PLACEMENT_TEXT[b.placement ?? "home"] ?? b.placement,
       })),
       total: res.total,
@@ -2433,7 +2457,7 @@ const bannerConfig: SectionConfig = {
     ["placementText", "展示位置"],
     ["badge", "角标"],
     ["color", "主题色"],
-    ["contentText", "图文详情"],
+    ["detailText", "详情长图"],
     ["sort", "排序"],
     ["status", "状态"],
   ],
@@ -2452,7 +2476,8 @@ const payAdsConfig: SectionConfig = {
       (res) => ({
         rows: res.items.map((b) => ({
           ...b,
-          contentText: b.content ? `${b.content.length} 字` : "—",
+          // IKC1AD：详情改长图口径，列表显示配置状态
+        detailText: b.detailImage ? "已配置" : "—",
         })),
         total: res.total,
       }),
@@ -2468,7 +2493,7 @@ const payAdsConfig: SectionConfig = {
     ["title", "标题"],
     ["badge", "角标"],
     ["color", "主题色"],
-    ["contentText", "图文详情"],
+    ["detailText", "详情长图"],
     ["sort", "排序"],
     ["status", "状态"],
   ],
@@ -2594,7 +2619,11 @@ const section = computed(() => String(route.params.section)),
     return createLabels[section.value] ?? "";
   }),
   canCreate = computed(
-    () => Boolean(createLabel.value) && canWriteSection.value,
+    () =>
+      Boolean(createLabel.value) &&
+      canWriteSection.value &&
+      // IKC1AF：打印机编辑页形态——已有绑定时不再提供「再绑一台」入口
+      (section.value !== "printers" || !rows.value.length),
   ),
   filtered = computed(() =>
     // 服务端分页 + 服务端 keyword 过滤（IK8W5X 契约收尾）：rows 即命中当前页；
@@ -2817,7 +2846,7 @@ function openCategoryCreate() {
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         // 类别头图（IK9RX0）：小程序分类 tab 图标，无图时前端回退文字样式；
         // 落 COS app/category/（IK9VBM）
-        { key: "image", label: "类别图片", type: "image", wide: true, folder: "app/category" },
+        { key: "image", label: "类别图片（清空保存 = 恢复默认图标）", type: "image", wide: true, folder: "app/category" },
       ],
       save: async (d) =>
         void (await api.adminCreateCategory({
@@ -2852,7 +2881,8 @@ function openCategoryEdit(row: AdminRow) {
         void (await api.adminUpdateCategory(record.id, {
           name: String(d.name ?? "").trim(),
           sort: Number(d.sort ?? 0),
-          ...(d.image ? { image: String(d.image) } : {}),
+          // IKC1AA：总是带 image——空串=清除自定义图（恢复默认图标）
+          image: String(d.image ?? "").trim(),
         })),
     },
     { name: record.name, sort: Number(record.sort ?? 0), image: record.image ?? "" },
@@ -2953,6 +2983,8 @@ const STATUS_TEXT: Record<string, string> = {
 const MONEY_KEYS = [
   "price",
   "originalPrice",
+  "costPrice",
+  "wholesalePrice",
   "payableAmount",
   "productAmount",
   "deliveryFee",
@@ -3082,6 +3114,10 @@ function openDetail(row: AdminRow) {
       weight: Number(product.weight ?? 0),
       // 接口价格为分，编辑框以元展示
       price: Number(fenToYuan(product.price)),
+      // IKC1AC 价格三层 + IKC1AB 状态回填
+      costPrice: Number(fenToYuan(Number(product.costPrice ?? 0))),
+      wholesalePrice: Number(fenToYuan(Number(product.wholesalePrice ?? 0))),
+      status: product.status === "off-sale" ? "off-sale" : "on-sale",
       stock: Number(product.availableStock ?? product.stock ?? 0),
       // 头图（IK9RWX）：编辑抽屉可上传替换，留空 = 不改图
       image: product.image || "",
@@ -3115,7 +3151,18 @@ async function act(action: string) {
           ? { categoryId: productEdit.value.categoryId }
           : {}),
         price: yuanToFen(productEdit.value.price),
-        stock: Number(productEdit.value.stock),
+        // IKC1AB：上下架（hq 官方库放行/回收、校区自管本地上架）
+        status: productEdit.value.status,
+        // IKC1AC：进货价/批发价格仅官方库行提交（后端对校区行二次剔除）
+        ...(isHqRole.value
+          ? {
+              costPrice: yuanToFen(productEdit.value.costPrice),
+              wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
+            }
+          : {}),
+        // IKC1AB 修缺陷：hq 回填的 stock 是官方行恒 0 的 availableStock，
+        // 无条件提交会把官方行库存静默写 0——与库位同口径按角色排除
+        ...(isHqRole.value ? {} : { stock: Number(productEdit.value.stock) }),
         // 头图仅在填了 URL 时提交（DTO 校验 http(s)，空串跳过 = 保持原图）
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
@@ -3202,6 +3249,8 @@ function openProductCreate() {
     categoryId: "snack",
     price: 0,
     originalPrice: 0,
+    costPrice: 0,
+    wholesalePrice: 0,
     stock: 0,
     tag: "新品",
     image: "",
@@ -3416,11 +3465,13 @@ async function saveProduct() {
     return;
   }
   try {
-    // 价格表单输元，提交前统一转分
+    // 价格表单输元，提交前统一转分（IKC1AC：三层价格一并转分）
     await api.createProduct({
       ...productForm.value,
       price: yuanToFen(productForm.value.price),
       originalPrice: yuanToFen(productForm.value.originalPrice),
+      costPrice: yuanToFen(productForm.value.costPrice),
+      wholesalePrice: yuanToFen(productForm.value.wholesalePrice),
     });
     notify("SKU 已录入，商品数据已同步");
     closeCreate();
@@ -3794,7 +3845,79 @@ async function submitStatusDialog() {
           {{ section === "inventory-txns" ? "流水已同步" : "数据已同步" }}
         </p>
       </div>
-      <div class="table-wrap">
+      <!-- IKBW0Q/IKC1AF：打印机=编辑页形态（一校区一台），归属校区/绑定信息/
+           测试打印/换绑/解绑一页完成，不再走表格 -->
+      <div v-if="section === 'printers'" class="table-wrap">
+        <div v-if="loading" class="row-skeleton"></div>
+        <div v-else-if="!filtered.length" class="printer-view card">
+          <p class="printer-view__hint">
+            本校区还未绑定小票打印机。绑定后支付成功自动出票，订单抽屉可补打。
+          </p>
+          <button
+            v-if="canWriteSection"
+            class="btn primary"
+            @click="openPrinterBind()"
+          >
+            ＋ 绑定打印机
+          </button>
+        </div>
+        <div v-else class="printer-view card">
+          <div class="drawer-fields">
+            <div>
+              <span>归属校区</span
+              ><strong>{{ (filtered[0] as Printer).campusName || "—" }}</strong>
+            </div>
+            <div>
+              <span>名称</span
+              ><strong>{{ (filtered[0] as Printer).name }}</strong>
+            </div>
+            <div>
+              <span>终端号 (SN)</span
+              ><strong>{{ (filtered[0] as Printer).sn }}</strong>
+            </div>
+            <div>
+              <span>状态</span
+              ><strong>{{
+                (filtered[0] as Printer).status === "active"
+                  ? "已启用"
+                  : "已停用"
+              }}</strong>
+            </div>
+            <div>
+              <span>绑定时间</span
+              ><strong>{{
+                String((filtered[0] as Printer).createdAt)
+                  .replace("T", " ")
+                  .slice(0, 16)
+              }}</strong>
+            </div>
+          </div>
+          <p class="printer-view__hint">
+            与校区为一对一绑定（一校区一台）；多校区账号请用顶栏切换后分别管理。
+          </p>
+          <div v-if="canWriteSection" class="printer-view__actions">
+            <button
+              class="btn primary"
+              @click="testPrintRow(filtered[0] as Printer)"
+            >
+              测试打印
+            </button>
+            <button
+              class="btn ghost"
+              @click="openPrinterBind(filtered[0] as Printer)"
+            >
+              换绑 / 改名
+            </button>
+            <button
+              class="btn danger-btn"
+              @click="unbindPrinterRow(filtered[0] as Printer)"
+            >
+              {{ confirmDelete ? "确认解绑" : "解绑打印机" }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div v-else class="table-wrap">
         <table>
           <thead>
             <tr>
@@ -3909,7 +4032,7 @@ async function submitStatusDialog() {
                   >
                     拉取更新
                   </button>
-                  <!-- IKBW0Q：打印机行内一键测试打印 -->
+                  <!-- IKBW0Q：打印机行内一键测试打印（IKC1AF 起改编辑页形态，表格分支不再达） -->
                   <button
                     v-if="section === 'printers' && canWriteSection"
                     class="btn mini primary"
@@ -4199,6 +4322,17 @@ async function submitStatusDialog() {
                 v-model.number="productEdit.originalPrice"
                 type="number"
                 min="0" /></label
+            ><!-- IKC1AC：进货价/批发价格仅官方库行可编辑（校区不可见） -->
+            ><label v-if="isHqRole"
+              >进货价（元，仅总部可见）<input
+                v-model.number="productEdit.costPrice"
+                type="number"
+                min="0" /></label
+            ><label v-if="isHqRole"
+              >批发价格（元）<input
+                v-model.number="productEdit.wholesalePrice"
+                type="number"
+                min="0" /></label
             ><label
               >标签<input
                 v-model.trim="productEdit.tag"
@@ -4213,10 +4347,15 @@ async function submitStatusDialog() {
                 step="0.001" /></label
             >
             <label
-              >校园售价<input
+              >{{ isHqRole ? "批发价格（元）" : "校园售价（元）" }}<input
                 v-model.number="productEdit.price"
                 type="number"
                 min="0" /></label
+            ><!-- IKC1AB：上下架（hq 官方库放行/回收，校区自管本地上架） -->
+            <label
+              >状态<select v-model="productEdit.status">
+                <option value="on-sale">在售</option>
+                <option value="off-sale">已下架</option></select></label
             ><label v-if="!isHqRole"
               >可售库存<input
                 v-model.number="productEdit.stock"
@@ -4820,15 +4959,23 @@ async function submitStatusDialog() {
             </select></label
           >
           <label>标签<input v-model.trim="productForm.tag" /></label>
+          <!-- IKC1AC：官方库建档价格三层（进货价仅总部；官方售价已更名批发价格） -->
+          <label v-if="isHqRole"
+            >进货价（元，仅总部可见）<input
+              v-model.number="productForm.costPrice"
+              type="number"
+              min="0"
+              step="0.01"
+          /></label>
           <label
-            >校园售价<input
+            >{{ isHqRole ? "批发价格（元）" : "校园售价（元）" }}<input
               v-model.number="productForm.price"
               type="number"
               min="0"
               step="0.01"
           /></label>
           <label
-            >建议零售价<input
+            >建议零售价（元）<input
               v-model.number="productForm.originalPrice"
               type="number"
               min="0"

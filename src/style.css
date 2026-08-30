@@ -1501,3 +1501,22 @@ td {
 .cell-lines {
   white-space: pre-line;
 }
+
+/* IKBW0Q/IKC1AF：打印机编辑页形态（一校区一台，绑定信息+操作一页完成） */
+.printer-view {
+  max-width: 560px;
+  padding: 28px;
+}
+.printer-view__hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.printer-view .drawer-fields {
+  margin-bottom: 14px;
+}
+.printer-view__actions {
+  display: flex;
+  gap: 10px;
+}

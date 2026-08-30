@@ -62,10 +62,14 @@ export interface Product {
   categoryId: string;
   name: string;
   subtitle: string;
-  /** 售价（分）。 */
+  /** 售价（分）：官方行=批发价格，校区行=实际售价（IKC1AC）。 */
   price: number;
   /** 建议零售价（分）。 */
   originalPrice: number;
+  /** 进货价（分，IKC1AC）：总部专用，校区视角不可见。 */
+  costPrice?: number;
+  /** 批发价格（分，IKC1AC）：校区行为导入/拉取时的官方批发价快照。 */
+  wholesalePrice?: number;
   stock: number;
   lockedStock: number;
   sales: number;
@@ -171,7 +175,9 @@ export interface Banner {
   badge: string;
   color: string;
   image: string | null;
-  /** 图文详情（IK9SNN）：多行文本，https:// 行渲染为图；空 = 不可点。 */
+  /** 详情长图（IKC1AD）：点击 Banner 进详情页通铺展示；空 = 不可点。 */
+  detailImage?: string | null;
+  /** 旧版逐行文字详情（IK9SNN），保留兼容。 */
   content?: string | null;
   /** 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位。 */
   placement?: "home" | "pay-success";
@@ -183,6 +189,8 @@ export interface Banner {
 export interface Printer {
   id: string;
   campusId: string;
+  /** 归属校区（IKC1AF：列表/编辑页展示）。 */
+  campusName?: string;
   name: string;
   sn: string;
   /** 终端 Key（换绑表单回显用；仅校区管理员可见）。 */

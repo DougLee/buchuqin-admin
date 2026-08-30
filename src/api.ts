@@ -208,7 +208,12 @@ export const api = {
     id: string,
     data: {
       price: number;
-      stock: number;
+      stock?: number;
+      /** 上下架（IKC1AB）：hq 官方库放行/回收、校区自管本地上架。 */
+      status?: "on-sale" | "off-sale";
+      /** 进货价/批发价格（IKC1AC，分）：仅官方库行提交。 */
+      costPrice?: number;
+      wholesalePrice?: number;
       image?: string;
       location?: string;
       locationCode?: string;

@@ -60,13 +60,22 @@ async function onPick(event: Event) {
         "
       />
     </div>
-    <img
-      v-if="modelValue"
-      class="img-field__thumb"
-      :src="resolveImageUrl(modelValue)"
-      alt="图片预览"
-      loading="lazy"
-    />
+    <div v-if="modelValue" class="img-field__preview">
+      <img
+        class="img-field__thumb"
+        :src="resolveImageUrl(modelValue)"
+        alt="图片预览"
+        loading="lazy"
+      />
+      <!-- IKC1AA：一键清除（保存后即落「恢复默认」语义，如类别图回退默认图标） -->
+      <button
+        type="button"
+        class="img-field__clear"
+        @click="emit('update:modelValue', '')"
+      >
+        清除
+      </button>
+    </div>
     <p v-if="error" class="form-hint">{{ error }}</p>
   </div>
 </template>
@@ -104,5 +113,19 @@ async function onPick(event: Event) {
   object-fit: cover;
   border-radius: 10px;
   border: 1px solid var(--line, #e3e8e4);
+}
+.img-field__preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.img-field__clear {
+  border: 1px solid #f1d2bf;
+  background: #fff5ef;
+  color: #b65322;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
 }
 </style>
