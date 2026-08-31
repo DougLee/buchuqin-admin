@@ -664,8 +664,9 @@ export const api = {
   /* ---------- 校区打印机（IKBW0Q）：绑定/测试打印/解绑 ---------- */
   /** 本校区打印机（一校区一台，未绑定为空数组）。 */
   printers: () => request<Printer[]>("/admin/printers"),
-  /** 绑定/换绑（upsert 本校区记录；后端先把终端加进芯烨云账号）。 */
-  bindPrinter: (data: { name: string; sn: string; key: string }) =>
+  /** 绑定/换绑（upsert 本校区记录；后端先把终端加进芯烨云账号）。
+   *  IKC3FF：芯烨云无按台密钥，只凭 SN。 */
+  bindPrinter: (data: { name: string; sn: string }) =>
     request<Printer>("/admin/printers", {
       method: "POST",
       body: JSON.stringify(data),

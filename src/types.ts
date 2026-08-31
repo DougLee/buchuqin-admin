@@ -193,7 +193,7 @@ export interface Printer {
   campusName?: string;
   name: string;
   sn: string;
-  /** 终端 Key（换绑表单回显用；仅校区管理员可见）。 */
+  /** 预留列（IKC3FF：芯烨云无按台密钥，恒为空串）。 */
   key: string;
   status: string;
   createdAt: string;

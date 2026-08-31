@@ -3580,7 +3580,8 @@ async function outboundRow(row: AdminRow) {
   }
 }
 /* ---------- 校区打印机（IKBW0Q）：绑定/测试打印/解绑 ---------- */
-/** 绑定/换绑表单（IKBW0Q）：SN/KEY 见机身铭牌或自检页；换绑覆盖本校区原绑定。 */
+/** 绑定/换绑表单（IKBW0Q）：SN 见机身底部标签/自检页；换绑覆盖本校区原绑定。
+ *  IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）。 */
 function openPrinterBind(row?: Printer) {
   openForm(
     {
@@ -3593,26 +3594,19 @@ function openPrinterBind(row?: Printer) {
         {
           key: "sn",
           label: "终端号 (SN)",
-          placeholder: "机身铭牌 / 自检页上的 SN",
-        },
-        {
-          key: "key",
-          label: "终端 Key",
-          placeholder: "与 SN 成对（机身二维码可得）",
+          placeholder: "机身底部标签 / 自检页上的 SN",
         },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写名称");
         if (!String(d.sn || "").trim()) throw new Error("请填写终端号 (SN)");
-        if (!String(d.key || "").trim()) throw new Error("请填写终端 Key");
         await api.bindPrinter({
           name: String(d.name).trim(),
           sn: String(d.sn).trim(),
-          key: String(d.key).trim(),
         });
       },
     },
-    { name: row?.name ?? "", sn: row?.sn ?? "", key: row?.key ?? "" },
+    { name: row?.name ?? "", sn: row?.sn ?? "" },
   );
 }
 /** 测试打印（IKBW0Q）：行内/抽屉一键验证连通，云端失败原样提示。 */
