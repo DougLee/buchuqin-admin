@@ -2095,6 +2095,8 @@ const configs: Record<string, SectionConfig> = {
       ["payableAmount", "实付金额"],
       // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
       ["slaText", "时效"],
+      // IKC9M2：补下单时间列（格式化走 display 的 createdAt 统一分支）
+      ["createdAt", "下单时间"],
     ],
   },
   users: usersConfig,
