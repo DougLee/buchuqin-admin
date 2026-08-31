@@ -53,6 +53,8 @@ export interface Category {
   sort: number;
   image: string;
   productCount?: number;
+  /** 在小程序显示（IKC9M4 类目开关）：false = C 端全链路隐藏该类目及其商品 */
+  hidden?: boolean;
 }
 
 export interface Product {

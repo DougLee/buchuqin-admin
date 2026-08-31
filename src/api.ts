@@ -440,14 +440,19 @@ export const api = {
     ),
   /** 商品类别（全局字典非分页，直接返回数组；列表带 productCount）。 */
   adminCategories: () => request<Category[]>("/admin/categories"),
-  adminCreateCategory: (data: { name: string; sort?: number; image?: string }) =>
+  adminCreateCategory: (data: {
+    name: string;
+    sort?: number;
+    image?: string;
+    hidden?: boolean;
+  }) =>
     request<Category>("/admin/categories", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   adminUpdateCategory: (
     id: string,
-    data: { name?: string; sort?: number; image?: string },
+    data: { name?: string; sort?: number; image?: string; hidden?: boolean },
   ) =>
     request<Category>(`/admin/categories/${id}`, {
       method: "PATCH",

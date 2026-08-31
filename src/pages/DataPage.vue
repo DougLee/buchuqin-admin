@@ -2161,6 +2161,9 @@ const configs: Record<string, SectionConfig> = {
           sort: c.sort,
           image: c.image ?? "",
           productCount: c.productCount ?? 0,
+          hidden: c.hidden ?? false,
+          // IKC9M4：类目开关状态列
+          visibleText: (c.hidden ?? false) ? "已隐藏" : "显示中",
         }));
       return { rows: pageRows, total: hit.length };
     },
@@ -2169,6 +2172,8 @@ const configs: Record<string, SectionConfig> = {
       ["name", "类别名称"],
       ["sort", "排序"],
       ["productCount", "商品数"],
+      // IKC9M4：类目可见性开关（隐藏后 C 端全链路不露出该类目及其商品）
+      ["visibleText", "小程序显示"],
     ],
   },
   inventory: {
@@ -2850,15 +2855,21 @@ function openCategoryCreate() {
         // 类别头图（IK9RX0）：小程序分类 tab 图标，无图时前端回退文字样式；
         // 落 COS app/category/（IK9VBM）
         { key: "image", label: "类别图片（清空保存 = 恢复默认图标）", type: "image", wide: true, folder: "app/category" },
+        {
+          key: "visible",
+          label: "在小程序显示该分类（IKC9M4 类目开关：隐藏后 C 端全链路不露出）",
+          type: "checkbox",
+        },
       ],
       save: async (d) =>
         void (await api.adminCreateCategory({
           name: String(d.name ?? "").trim(),
           sort: Number(d.sort ?? 0),
           ...(d.image ? { image: String(d.image) } : {}),
+          hidden: !d.visible,
         })),
     },
-    { name: "", sort: (categories.value.length + 1) * 10, image: "" },
+    { name: "", sort: (categories.value.length + 1) * 10, image: "", visible: true },
   );
 }
 function openCategoryEdit(row: AdminRow) {
@@ -2879,6 +2890,11 @@ function openCategoryEdit(row: AdminRow) {
         { key: "name", label: "类别名称" },
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         { key: "image", label: "类别图片", type: "image", wide: true, folder: "app/category" },
+        {
+          key: "visible",
+          label: "在小程序显示该分类（隐藏后用户端全链路不露出）",
+          type: "checkbox",
+        },
       ],
       save: async (d) =>
         void (await api.adminUpdateCategory(record.id, {
@@ -2886,10 +2902,28 @@ function openCategoryEdit(row: AdminRow) {
           sort: Number(d.sort ?? 0),
           // IKC1AA：总是带 image——空串=清除自定义图（恢复默认图标）
           image: String(d.image ?? "").trim(),
+          hidden: !d.visible,
         })),
     },
-    { name: record.name, sort: Number(record.sort ?? 0), image: record.image ?? "" },
+    {
+      name: record.name,
+      sort: Number(record.sort ?? 0),
+      image: record.image ?? "",
+      visible: !(record as { hidden?: boolean }).hidden,
+    },
   );
+}
+/** 类目显隐快捷开关（IKC9M4）：一键切换 C 端可见性，商品数据不动。
+ *  场景：类目资质审核期间隐藏「酒系列」等敏感类目，过审后一键恢复。 */
+async function toggleCategoryVisible(row: Category) {
+  try {
+    const next = !(row.hidden ?? false);
+    await api.adminUpdateCategory(row.id, { hidden: next });
+    notify(next ? "分类已隐藏（用户端全链路不露出）" : "分类已显示");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
 }
 async function removeCategoryRow() {
   if (!selected.value) return;
@@ -4033,6 +4067,14 @@ async function submitStatusDialog() {
                     @click="testPrintRow(row as Printer)"
                   >
                     测试打印
+                  </button>
+                  <!-- IKC9M4：类目显隐快捷开关（提审/资质场景一键隐藏，商品数据不动） -->
+                  <button
+                    v-if="section === 'categories' && canWriteSection"
+                    class="btn mini ghost"
+                    @click="toggleCategoryVisible(row as Category)"
+                  >
+                    {{ (row as Category).hidden ? "显示" : "隐藏" }}
                   </button>
                   <button
                     class="more"
