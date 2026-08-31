@@ -6,6 +6,7 @@ import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
 import { resolveImageUrl } from "../utils/image";
+import { fmtDate, fmtDateTime } from "../utils/datetime";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
   AccountRow,
@@ -2510,7 +2511,7 @@ const printersConfig: SectionConfig = {
     return {
       rows: rows.map((r) => ({
         ...r,
-        createdAtText: String(r.createdAt).replace("T", " ").slice(0, 16),
+        createdAtText: fmtDateTime(r.createdAt),
       })),
       total: rows.length,
     };
@@ -3045,8 +3046,7 @@ function display(row: AdminRow, key: string) {
   if (key === "contentText") return v ? String(v) : "—";
   if (key === "floor")
     return v === null || v === undefined || v === "" ? "*" : String(v);
-  if (key === "expiresAt")
-    return v ? String(v).replace("T", " ").slice(0, 10) : "—";
+  if (key === "expiresAt") return fmtDate(String(v));
   if (typeof v === "boolean") return v ? "在线" : "离线";
   if (typeof v === "number" && MONEY_KEYS.includes(key))
     return `¥${fenToYuan(v)}`;
@@ -3065,7 +3065,7 @@ function display(row: AdminRow, key: string) {
       "updatedAt",
     ].includes(key)
   )
-    return v ? String(v).replace("T", " ").slice(0, 16) : "—";
+    return fmtDateTime(String(v));
   return v ?? "—";
 }
 function txnQuantity(row: AdminRow) {
@@ -3882,9 +3882,7 @@ async function submitStatusDialog() {
             <div>
               <span>绑定时间</span
               ><strong>{{
-                String((filtered[0] as Printer).createdAt)
-                  .replace("T", " ")
-                  .slice(0, 16)
+                fmtDateTime((filtered[0] as Printer).createdAt)
               }}</strong>
             </div>
           </div>
@@ -4214,7 +4212,7 @@ async function submitStatusDialog() {
                     <span class="status">{{ o.statusText }}</span>
                   </td>
                   <td>¥{{ fenToYuan(o.payableAmount) }}</td>
-                  <td>{{ String(o.createdAt).replace("T", " ").slice(0, 16) }}</td>
+                  <td>{{ fmtDateTime(o.createdAt) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -4515,9 +4513,7 @@ async function submitStatusDialog() {
               <div>
                 <span>绑定时间</span
                 ><strong>{{
-                  String((selected as Printer).createdAt)
-                    .replace("T", " ")
-                    .slice(0, 16)
+                  fmtDateTime((selected as Printer).createdAt)
                 }}</strong>
               </div>
             </div>
