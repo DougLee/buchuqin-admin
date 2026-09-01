@@ -1217,6 +1217,11 @@ function switchCampusTab(tab: "campuses" | "buildings") {
 const isOfficialProducts = computed(
   () => section.value === "official-products",
 );
+/** 商品域统一判定（IKCJ46）：商品管理 + 官方商品库两个菜单共用品类逻辑 */
+const isProductsSection = computed(
+  () =>
+    section.value === "products" || section.value === "official-products",
+);
 const productView = computed<"official" | "campus">(() => {
   if (role.value === "hq") return "official";
   if (role.value === "admin") return isOfficialProducts.value ? "official" : "campus";
@@ -3092,7 +3097,10 @@ const MONEY_KEYS = [
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
-  if (key === "status" && section.value === "products")
+  if (
+    key === "status" &&
+    (section.value === "products" || section.value === "official-products")
+  )
     // IKB3K9：商品状态列中文化（在售/已下架/售罄）
     return (
       (
@@ -3190,7 +3198,7 @@ function openDetail(row: AdminRow) {
       .catch(() => {})
       .finally(() => (userOrdersLoading.value = false));
   }
-  if (section.value === "products") {
+  if (isProductsSection.value) {
     const product = row as Product;
     productEdit.value = {
       // 资料字段（IKAHAT）：原值回填，改什么提交什么
@@ -3222,7 +3230,7 @@ function openDetail(row: AdminRow) {
 async function act(action: string) {
   if (!selected.value) return;
   try {
-    if (section.value === "products") {
+    if (isProductsSection.value) {
       // 名称空白就地拦截（IKAHAT），与后端「商品名称不能为空」同口径
       if (!productEdit.value.name.trim())
         throw new Error("商品名称不能为空");
@@ -3354,8 +3362,8 @@ function openProductCreate() {
   };
 }
 function openCreate() {
-  if (section.value === "products") {
-    // IKB3K9 → IKCHEW：本校区视角主按钮官方库导入；官方库视角建档
+  if (isProductsSection.value) {
+    // IKB3K9 → IKCJ46：本校区视角主按钮官方库导入；官方库视角建档
     if (!isHqView.value) {
       openImportModal();
       return;
@@ -3788,6 +3796,7 @@ const DETAIL_SECTIONS: readonly string[] = [
   "orders",
   "warehouse-orders",
   "products",
+  "official-products",
   "after-sales",
   "users",
   "audit",
@@ -4217,7 +4226,7 @@ async function cancelInviteRow(row: AdminRow) {
                     >{{ display(row, col[0]) }}</span
                   ><!-- IKAJSO：导入商品名旁亮「上游已更新」角标，抽屉/行内可一键拉取 -->
                   <template
-                    v-else-if="col[0] === 'name' && section === 'products'"
+                    v-else-if="col[0] === 'name' && isProductsSection"
                     ><strong>{{ display(row, "name") }}</strong
                     ><span
                       v-if="(row as Product).upstreamChanged"
@@ -4311,7 +4320,11 @@ async function cancelInviteRow(row: AdminRow) {
                   </template>
                   <!-- IKCJ3M：商品——上下架快捷 toggle（官方库放行/回收同口径） -->
                   <template
-                    v-else-if="section === 'products' && canWriteSection"
+                    v-else-if="
+                      (section === 'products' ||
+                        section === 'official-products') &&
+                      canWriteSection
+                    "
                   >
                     <button
                       class="btn mini ghost"
@@ -4737,7 +4750,7 @@ async function cancelInviteRow(row: AdminRow) {
           </div>
         </template>
         <div v-else class="drawer-fields">
-          <template v-if="section === 'products' && canWriteSection"
+          <template v-if="isProductsSection && canWriteSection"
             ><!-- IKA0UW：原信息摘要——编辑前原值一眼可读 -->
             <div class="origin-summary">
               <div>
@@ -4924,7 +4937,7 @@ async function cancelInviteRow(row: AdminRow) {
           </div>
         </div>
         <div class="drawer-actions wrap">
-          <template v-if="section === 'products' && canWriteSection">
+          <template v-if="isProductsSection && canWriteSection">
             <button class="btn primary" @click="act('save')">
               {{ isHqView ? "保存官方库资料" : "保存商品调整" }}</button
             ><!-- IKAJSO：上游有更新，抽屉内也可一键拉取 -->
