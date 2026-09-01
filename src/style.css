@@ -648,6 +648,17 @@ a {
   text-align: center;
   padding: 22px 0;
 }
+/* 批量放行/回收（IKCKX4）勾选列：窄列居中，点击区域放大 */
+.check-cell {
+  width: 36px;
+  text-align: center;
+}
+.check-cell input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--brand);
+}
 .chart-empty {
   position: absolute;
   inset: 0 0 20px;

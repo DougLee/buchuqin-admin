@@ -248,6 +248,19 @@ export const api = {
         body: JSON.stringify(data),
       },
     ),
+  /** 批量放行/回收（IKCKX4）：返回实际更新数（越界 id 由后端忽略）。 */
+  batchUpdateProductStatus: (
+    ids: string[],
+    status: "on-sale" | "off-sale",
+    view?: string,
+  ) =>
+    request<{ count: number }>(
+      `/admin/products/batch-status${withQuery(view ? `view=${view}` : undefined)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ids, status }),
+      },
+    ),
   inventory: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
       `/admin/inventory${withQuery(listQuery(query))}`,

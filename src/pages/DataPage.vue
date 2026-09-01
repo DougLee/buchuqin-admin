@@ -3042,6 +3042,7 @@ watch(
   () => route.params.section,
   () => {
     selected.value = undefined;
+    selectedProductIds.value = [];
     dispTab.value = "leaves";
     mktTab.value = "coupons";
     // IKB3KE：搜索词跨板块串扰——切板块清空，各板块条件相互独立
@@ -3866,6 +3867,64 @@ async function toggleProductStatusRow(row: Product) {
     notify(error instanceof Error ? error.message : "操作失败", true);
   }
 }
+/** 批量放行/回收（IKCKX4）：商品域勾选 → 工具条批量按钮。
+ *  官方库视角=放行/回收，本校区视角=批量上架/下架；跨页勾选保留，切板块清空。 */
+const selectedProductIds = ref<string[]>([]);
+const batchWorking = ref(false);
+const productSelectable = computed(
+  () => isProductsSection.value && canWriteSection.value,
+);
+const allPageChecked = computed(
+  () =>
+    filtered.value.length > 0 &&
+    filtered.value.every((row) => selectedProductIds.value.includes(row.id)),
+);
+/** 勾选列占用后 loading/空态行的 colspan 随之 +1 */
+const tableColspan = computed(
+  () => config.value.columns.length + 1 + (productSelectable.value ? 1 : 0),
+);
+function toggleProductCheck(id: string, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  selectedProductIds.value = checked
+    ? [...selectedProductIds.value, id]
+    : selectedProductIds.value.filter((x) => x !== id);
+}
+function toggleAllProductChecks(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  const pageIds = filtered.value.map((row) => row.id);
+  selectedProductIds.value = checked
+    ? [...new Set([...selectedProductIds.value, ...pageIds])]
+    : selectedProductIds.value.filter((id) => !pageIds.includes(id));
+}
+async function batchApplyProductStatus(status: "on-sale" | "off-sale") {
+  if (!selectedProductIds.value.length || batchWorking.value) return;
+  const official = productView.value === "official";
+  const verb =
+    status === "on-sale"
+      ? official
+        ? "放行"
+        : "上架"
+      : official
+        ? "回收"
+        : "下架";
+  batchWorking.value = true;
+  try {
+    const result = await api.batchUpdateProductStatus(
+      selectedProductIds.value,
+      status,
+      productView.value,
+    );
+    const skipped = selectedProductIds.value.length - result.count;
+    selectedProductIds.value = [];
+    await rowDone(
+      `已${verb} ${result.count} 件商品${skipped > 0 ? `，${skipped} 件不在当前视角已跳过` : ""}`,
+    );
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "批量操作失败", true);
+  } finally {
+    batchWorking.value = false;
+  }
+}
 async function toggleRuleRow(row: AdminRow) {
   const rule = row as unknown as RuleRow;
   const next = rule.status === "active" ? "disabled" : "active";
@@ -4082,6 +4141,25 @@ async function cancelInviteRow(row: AdminRow) {
         </option>
       </select>
       <div class="toolbar-spacer"></div>
+      <!-- 批量放行/回收（IKCKX4）：勾选商品后出现；官方库=放行/回收、本校区=上架/下架 -->
+      <template v-if="productSelectable && selectedProductIds.length">
+        <button
+          class="btn primary"
+          :disabled="batchWorking"
+          @click="batchApplyProductStatus('on-sale')"
+        >
+          {{ productView === "official" ? "批量放行" : "批量上架" }}（{{
+            selectedProductIds.length
+          }}）
+        </button>
+        <button
+          class="btn ghost"
+          :disabled="batchWorking"
+          @click="batchApplyProductStatus('off-sale')"
+        >
+          {{ productView === "official" ? "批量回收" : "批量下架" }}
+        </button>
+      </template>
       <!-- IKA0V2：采购入库为日常主操作排前，盘点调整次之 -->
       <template v-if="section === 'inventory' && canWrite('inventory')">
         <button class="btn primary" @click="openStockForm('stock-in')">
@@ -4189,23 +4267,40 @@ async function cancelInviteRow(row: AdminRow) {
         <table>
           <thead>
             <tr>
+              <!-- 批量放行/回收（IKCKX4）：商品域可写时出现勾选列（全选=当前页） -->
+              <th v-if="productSelectable" class="check-cell">
+                <input
+                  type="checkbox"
+                  :checked="allPageChecked"
+                  aria-label="全选当前页"
+                  @change="toggleAllProductChecks"
+                />
+              </th>
               <th v-for="col in config.columns" :key="col[0]">{{ col[1] }}</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading" v-for="i in 6" :key="i">
-              <td :colspan="config.columns.length + 1">
+              <td :colspan="tableColspan">
                 <div class="row-skeleton"></div>
               </td>
             </tr>
             <template v-else>
               <tr v-if="!filtered.length">
-                <td :colspan="config.columns.length + 1" class="empty-cell">
+                <td :colspan="tableColspan" class="empty-cell">
                   {{ loadError ? "加载失败，请重试" : "暂无数据" }}
                 </td>
               </tr>
               <tr v-for="row in filtered" :key="rowKey(row)">
+                <td v-if="productSelectable" class="check-cell">
+                  <input
+                    type="checkbox"
+                    :checked="selectedProductIds.includes(row.id)"
+                    :aria-label="`选择 ${display(row, 'name')}`"
+                    @change="toggleProductCheck(row.id, $event)"
+                  />
+                </td>
                 <td v-for="col in config.columns" :key="col[0]">
                   <span
                     v-if="col[0] === 'typeText' && section === 'inventory-txns'"
