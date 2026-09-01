@@ -1210,21 +1210,18 @@ function switchCampusTab(tab: "campuses" | "buildings") {
   campusTab.value = tab;
   resetStatusFilterAndLoad();
 }
-/* ---------- 商品板块双视角（IKCHEW）：admin 平台超管可切官方商品库/本校区商品 ----------
-   hq 恒官方库视角、校区角色恒本校区视角（官方库只读经导入落地），均不显示切换；
-   admin 的选择 localStorage 记忆，默认官方商品库（与 hq 同口径）。 */
-const productView = ref<"official" | "campus">(
-  role.value === "admin"
-    ? (localStorage.getItem("adminProductView") as "official" | "campus") ||
-      "official"
-    : "official",
+/* ---------- 商品板块双视角（IKCHEW → IKCJ46 独立菜单化）----------
+   官方商品库拆为独立菜单 /official-products，/products 恒为本校区商品：
+   hq 恒官方库；admin 按路由分流（官方商品库菜单=official，商品管理=campus）；
+   校区角色恒本校区。视角不再本地切换（道哥 2026-09-01 拍板防混淆）。 */
+const isOfficialProducts = computed(
+  () => section.value === "official-products",
 );
-function switchProductView(view: "official" | "campus") {
-  if (productView.value === view) return;
-  productView.value = view;
-  if (role.value === "admin") localStorage.setItem("adminProductView", view);
-  resetStatusFilterAndLoad();
-}
+const productView = computed<"official" | "campus">(() => {
+  if (role.value === "hq") return "official";
+  if (role.value === "admin") return isOfficialProducts.value ? "official" : "campus";
+  return "campus";
+});
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
 watch(
   () => route.query.tab,
@@ -2660,8 +2657,8 @@ const section = computed(() => String(route.params.section)),
     // IKBWRT：admin 平台超管在校区 tab 同用 hq 校区管理视图
     if (section.value === "campuses" && campusPlatformView.value)
       return hqCampusesConfig;
-    // IKAJSM → IKCHEW：官方库视角（hq 恒定；admin 随商品视角）= 官方商品库视图
-    if (section.value === "products" && isHqView.value)
+    // IKAJSM → IKCJ46：官方商品库独立菜单（/official-products）走官方库视图
+    if (section.value === "official-products" && isHqView.value)
       return hqProductsConfig;
     return configs[section.value] || configs.orders;
   }),
@@ -2674,9 +2671,11 @@ const section = computed(() => String(route.params.section)),
     // IKAJSL：campuses 板块两视角——hq/admin（校区 tab）建校区，校区角色建楼栋
     if (section.value === "campuses" && campusPlatformView.value)
       return "＋ 新建校区";
-    // IKAJSM → IKCHEW：商品板块两视角——官方库视角建档，本校区视角从官方库导入
-    if (section.value === "products")
+    // IKCJ46：官方商品库菜单建档；商品管理菜单从官方库导入
+    if (section.value === "official-products")
       return isHqView.value ? "＋ 官方库建档" : "从官方库导入";
+    if (section.value === "products")
+      return "从官方库导入";
     return createLabels[section.value] ?? "";
   }),
   canCreate = computed(
@@ -4012,24 +4011,7 @@ async function cancelInviteRow(row: AdminRow) {
           楼栋管理
         </button>
       </div>
-      <!-- IKCHEW：admin 商品双视角——官方商品库（同 hq）/本校区商品（同校区角色） -->
-      <div
-        v-if="section === 'products' && role === 'admin'"
-        class="segmented inv-tabs"
-      >
-        <button
-          :class="{ active: productView === 'official' }"
-          @click="switchProductView('official')"
-        >
-          官方商品库
-        </button>
-        <button
-          :class="{ active: productView === 'campus' }"
-          @click="switchProductView('campus')"
-        >
-          本校区商品
-        </button>
-      </div>
+      <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
       <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力，订单先接入）；点 Tab 即服务端过滤 -->
       <div v-if="config.statusTabs" class="status-tabs" role="tablist">

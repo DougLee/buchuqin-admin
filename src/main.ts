@@ -18,6 +18,8 @@ router.beforeEach((to) => {
   const authed = Boolean(localStorage.getItem("adminToken") && role.value);
   if (to.path === "/login") return authed ? "/" : true;
   if (!authed) return "/login";
+  // IKCJ46：hq 无本校区商品概念，/products 直达官方商品库菜单
+  if (to.path === "/products" && role.value === "hq") return "/official-products";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });

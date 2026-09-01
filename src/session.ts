@@ -165,6 +165,8 @@ const SECTION_ALIAS: Record<string, string> = {
   coupons: "marketing",
   promotions: "marketing",
   "pay-ads": "banners",
+  // IKCJ46：官方商品库独立菜单（权限复用 products 板块）
+  "official-products": "products",
 };
 
 export function canSee(section: string): boolean {

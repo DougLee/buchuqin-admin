@@ -100,7 +100,8 @@ const hqGroups = [
     label: "总部商品",
     items: [
       // IKAJSM：hq 的商品板块是官方商品库（商品源头），校区经导入落本地
-      ["/products", "products", "官方商品库"],
+      // IKCJ46：官方商品库独立菜单路由（/products 恒为本校区商品）
+      ["/official-products", "official-products", "官方商品库"],
       ["/categories", "categories", "商品类别"],
     ],
   },
@@ -170,9 +171,24 @@ const campusGroups = [
     ],
   },
 ];
-const groups = computed(() =>
-  role.value === "hq" ? hqGroups : campusGroups,
-);
+const groups = computed(() => {
+  if (role.value === "hq") return hqGroups;
+  // IKCJ46：admin 菜单在仓储中心组头部加「官方商品库」独立入口——
+  // 商品管理菜单恒为本校区商品，官方库另开菜单防混淆（道哥 2026-09-01 拍板）
+  if (role.value === "admin")
+    return campusGroups.map((group) =>
+      group.label === "仓储中心"
+        ? {
+            ...group,
+            items: [
+              ["official-products", "official-products", "官方商品库"],
+              ...group.items,
+            ],
+          }
+        : group,
+    );
+  return campusGroups;
+});
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块（含 IKB5PB 路由别名映射，见 session.ts）。 */
 const visibleGroups = computed(() =>
   groups.value
