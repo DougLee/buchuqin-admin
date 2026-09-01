@@ -3781,6 +3781,22 @@ const confirmRowId = ref("");
 function rowStatusText(row: AdminRow): string {
   return (row as unknown as { status?: string }).status ?? "";
 }
+/** ••• 详情保留板块（IKCKHU 续）：行内已覆盖全部操作的板块（banner/促销/券/
+ *  类别/校区/员工/账号/财务/规则/群码删除外的营销类）不再显示 •••；
+ *  保留的都是有额外详情内容或低频操作的：订单履约、商品编辑表单、
+ *  售后留档、群码大图预览、只读板块（用户/审计/库位/流水）。 */
+const DETAIL_SECTIONS: readonly string[] = [
+  "orders",
+  "warehouse-orders",
+  "products",
+  "after-sales",
+  "users",
+  "audit",
+  "locations",
+  "inventory-txns",
+  "wechat-groups",
+  "dispatch",
+];
 function rowConfirmFirst(id: string): boolean {
   if (confirmRowId.value !== id) {
     confirmRowId.value = id;
@@ -4521,6 +4537,7 @@ async function cancelInviteRow(row: AdminRow) {
                     {{ confirmRowId === row.id ? "确认取消" : "取消邀请" }}
                   </button>
                   <button
+                    v-if="DETAIL_SECTIONS.includes(section)"
                     class="more"
                     aria-label="查看详情"
                     title="查看详情"
