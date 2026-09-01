@@ -961,8 +961,25 @@ async function ensureProducts() {
     );
   return productsCache.value;
 }
+/** 促销选品专用（IKCJVS 续）：仅本校区在售商品——已下架不可建促销，
+ *  与后端 createPromotion 的 status 校验同口径。库存入库/盘点仍用全量 ensureProducts。 */
+const onSaleProductsCache = ref<Product[]>([]);
+async function ensureOnSaleProducts() {
+  if (!onSaleProductsCache.value.length)
+    onSaleProductsCache.value = await fetchAllPages(
+      (query) => api.products({ ...query, status: "on-sale" }, "campus"),
+    );
+  return onSaleProductsCache.value;
+}
 function productOptions() {
   return productsCache.value.map((p) => ({
+    value: p.id,
+    label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
+  }));
+}
+/** 促销选品选项：仅本校区在售商品（IKCJVS 续）。 */
+function onSaleProductOptions() {
+  return onSaleProductsCache.value.map((p) => ({
     value: p.id,
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
@@ -1414,7 +1431,7 @@ function promoWindowText(p: Promotion): string {
 }
 /** 新建促销：选商品/类型/促销价/起止窗口；重叠与价格底线由后端把关。 */
 function openPromotionCreate() {
-  void ensureProducts();
+  void ensureOnSaleProducts();
   openForm(
     {
       eyebrow: "NEW PROMOTION",
@@ -1422,7 +1439,7 @@ function openPromotionCreate() {
       submit: "保存活动",
       done: "促销活动已创建",
       fields: [
-        { key: "productId", label: "商品（在售）", type: "select", wide: true, options: productOptions },
+        { key: "productId", label: "商品（在售）", type: "select", wide: true, options: onSaleProductOptions },
         {
           key: "type",
           label: "类型",
