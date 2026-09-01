@@ -954,7 +954,11 @@ async function toggleRule() {
 const productsCache = ref<Product[]>([]);
 async function ensureProducts() {
   if (!productsCache.value.length)
-    productsCache.value = await fetchAllPages(api.products);
+    // IKCHEW 追修：促销选品/库存入库/盘点都是校区上下文操作，固定本校区口径——
+    // admin 裸调 /admin/products 现默认官方库，选品错位会导致后端按本校区校验必败
+    productsCache.value = await fetchAllPages(
+      (query) => api.products(query, "campus"),
+    );
   return productsCache.value;
 }
 function productOptions() {
