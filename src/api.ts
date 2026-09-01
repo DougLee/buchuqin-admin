@@ -165,13 +165,16 @@ export const api = {
     request<DashboardData | HqDashboardData>(
       `/admin/dashboard${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
     ),
-  products: (query?: ListQuery) =>
+  /** view（IKCHEW 商品双视角）：仅 admin 生效——official 官方库 / campus 本校区 */
+  products: (query?: ListQuery, view?: string) =>
     request<PagedResponse<Product>>(
-      `/admin/products${withQuery(listQuery(query))}`,
+      `/admin/products${withQuery(listQuery(query), view ? `view=${view}` : undefined)}`,
     ),
   /** 商品状态计数（IKB3K9 列表 Tab 角标）：口径同列表（含售罄映射）。 */
-  productStatusCounts: () =>
-    request<Record<string, number>>("/admin/products/status-counts"),
+  productStatusCounts: (view?: string) =>
+    request<Record<string, number>>(
+      `/admin/products/status-counts${withQuery(view ? `view=${view}` : undefined)}`,
+    ),
   /** 官方库浏览（IKAJSO 导入弹窗）：只读官方库行，校区角色可查。 */
   officialProducts: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
@@ -192,16 +195,22 @@ export const api = {
     request<Product>(`/admin/products/${id}/pull-upstream`, {
       method: "POST",
     }),
-  lookupBarcode: (barcode: string) =>
-    request<BarcodeLookup>("/admin/products/barcode/lookup", {
-      method: "POST",
-      body: JSON.stringify({ barcode }),
-    }),
-  createProduct: (data: Record<string, unknown>) =>
-    request<Product>("/admin/products", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  lookupBarcode: (barcode: string, view?: string) =>
+    request<BarcodeLookup>(
+      `/admin/products/barcode/lookup${withQuery(view ? `view=${view}` : undefined)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ barcode }),
+      },
+    ),
+  createProduct: (data: Record<string, unknown>, view?: string) =>
+    request<Product>(
+      `/admin/products${withQuery(view ? `view=${view}` : undefined)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
   /** price 为整数分（表单元输入经 yuanToFen 转换后提交）；image 为 COS URL（IK9RWX 改图）；
    *  images/location 为详情多图与库位（IK9SNS/IK9U40）。 */
   updateProduct: (
@@ -228,11 +237,16 @@ export const api = {
       /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
       description?: string;
     },
+    /** IKCHEW 商品双视角：仅 admin 生效（official 官方库 / campus 本校区） */
+    view?: string,
   ) =>
-    request<Product>(`/admin/products/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+    request<Product>(
+      `/admin/products/${id}${withQuery(view ? `view=${view}` : undefined)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    ),
   inventory: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
       `/admin/inventory${withQuery(listQuery(query))}`,

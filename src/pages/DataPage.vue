@@ -725,9 +725,9 @@ const ACCOUNT_ROLE_OPTIONS = [
   { value: "finance", label: "财务" },
   { value: "admin", label: "管理员" },
 ];
-/** IKAJSL：仅 hq 操作者可建总部角色（后端守卫兜底）。 */
+/** IKBFJ4 滞后修正：admin 平台超管同 hq 可建总部角色（后端 2790 行已同权）。 */
 function accountRoleOptions() {
-  return isHqRole.value
+  return isPlatformAdmin.value
     ? [...ACCOUNT_ROLE_OPTIONS, { value: "hq", label: "总部长" }]
     : ACCOUNT_ROLE_OPTIONS;
 }
@@ -1187,6 +1187,21 @@ function switchMktTab(tab: "coupons" | "banners" | "promotions") {
 const campusTab = ref<"campuses" | "buildings">("campuses");
 function switchCampusTab(tab: "campuses" | "buildings") {
   campusTab.value = tab;
+  resetStatusFilterAndLoad();
+}
+/* ---------- 商品板块双视角（IKCHEW）：admin 平台超管可切官方商品库/本校区商品 ----------
+   hq 恒官方库视角、校区角色恒本校区视角（官方库只读经导入落地），均不显示切换；
+   admin 的选择 localStorage 记忆，默认官方商品库（与 hq 同口径）。 */
+const productView = ref<"official" | "campus">(
+  role.value === "admin"
+    ? (localStorage.getItem("adminProductView") as "official" | "campus") ||
+      "official"
+    : "official",
+);
+function switchProductView(view: "official" | "campus") {
+  if (productView.value === view) return;
+  productView.value = view;
+  if (role.value === "admin") localStorage.setItem("adminProductView", view);
   resetStatusFilterAndLoad();
 }
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
@@ -1691,6 +1706,13 @@ const isHqRole = computed(() => role.value === "hq");
 const isPlatformAdmin = computed(
   () => role.value === "hq" || role.value === "admin",
 );
+/** IKCHEW：官方库视角 UI——hq 恒真；admin 随商品视角切换；校区角色恒假。
+ *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
+const isHqView = computed(
+  () =>
+    isHqRole.value ||
+    (role.value === "admin" && productView.value === "official"),
+);
 /** IKBWRT：campuses 板块平台级视图——hq 恒真；admin 走双 tab 切换（校区管理时为真）。 */
 const campusPlatformView = computed(
   () =>
@@ -1703,14 +1725,14 @@ async function ensureCampusOptions() {
     campusOptionsData.value = await api.campuses();
   return campusOptionsData.value;
 }
-/** hq 选了校区就透传 campus 参数（后端对校区角色忽略该参数） */
+/** 平台视角选了校区就透传 campus 参数（IKCHEW：admin 同 hq 跨校区筛选） */
 function campusQuery(query: ListQuery): ListQuery {
-  return isHqRole.value && campusFilter.value
+  return isPlatformAdmin.value && campusFilter.value
     ? { ...query, campusId: campusFilter.value }
     : query;
 }
 function campusScope(): string | undefined {
-  return isHqRole.value ? campusFilter.value || undefined : undefined;
+  return isPlatformAdmin.value ? campusFilter.value || undefined : undefined;
 }
 const usersConfig: SectionConfig = {
   title: "C 端用户",
@@ -1981,10 +2003,14 @@ const hqProductsConfig: SectionConfig = {
       HQ_PRODUCT_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
       HQ_PRODUCT_STATUS_TABS[0];
     return api
-      .products({
-        ...query,
-        status: tab.statuses.length ? tab.statuses.join(",") : undefined,
-      })
+      .products(
+        {
+          ...query,
+          status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+        },
+        // IKCHEW：admin 双视角透传（hq/校区角色后端忽略 view）
+        productView.value,
+      )
       .then((res) => ({
         rows: res.items.map((p) => ({
           ...p,
@@ -1997,7 +2023,8 @@ const hqProductsConfig: SectionConfig = {
       }));
   },
   statusTabs: HQ_PRODUCT_STATUS_TABS,
-  countsLoader: () => api.productStatusCounts(),
+  // IKCHEW：admin 官方库视角透传 view（hq 后端忽略）
+  countsLoader: () => api.productStatusCounts(productView.value),
   columns: [
     ["skuNo", "SKU"],
     ["name", "商品"],
@@ -2112,10 +2139,14 @@ const configs: Record<string, SectionConfig> = {
         PRODUCT_STATUS_TABS.find((t) => t.key === statusFilter.value) ??
         PRODUCT_STATUS_TABS[0];
       return api
-        .products({
-          ...query,
-          status: tab.statuses.length ? tab.statuses.join(",") : undefined,
-        })
+        .products(
+          {
+            ...query,
+            status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+          },
+          // IKCHEW：admin 本校区视角透传 view（校区角色后端忽略）
+          productView.value,
+        )
         .then((res) => ({
           rows: res.items.map((p) => ({
             ...p,
@@ -2129,7 +2160,8 @@ const configs: Record<string, SectionConfig> = {
         }));
     },
     statusTabs: PRODUCT_STATUS_TABS,
-    countsLoader: () => api.productStatusCounts(),
+    // IKCHEW：admin 本校区视角透传 view（校区角色后端忽略）
+    countsLoader: () => api.productStatusCounts(productView.value),
     columns: [
       ["skuNo", "SKU"],
       ["name", "商品"],
@@ -2607,8 +2639,8 @@ const section = computed(() => String(route.params.section)),
     // IKBWRT：admin 平台超管在校区 tab 同用 hq 校区管理视图
     if (section.value === "campuses" && campusPlatformView.value)
       return hqCampusesConfig;
-    // IKAJSM：hq 商品板块 = 官方商品库视图（无库存/库位列）
-    if (section.value === "products" && isHqRole.value)
+    // IKAJSM → IKCHEW：官方库视角（hq 恒定；admin 随商品视角）= 官方商品库视图
+    if (section.value === "products" && isHqView.value)
       return hqProductsConfig;
     return configs[section.value] || configs.orders;
   }),
@@ -2621,9 +2653,9 @@ const section = computed(() => String(route.params.section)),
     // IKAJSL：campuses 板块两视角——hq/admin（校区 tab）建校区，校区角色建楼栋
     if (section.value === "campuses" && campusPlatformView.value)
       return "＋ 新建校区";
-    // IKAJSM：商品板块两视角——hq 官方库建档，校区从官方库导入（禁自建）
+    // IKAJSM → IKCHEW：商品板块两视角——官方库视角建档，本校区视角从官方库导入
     if (section.value === "products")
-      return isHqRole.value ? "＋ 官方库建档" : "从官方库导入";
+      return isHqView.value ? "＋ 官方库建档" : "从官方库导入";
     return createLabels[section.value] ?? "";
   }),
   canCreate = computed(
@@ -2697,7 +2729,7 @@ async function load() {
   // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
   // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
-    (isHqRole.value &&
+    (isPlatformAdmin.value &&
       ["orders", "users", "audit", "campuses"].includes(section.value)) ||
     // IKBWRT：admin 校区管理 tab 同 hq 预载校区下拉
     (section.value === "campuses" && campusPlatformView.value)
@@ -3190,21 +3222,21 @@ async function act(action: string) {
         // IKC1AB：上下架（hq 官方库放行/回收、校区自管本地上架）
         status: productEdit.value.status,
         // IKC1AC：进货价/批发价格仅官方库行提交（后端对校区行二次剔除）
-        ...(isHqRole.value
+        ...(isHqView.value
           ? {
               costPrice: yuanToFen(productEdit.value.costPrice),
               wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
             }
           : {}),
-        // IKC1AB 修缺陷：hq 回填的 stock 是官方行恒 0 的 availableStock，
-        // 无条件提交会把官方行库存静默写 0——与库位同口径按角色排除
-        ...(isHqRole.value ? {} : { stock: Number(productEdit.value.stock) }),
+        // IKC1AB 修缺陷：官方库回填的 stock 是恒 0 的 availableStock，
+        // 无条件提交会把官方行库存静默写 0——与库位同口径按视角排除
+        ...(isHqView.value ? {} : { stock: Number(productEdit.value.stock) }),
         // 头图仅在填了 URL 时提交（DTO 校验 http(s)，空串跳过 = 保持原图）
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
           : {}),
         // 库位（IK9U40/IKA0VG）：空串语义清空回退默认；官方库无库位概念（IKAJSM）
-        ...(isHqRole.value
+        ...(isHqView.value
           ? {}
           : {
               location: productEdit.value.location.trim(),
@@ -3214,7 +3246,7 @@ async function act(action: string) {
         images: productEdit.value.images.filter(Boolean),
         // 商品介绍（IKAHAU）：整段覆盖，空串清空；trim 只去首尾空白保内换行
         description: productEdit.value.description.trim(),
-      });
+      }, productView.value);
     } else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
     else if (section.value === "finance") {
@@ -3299,8 +3331,8 @@ function openProductCreate() {
 }
 function openCreate() {
   if (section.value === "products") {
-    // IKB3K9：校区双入口——主按钮官方库导入，次按钮手动自建（openProductCreate）
-    if (!isHqRole.value) {
+    // IKB3K9 → IKCHEW：本校区视角主按钮官方库导入；官方库视角建档
+    if (!isHqView.value) {
       openImportModal();
       return;
     }
@@ -3414,7 +3446,10 @@ async function lookup() {
     return;
   }
   try {
-    const result: BarcodeLookup = await api.lookupBarcode(code);
+    const result: BarcodeLookup = await api.lookupBarcode(
+      code,
+      productView.value,
+    );
     if (result.found && result.exists !== false) {
       scanError.value = "该商品已存在，可直接编辑库存与价格";
       selected.value = {
@@ -3508,7 +3543,7 @@ async function saveProduct() {
       originalPrice: yuanToFen(productForm.value.originalPrice),
       costPrice: yuanToFen(productForm.value.costPrice),
       wholesalePrice: yuanToFen(productForm.value.wholesalePrice),
-    });
+    }, productView.value);
     notify("SKU 已录入，商品数据已同步");
     closeCreate();
     await load();
@@ -3737,7 +3772,7 @@ async function submitStatusDialog() {
         </button>
         <!-- IKB3K9：校区商品双入口——手动自建与官方库导入并存 -->
         <button
-          v-if="section === 'products' && !isHqRole && canWriteSection"
+          v-if="section === 'products' && !isHqView && canWriteSection"
           class="btn ghost"
           @click="openProductCreate"
         >
@@ -3779,6 +3814,24 @@ async function submitStatusDialog() {
           @click="switchCampusTab('buildings')"
         >
           楼栋管理
+        </button>
+      </div>
+      <!-- IKCHEW：admin 商品双视角——官方商品库（同 hq）/本校区商品（同校区角色） -->
+      <div
+        v-if="section === 'products' && role === 'admin'"
+        class="segmented inv-tabs"
+      >
+        <button
+          :class="{ active: productView === 'official' }"
+          @click="switchProductView('official')"
+        >
+          官方商品库
+        </button>
+        <button
+          :class="{ active: productView === 'campus' }"
+          @click="switchProductView('campus')"
+        >
+          本校区商品
         </button>
       </div>
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
@@ -3829,9 +3882,9 @@ async function submitStatusDialog() {
           {{ b.name }}
         </option>
       </select>
-      <!-- IKAJSL：hq 跨校区视角的校区筛选（订单/用户/审计） -->
+      <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计） -->
       <select
-        v-if="isHqRole && ['orders', 'users', 'audit'].includes(section)"
+        v-if="isPlatformAdmin && ['orders', 'users', 'audit'].includes(section)"
         v-model="campusFilter"
         class="filter-btn"
         aria-label="校区筛选"
@@ -4051,7 +4104,7 @@ async function submitStatusDialog() {
                   <button
                     v-if="
                       section === 'products' &&
-                      !isHqRole &&
+                      !isHqView &&
                       canWriteSection &&
                       (row as Product).upstreamChanged
                     "
@@ -4314,12 +4367,12 @@ async function submitStatusDialog() {
                 <span>当前售价</span
                 ><strong>¥{{ fenToYuan(Number((selected as unknown as Record<string, unknown>)?.price ?? 0)) }}</strong>
               </div>
-              <!-- 库存/库位归校区（IKAJSM），官方库视图不展示 -->
-              <div v-if="!isHqRole">
+              <!-- 库存/库位归校区（IKAJSM），官方库视角不展示 -->
+              <div v-if="!isHqView">
                 <span>当前可售库存</span
                 ><strong>{{ display(selected, "availableStock") }}</strong>
               </div>
-              <div v-if="!isHqRole">
+              <div v-if="!isHqView">
                 <span>当前库位</span
                 ><strong>{{ display(selected, "locationText") || "未配置" }}</strong>
               </div>
@@ -4359,12 +4412,12 @@ async function submitStatusDialog() {
                 type="number"
                 min="0" /></label
             ><!-- IKC1AC：进货价/批发价格仅官方库行可编辑（校区不可见） -->
-            ><label v-if="isHqRole"
+            ><label v-if="isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
                 min="0" /></label
-            ><label v-if="isHqRole"
+            ><label v-if="isHqView"
               >批发价格（元）<input
                 v-model.number="productEdit.wholesalePrice"
                 type="number"
@@ -4383,7 +4436,7 @@ async function submitStatusDialog() {
                 step="0.001" /></label
             >
             <label
-              >{{ isHqRole ? "批发价格（元）" : "校园售价（元）" }}<input
+              >{{ isHqView ? "批发价格（元）" : "校园售价（元）" }}<input
                 v-model.number="productEdit.price"
                 type="number"
                 min="0" /></label
@@ -4392,13 +4445,13 @@ async function submitStatusDialog() {
               >状态<select v-model="productEdit.status">
                 <option value="on-sale">在售</option>
                 <option value="off-sale">已下架</option></select></label
-            ><label v-if="!isHqRole"
+            ><label v-if="!isHqView"
               >可售库存<input
                 v-model.number="productEdit.stock"
                 type="number"
                 min="0" /></label
             ><!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
-            <label v-if="!isHqRole"
+            <label v-if="!isHqView"
               >库位（字典选择）<select v-model="productEdit.location">
                 <option value="">未配置</option>
                 <option
@@ -4408,7 +4461,7 @@ async function submitStatusDialog() {
                 >
                   {{ opt.label }}
                 </option></select></label
-            ><label v-if="!isHqRole"
+            ><label v-if="!isHqView"
               >库位编号（选填）<input
                 v-model.trim="productEdit.locationCode"
                 type="text"
@@ -4477,10 +4530,10 @@ async function submitStatusDialog() {
         <div class="drawer-actions wrap">
           <template v-if="section === 'products' && canWriteSection">
             <button class="btn primary" @click="act('save')">
-              {{ isHqRole ? "保存官方库资料" : "保存商品调整" }}</button
+              {{ isHqView ? "保存官方库资料" : "保存商品调整" }}</button
             ><!-- IKAJSO：上游有更新，抽屉内也可一键拉取 -->
             <button
-              v-if="!isHqRole && (selected as Product).upstreamChanged"
+              v-if="!isHqView && (selected as Product).upstreamChanged"
               class="btn ghost"
               @click="pullUpstreamRow(selected!)"
             >
@@ -4948,8 +5001,8 @@ async function submitStatusDialog() {
       <aside class="drawer product-create">
         <div class="drawer-head">
           <div>
-            <!-- IKAJSM：hq 视角是官方库建档；校区入口已换官方库导入弹窗 -->
-            <h2>{{ isHqRole ? "官方库建档" : "扫码录入 SKU" }}</h2>
+            <!-- IKAJSM → IKCHEW：官方库视角建档；本校区视角扫码录入 SKU -->
+            <h2>{{ isHqView ? "官方库建档" : "扫码录入 SKU" }}</h2>
           </div>
           <button aria-label="关闭" @click="closeCreate">×</button>
         </div>
@@ -4994,7 +5047,7 @@ async function submitStatusDialog() {
           >
           <label>标签<input v-model.trim="productForm.tag" /></label>
           <!-- IKC1AC：官方库建档价格三层（进货价仅总部；官方售价已更名批发价格） -->
-          <label v-if="isHqRole"
+          <label v-if="isHqView"
             >进货价（元，仅总部可见）<input
               v-model.number="productForm.costPrice"
               type="number"
@@ -5002,7 +5055,7 @@ async function submitStatusDialog() {
               step="0.01"
           /></label>
           <label
-            >{{ isHqRole ? "批发价格（元）" : "校园售价（元）" }}<input
+            >{{ isHqView ? "批发价格（元）" : "校园售价（元）" }}<input
               v-model.number="productForm.price"
               type="number"
               min="0"
@@ -5016,7 +5069,7 @@ async function submitStatusDialog() {
               step="0.01"
           /></label>
           <!-- 初始库存/库位归校区（IKAJSM），官方库建档不展示 -->
-          <label v-if="!isHqRole"
+          <label v-if="!isHqView"
             >初始库存<input
               v-model.number="productForm.stock"
               type="number"
@@ -5030,7 +5083,7 @@ async function submitStatusDialog() {
               step="0.001"
           /></label>
           <!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
-          <label v-if="!isHqRole"
+          <label v-if="!isHqView"
             >库位（字典选择）<select v-model="productForm.location">
               <option value="">未配置</option>
               <option
@@ -5041,7 +5094,7 @@ async function submitStatusDialog() {
                 {{ opt.label }}
               </option></select></label
           >
-          <label v-if="!isHqRole"
+          <label v-if="!isHqView"
             >库位编号（选填）<input
               v-model.trim="productForm.locationCode"
               maxlength="20"
