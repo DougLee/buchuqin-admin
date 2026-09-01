@@ -216,7 +216,8 @@ export const api = {
   updateProduct: (
     id: string,
     data: {
-      price: number;
+      /** 后端 DTO 全字段可选（行内快捷 toggle 只提交 status） */
+      price?: number;
       stock?: number;
       /** 上下架（IKC1AB）：hq 官方库放行/回收、校区自管本地上架。 */
       status?: "on-sale" | "off-sale";

@@ -3775,6 +3775,161 @@ async function submitStatusDialog() {
     statusDialogSaving.value = false;
   }
 }
+/* ---------- IKCJ3M：操作列直达——常用操作平铺行内（不再 ••• 进抽屉再选），
+   危险操作（删除类）行内两击确认，行级记忆互不干扰 ---------- */
+const confirmRowId = ref("");
+function rowStatusText(row: AdminRow): string {
+  return (row as unknown as { status?: string }).status ?? "";
+}
+function rowConfirmFirst(id: string): boolean {
+  if (confirmRowId.value !== id) {
+    confirmRowId.value = id;
+    return false;
+  }
+  confirmRowId.value = "";
+  return true;
+}
+function rowDone(msg: string) {
+  notify(msg);
+  return load();
+}
+async function toggleBannerRow(row: AdminRow) {
+  const next = (row as Banner).status === "hidden" ? "active" : "hidden";
+  try {
+    await api.updateBanner(row.id, { status: next });
+    await rowDone(next === "hidden" ? "Banner 已隐藏" : "Banner 已启用");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function removeBannerInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteBanner(row.id);
+    await rowDone("Banner 已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function toggleCouponRow(row: AdminRow) {
+  const next = (row as Coupon).status === "paused" ? "active" : "paused";
+  try {
+    await api.updateCouponStatus(row.id, next);
+    await rowDone(next === "paused" ? "优惠券已暂停发放" : "优惠券已启用");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function togglePromotionRow(row: AdminRow) {
+  const record = row as unknown as Promotion;
+  const next = record.status === "active" ? "disabled" : "active";
+  try {
+    await api.updatePromotion(record.id, { status: next });
+    await rowDone(
+      next === "disabled" ? "活动已停用，C 端立即回落原价" : "活动已启用",
+    );
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+/** 商品上下架快捷 toggle（IKC1AB：官方库放行/回收、校区自管本地上架） */
+async function toggleProductStatusRow(row: Product) {
+  const next = row.status === "on-sale" ? "off-sale" : "on-sale";
+  try {
+    await api.updateProduct(row.id, { status: next }, productView.value);
+    await rowDone(next === "on-sale" ? "商品已上架" : "商品已下架");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function toggleRuleRow(row: AdminRow) {
+  const rule = row as unknown as RuleRow;
+  const next = rule.status === "active" ? "disabled" : "active";
+  try {
+    await api.updateCommissionRule(rule.id, { status: next });
+    await rowDone(next === "active" ? "规则已启用" : "规则已停用");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function confirmSettlementRow(row: AdminRow) {
+  try {
+    await api.confirmSettlement(row.id);
+    await rowDone("账单已确认");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function paySettlementRow(row: AdminRow) {
+  try {
+    await api.paySettlement(row.id);
+    await rowDone("账单已标记打款");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+async function reprintReceiptRow(row: AdminRow) {
+  try {
+    await api.printReceipt(row.id);
+    notify("小票已发送打印机");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "打印失败", true);
+  }
+}
+async function removeCategoryInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.adminDeleteCategory(row.id);
+    await rowDone("类别已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function removeBuildingInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteBuilding(row.id);
+    await rowDone("楼栋已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function removeStaffInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteStaff(row.id);
+    await rowDone("员工已软删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function removeAccountInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteAccount(row.id);
+    await rowDone("账号已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function removeWechatGroupInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteWechatGroup(row.id);
+    await rowDone("群码已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+async function cancelInviteRow(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.cancelDispatchInvitation(row.id);
+    await rowDone("调配邀请已取消");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "取消失败", true);
+  }
+}
 </script>
 <template>
   <div class="workspace">
@@ -4124,39 +4279,251 @@ async function submitStatusDialog() {
                     >
                       改状态
                     </button>
+                    <!-- IKCJ3M：补打小票行内直达（缺纸/卡纸兜底高频） -->
+                    <button
+                      v-if="section === 'orders'"
+                      class="btn mini ghost"
+                      @click="reprintReceiptRow(row)"
+                    >
+                      补打
+                    </button>
                   </template>
-                  <!-- IKAJSO：上游有更新时行内一键拉取（校区视角） -->
-                  <button
-                    v-if="
-                      section === 'products' &&
-                      !isHqView &&
-                      canWriteSection &&
-                      (row as Product).upstreamChanged
+                  <!-- IKCJ3M：Banner/广告位——编辑/显隐/删除行内直达 -->
+                  <template
+                    v-else-if="
+                      (section === 'banners' || section === 'pay-ads') &&
+                      canWriteSection
                     "
-                    class="btn mini primary"
-                    @click="pullUpstreamRow(row)"
                   >
-                    拉取更新
-                  </button>
-                  <!-- IKBW0Q：打印机行内一键测试打印（IKC1AF 起改编辑页形态，表格分支不再达） -->
+                    <button
+                      class="btn mini primary"
+                      @click="openBannerEdit(row)"
+                    >
+                      编辑
+                    </button>
+                    <button class="btn mini ghost" @click="toggleBannerRow(row)">
+                      {{ (row as Banner).status === "hidden" ? "启用" : "隐藏" }}
+                    </button>
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeBannerInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：商品——上下架快捷 toggle（官方库放行/回收同口径） -->
+                  <template
+                    v-else-if="section === 'products' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini ghost"
+                      @click="toggleProductStatusRow(row as Product)"
+                    >
+                      {{ (row as Product).status === "on-sale" ? "下架" : "上架" }}
+                    </button>
+                    <button
+                      v-if="
+                        !isHqView && (row as Product).upstreamChanged
+                      "
+                      class="btn mini primary"
+                      @click="pullUpstreamRow(row)"
+                    >
+                      拉取更新
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：促销——编辑/停启行内直达（独立菜单 + marketing tab 双入口） -->
+                  <template
+                    v-else-if="
+                      (section === 'promotions' ||
+                        (section === 'marketing' && mktTab === 'promotions')) &&
+                      canWriteSection
+                    "
+                  >
+                    <button
+                      class="btn mini primary"
+                      @click="openPromotionEdit(row)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      @click="togglePromotionRow(row)"
+                    >
+                      {{
+                        (row as unknown as Promotion).status === "active"
+                          ? "停用"
+                          : "启用"
+                      }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：优惠券——暂停/启用 + 定向发放行内直达 -->
+                  <template
+                    v-else-if="
+                      (section === 'coupons' ||
+                        (section === 'marketing' && mktTab === 'coupons')) &&
+                      canWriteSection
+                    "
+                  >
+                    <button class="btn mini ghost" @click="toggleCouponRow(row)">
+                      {{
+                        (row as Coupon).status === "paused" ? "启用" : "暂停"
+                      }}
+                    </button>
+                    <button
+                      class="btn mini primary"
+                      @click="openIssue(row as Coupon)"
+                    >
+                      定向发放
+                    </button>
+                  </template>
+                  <!-- IKC9M4 + IKCJ3M：类别显隐开关 + 编辑/删除直达 -->
+                  <template
+                    v-else-if="section === 'categories' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini ghost"
+                      @click="toggleCategoryVisible(row as Category)"
+                    >
+                      {{ (row as Category).hidden ? "显示" : "隐藏" }}
+                    </button>
+                    <button
+                      class="btn mini primary"
+                      @click="openCategoryEdit(row)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeCategoryInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：校区/楼栋——按视角分叉（IKBWRT 双 tab） -->
+                  <template
+                    v-else-if="section === 'campuses' && canWriteSection"
+                  >
+                    <button
+                      v-if="campusPlatformView"
+                      class="btn mini primary"
+                      @click="openCampusEdit(row)"
+                    >
+                      编辑
+                    </button>
+                    <template v-else>
+                      <button
+                        class="btn mini primary"
+                        @click="openBuildingEdit(row as Building)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        class="btn mini ghost"
+                        @click="openRooms(row as Building)"
+                      >
+                        寝室
+                      </button>
+                      <button
+                        class="btn mini danger-btn"
+                        @click="removeBuildingInline(row)"
+                      >
+                        {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                      </button>
+                    </template>
+                  </template>
+                  <!-- IKCJ3M：员工——编辑/软删除行内直达 -->
+                  <template v-else-if="section === 'staff' && canWriteSection">
+                    <button
+                      class="btn mini primary"
+                      @click="openStaffEdit(row as Staff)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeStaffInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认软删除" : "软删除" }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：账号——编辑/改密/删除行内直达 -->
+                  <template
+                    v-else-if="section === 'accounts' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini primary"
+                      @click="openAccountEdit(row)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      @click="openAccountResetPassword(row)"
+                    >
+                      改密
+                    </button>
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeAccountInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：财务账单——确认/打款状态机直达（未到状态禁用） -->
+                  <template v-else-if="section === 'finance' && canWriteSection">
+                    <button
+                      class="btn mini primary"
+                      :disabled="rowStatusText(row) !== 'pending-review'"
+                      @click="confirmSettlementRow(row)"
+                    >
+                      确认
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      :disabled="rowStatusText(row) !== 'confirmed'"
+                      @click="paySettlementRow(row)"
+                    >
+                      打款
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：提成规则停启直达 -->
+                  <template v-else-if="section === 'rules' && canWriteSection">
+                    <button class="btn mini ghost" @click="toggleRuleRow(row)">
+                      {{
+                        (row as unknown as RuleRow).status === "active"
+                          ? "停用"
+                          : "启用"
+                      }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：微信群码删除直达 -->
+                  <template
+                    v-else-if="section === 'wechat-groups' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeWechatGroupInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    </button>
+                  </template>
+                  <!-- IKCJ3M：调配邀请取消直达（两击确认） -->
                   <button
-                    v-if="section === 'printers' && canWriteSection"
-                    class="btn mini primary"
-                    @click="testPrintRow(row as Printer)"
+                    v-else-if="
+                      section === 'dispatch' &&
+                      dispTab === 'invites' &&
+                      canWriteSection &&
+                      (row as unknown as DispatchRow).status === 'invited'
+                    "
+                    class="btn mini danger-btn"
+                    @click="cancelInviteRow(row)"
                   >
-                    测试打印
-                  </button>
-                  <!-- IKC9M4：类目显隐快捷开关（提审/资质场景一键隐藏，商品数据不动） -->
-                  <button
-                    v-if="section === 'categories' && canWriteSection"
-                    class="btn mini ghost"
-                    @click="toggleCategoryVisible(row as Category)"
-                  >
-                    {{ (row as Category).hidden ? "显示" : "隐藏" }}
+                    {{ confirmRowId === row.id ? "确认取消" : "取消邀请" }}
                   </button>
                   <button
                     class="more"
-                    aria-label="更多操作"
+                    aria-label="查看详情"
+                    title="查看详情"
                     @click="openDetail(row)"
                   >
                     •••
