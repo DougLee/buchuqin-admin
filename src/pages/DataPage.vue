@@ -3867,8 +3867,8 @@ async function toggleProductStatusRow(row: Product) {
     notify(error instanceof Error ? error.message : "操作失败", true);
   }
 }
-/** 批量放行/回收（IKCKX4）：商品域勾选 → 工具条批量按钮。
- *  官方库视角=放行/回收，本校区视角=批量上架/下架；跨页勾选保留，切板块清空。 */
+/** 批量上下架（IKCKX4）：商品域勾选 → 工具条批量按钮。
+ *  官方库/本校区同口径（上架/下架）；跨页勾选保留，切板块清空。 */
 const selectedProductIds = ref<string[]>([]);
 const batchWorking = ref(false);
 const productSelectable = computed(
@@ -3898,15 +3898,7 @@ function toggleAllProductChecks(event: Event) {
 }
 async function batchApplyProductStatus(status: "on-sale" | "off-sale") {
   if (!selectedProductIds.value.length || batchWorking.value) return;
-  const official = productView.value === "official";
-  const verb =
-    status === "on-sale"
-      ? official
-        ? "放行"
-        : "上架"
-      : official
-        ? "回收"
-        : "下架";
+  const verb = status === "on-sale" ? "上架" : "下架";
   batchWorking.value = true;
   try {
     const result = await api.batchUpdateProductStatus(
@@ -4141,23 +4133,21 @@ async function cancelInviteRow(row: AdminRow) {
         </option>
       </select>
       <div class="toolbar-spacer"></div>
-      <!-- 批量放行/回收（IKCKX4）：勾选商品后出现；官方库=放行/回收、本校区=上架/下架 -->
+      <!-- 批量上下架（IKCKX4）：勾选商品后出现，官方库/本校区同口径 -->
       <template v-if="productSelectable && selectedProductIds.length">
         <button
           class="btn primary"
           :disabled="batchWorking"
           @click="batchApplyProductStatus('on-sale')"
         >
-          {{ productView === "official" ? "批量放行" : "批量上架" }}（{{
-            selectedProductIds.length
-          }}）
+          批量上架（{{ selectedProductIds.length }}）
         </button>
         <button
           class="btn ghost"
           :disabled="batchWorking"
           @click="batchApplyProductStatus('off-sale')"
         >
-          {{ productView === "official" ? "批量回收" : "批量下架" }}
+          批量下架
         </button>
       </template>
       <!-- IKA0V2：采购入库为日常主操作排前，盘点调整次之 -->
@@ -4267,7 +4257,7 @@ async function cancelInviteRow(row: AdminRow) {
         <table>
           <thead>
             <tr>
-              <!-- 批量放行/回收（IKCKX4）：商品域可写时出现勾选列（全选=当前页） -->
+              <!-- 批量上下架（IKCKX4）：商品域可写时出现勾选列（全选=当前页） -->
               <th v-if="productSelectable" class="check-cell">
                 <input
                   type="checkbox"
