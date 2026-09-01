@@ -15,6 +15,8 @@
   padding: 26px;
   box-shadow: -20px 0 50px #062e2330;
   animation: slide-in 0.22s ease;
+  /* IKCIA5：内容超长时抽屉自身滚动——操作条 sticky 跟随，不再 absolute 悬浮遮表单 */
+  overflow-y: auto;
 }
 .drawer-head {
   display: flex;
@@ -84,12 +86,15 @@
   box-shadow: 0 0 0 3px #159c5515;
 }
 .drawer-actions {
-  position: absolute;
-  left: 26px;
-  right: 26px;
-  bottom: 28px;
+  /* IKCIA5（2026-09-01）：absolute 改 sticky——内容短时跟在表单后，
+     内容长时贴住抽屉可视底边；带背景防内容从按钮下穿透 */
+  position: sticky;
+  bottom: 0;
   display: flex;
   gap: 10px;
+  margin: 14px -26px -26px;
+  padding: 14px 26px 26px;
+  background: #f7faf7;
 }
 .drawer-actions .btn {
   flex: 1;
@@ -130,7 +135,6 @@
 .product-create {
   width: min(560px, 96vw);
   overflow-y: auto;
-  padding-bottom: 140px;
 }
 .scan-panel {
   margin-top: 20px;

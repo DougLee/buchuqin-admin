@@ -3211,7 +3211,11 @@ async function act(action: string) {
         name: productEdit.value.name.trim(),
         subtitle: productEdit.value.subtitle.trim(),
         tag: productEdit.value.tag.trim(),
-        originalPrice: yuanToFen(productEdit.value.originalPrice),
+        // IKCIAA：官方库同步行的建议零售价校区只读——不提交（自建行/官方视角照常）
+        ...(isHqView.value ||
+        !(selected.value as Product)?.sourceProductId
+          ? { originalPrice: yuanToFen(productEdit.value.originalPrice) }
+          : {}),
         ...(productEdit.value.weight > 0
           ? { weight: productEdit.value.weight }
           : {}),
@@ -4410,9 +4414,10 @@ async function submitStatusDialog() {
               >建议零售价（元）<input
                 v-model.number="productEdit.originalPrice"
                 type="number"
-                min="0" /></label
-            ><!-- IKC1AC：进货价/批发价格仅官方库行可编辑（校区不可见） -->
-            ><label v-if="isHqView"
+                min="0"
+                :disabled="!isHqView && Boolean((selected as Product).sourceProductId)"
+                title="官方库同步行的建议零售价由总部维护" /></label
+            ><!-- IKC1AC：进货价/批发价格仅官方库行可编辑（校区不可见） --><label v-if="isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
@@ -4489,13 +4494,17 @@ async function submitStatusDialog() {
               />
             </div></template
           >
-          <div v-for="col in config.columns" :key="col[0]">
-            <span>{{ col[1] }}</span
-            ><strong
-              v-if="col[0] === 'quantity' && section === 'inventory-txns'"
-              >{{ txnQuantity(selected) }}</strong
-            ><strong v-else>{{ display(selected, col[0]) }}</strong>
-          </div>
+          <!-- IKCIAC：products 编辑形态已含完整表单，不再重复渲染 columns 只读卡；
+               其余板块（orders/库存流水等无表单板块）保持只读卡详情 -->
+          <template v-else
+            ><div v-for="col in config.columns" :key="col[0]">
+              <span>{{ col[1] }}</span
+              ><strong
+                v-if="col[0] === 'quantity' && section === 'inventory-txns'"
+                >{{ txnQuantity(selected) }}</strong
+              ><strong v-else>{{ display(selected, col[0]) }}</strong>
+            </div></template
+          >
           <!-- 拣货清单（IK9U40）：库位指引找货；IKB5P5 起订单接口回查实时库位，历史单同样有指引 -->
           <div
             v-if="section === 'warehouse-orders' && pickingItems.length"
@@ -5124,7 +5133,7 @@ async function submitStatusDialog() {
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="closeCreate">取消</button
-          ><button class="btn primary" @click="saveProduct">保存并上架</button>
+          ><button class="btn primary" @click="saveProduct">保存</button>
         </div>
       </aside>
     </div>
