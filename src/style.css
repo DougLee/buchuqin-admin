@@ -1383,11 +1383,64 @@ td {
   justify-content: center;
   z-index: 60;
 }
+/* 自助改密弹窗（IK9KWO → IKCJ3L 独立样式：左对齐表单 + 关闭钮 + 密码可见切换） */
 .pwd-card {
   width: 360px;
+  background: #f7faf7;
+  border-radius: 18px;
+  padding: 22px 24px 24px;
+  box-shadow: 0 30px 80px #04150f59;
+  animation: slide-in 0.22s ease;
+}
+.pwd-card__head {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.pwd-card__head h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.3px;
+  color: #153628;
+}
+.pwd-card__close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7a72;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.pwd-card__close:hover {
+  background: #e9f1eb;
+  color: #153628;
+}
+.pwd-card__toggle {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: -4px 0 10px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pwd-card__toggle:hover {
+  text-decoration: underline;
+}
+.pwd-card__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.pwd-card__actions .btn {
+  flex: 1;
+  height: 42px;
 }
 
 /* 官方库导入弹窗（IKAJSO）：搜索 + 多选列表 */

@@ -56,7 +56,8 @@ const pwdOpen = ref(false),
   oldPassword = ref(""),
   newPassword = ref(""),
   pwdError = ref(""),
-  pwdSaving = ref(false);
+  pwdSaving = ref(false),
+  pwdShow = ref(false);
 async function submitPassword() {
   pwdError.value = "";
   if (newPassword.value.length < 8) {
@@ -192,6 +193,17 @@ function groupLabelOf(path: string): string | null {
   return hit?.label ?? null;
 }
 const expandedGroups = ref<string[]>(visibleGroups.value.map((g) => g.label));
+/* IKCJ3L：分组默认全部展开——登录前 role 未定时 visibleGroups 尚不全，
+   登录后新增分组自动补齐展开（只加不删，保留用户手动折叠的选择） */
+watch(
+  visibleGroups,
+  (groups) => {
+    for (const group of groups)
+      if (!expandedGroups.value.includes(group.label))
+        expandedGroups.value = [...expandedGroups.value, group.label];
+  },
+  { immediate: true },
+);
 function toggleGroup(label: string) {
   expandedGroups.value = expandedGroups.value.includes(label)
     ? expandedGroups.value.filter((l) => l !== label)
@@ -362,32 +374,51 @@ async function switchCampus(event: Event) {
       </header>
       <RouterView />
     </main>
-    <!-- 自助改密弹窗 -->
+    <!-- 自助改密弹窗（IKCJ3L：独立样式，不再蹭 login-card/drawer-actions） -->
     <div v-if="pwdOpen" class="modal-mask" @click.self="pwdOpen = false">
-      <form class="login-card pwd-card" @submit.prevent="submitPassword">
-        <h2>修改密码</h2>
-        <label
-          >原密码
-          <input
-            v-model="oldPassword"
-            type="password"
-            autocomplete="current-password"
-        /></label>
-        <label
-          >新密码（至少 8 位）
-          <input
-            v-model="newPassword"
-            type="password"
-            autocomplete="new-password"
-        /></label>
-        <p v-if="pwdError" class="form-hint">{{ pwdError }}</p>
-        <div class="drawer-actions">
-          <button class="btn primary" type="submit" :disabled="pwdSaving">
-            {{ pwdSaving ? "提交中..." : "确认修改" }}
+      <form class="pwd-card" @submit.prevent="submitPassword">
+        <div class="pwd-card__head">
+          <h2>修改密码</h2>
+          <button
+            type="button"
+            class="pwd-card__close"
+            aria-label="关闭"
+            @click="pwdOpen = false"
+          >
+            ×
           </button>
-          <button class="btn ghost" type="button" @click="pwdOpen = false">
-            取消
+        </div>
+        <div class="login-form">
+          <label
+            >原密码
+            <input
+              v-model="oldPassword"
+              :type="pwdShow ? 'text' : 'password'"
+              autocomplete="current-password"
+          /></label>
+          <label
+            >新密码（至少 8 位）
+            <input
+              v-model="newPassword"
+              :type="pwdShow ? 'text' : 'password'"
+              autocomplete="new-password"
+          /></label>
+          <button
+            type="button"
+            class="pwd-card__toggle"
+            @click="pwdShow = !pwdShow"
+          >
+            {{ pwdShow ? "隐藏密码" : "显示密码" }}
           </button>
+          <p v-if="pwdError" class="form-hint" role="alert">{{ pwdError }}</p>
+          <div class="pwd-card__actions">
+            <button class="btn ghost" type="button" @click="pwdOpen = false">
+              取消
+            </button>
+            <button class="btn primary" type="submit" :disabled="pwdSaving">
+              {{ pwdSaving ? "提交中..." : "确认修改" }}
+            </button>
+          </div>
         </div>
       </form>
     </div>
