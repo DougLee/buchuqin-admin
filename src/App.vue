@@ -181,7 +181,7 @@ const groups = computed(() => {
         ? {
             ...group,
             items: [
-              ["official-products", "official-products", "官方商品库"],
+              ["/official-products", "official-products", "官方商品库"],
               ...group.items,
             ],
           }
