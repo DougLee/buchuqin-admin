@@ -4538,12 +4538,12 @@ async function cancelInviteRow(row: AdminRow) {
                   </button>
                   <button
                     v-if="DETAIL_SECTIONS.includes(section)"
-                    class="more"
+                    class="btn mini ghost"
                     aria-label="查看详情"
                     title="查看详情"
                     @click="openDetail(row)"
                   >
-                    •••
+                    详情
                   </button>
                 </td>
               </tr>
