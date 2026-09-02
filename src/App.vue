@@ -144,10 +144,12 @@ const campusGroups = [
   },
   {
     // IKB5PB：组织营销 → 组织管理（营销项已迁出）
+    // IKCRS8：「校园组织」拆分为楼栋管理（独立菜单 /buildings）；
+    // admin 的组织管理组另注入「校区管理」（见 groups computed）
     label: "组织管理",
     items: [
       ["/staff", "staff", "履约人员"],
-      ["/campuses", "campus", "校园组织"],
+      ["/buildings", "buildings", "楼栋管理"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
       ["/wechat-groups", "campus", "微信群码"],
@@ -175,18 +177,32 @@ const groups = computed(() => {
   if (role.value === "hq") return hqGroups;
   // IKCJ46：admin 菜单在仓储中心组头部加「官方商品库」独立入口——
   // 商品管理菜单恒为本校区商品，官方库另开菜单防混淆（道哥 2026-09-01 拍板）
+  // IKCRS8：admin 组织管理组头部注入「校区管理」（平台校区 CRUD 限 hq/admin，
+  // operations 只见楼栋管理）；楼栋上下文跟随顶栏切换的运营校区
   if (role.value === "admin")
-    return campusGroups.map((group) =>
-      group.label === "仓储中心"
-        ? {
-            ...group,
-            items: [
-              ["/official-products", "official-products", "官方商品库"],
-              ...group.items,
-            ],
-          }
-        : group,
-    );
+    return campusGroups.map((group) => {
+      if (group.label === "仓储中心")
+        return {
+          ...group,
+          items: [
+            ["/official-products", "official-products", "官方商品库"],
+            ...group.items,
+          ],
+        };
+      if (group.label === "组织管理")
+        return {
+          ...group,
+          items: [
+            ["/staff", "staff", "履约人员"],
+            ["/campuses", "campus", "校区管理"],
+            ["/buildings", "buildings", "楼栋管理"],
+            ["/users", "staff", "C端用户"],
+            ["/wechat-groups", "campus", "微信群码"],
+            ["/dispatch", "dispatch", "调配与请假"],
+          ],
+        };
+      return group;
+    });
   return campusGroups;
 });
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块（含 IKB5PB 路由别名映射，见 session.ts）。 */

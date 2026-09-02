@@ -35,6 +35,7 @@ const ALL_SECTIONS = [
   "locations",
   "staff",
   "campuses",
+  "buildings",
   "users",
   "wechat-groups",
   "marketing",

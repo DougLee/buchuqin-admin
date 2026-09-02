@@ -1203,13 +1203,6 @@ function switchMktTab(tab: "coupons" | "banners" | "promotions") {
   mktTab.value = tab;
   resetStatusFilterAndLoad();
 }
-/* ---------- 校区板块双视角（IKBWRT）：admin 平台超管可切平台级校区管理 ----------
-   楼栋管理 tab 保持原校区角色视图（楼栋/寝室），能力不回退；hq 恒为校区管理。 */
-const campusTab = ref<"campuses" | "buildings">("campuses");
-function switchCampusTab(tab: "campuses" | "buildings") {
-  campusTab.value = tab;
-  resetStatusFilterAndLoad();
-}
 /* ---------- 商品板块双视角（IKCHEW → IKCJ46 独立菜单化）----------
    官方商品库拆为独立菜单 /official-products，/products 恒为本校区商品：
    hq 恒官方库；admin 按路由分流（官方商品库菜单=official，商品管理=campus）；
@@ -1736,12 +1729,8 @@ const isHqView = computed(
     isHqRole.value ||
     (role.value === "admin" && productView.value === "official"),
 );
-/** IKBWRT：campuses 板块平台级视图——hq 恒真；admin 走双 tab 切换（校区管理时为真）。 */
-const campusPlatformView = computed(
-  () =>
-    isHqRole.value ||
-    (role.value === "admin" && campusTab.value === "campuses"),
-);
+/** IKCRS8：campuses=纯校区管理（平台视图），楼栋独立 /buildings 板块——
+ *  原 IKBWRT 双 tab（campusTab/campusPlatformView）拆除。 */
 watch(campusFilter, () => resetAndLoad());
 async function ensureCampusOptions() {
   if (!campusOptionsData.value.length)
@@ -2377,10 +2366,12 @@ const configs: Record<string, SectionConfig> = {
       ["effectiveAt", "生效时间"],
     ],
   },
-  campuses: {
-    title: "校园与组织",
+  // IKCRS8：楼栋管理独立板块（原「校园组织」tab 分支迁出）；校区上下文
+  // 跟随顶栏切换的运营校区（后端 req.user.campusId）
+  buildings: {
+    title: "楼栋管理",
     eyebrow: "CAMPUS NETWORK",
-    desc: "管理楼栋、寝室与员工账号的组织服务网络。",
+    desc: "管理本校区楼栋、寝室与楼长派单范围。",
     loader: (query) => api.buildings(query).then(unwrap),
     columns: [
       ["name", "楼栋"],
@@ -2633,7 +2624,8 @@ const createLabels: Record<string, string> = {
   banners: "＋ 新建 Banner",
   promotions: "＋ 新建促销",
   "pay-ads": "＋ 新建广告",
-  campuses: "＋ 新建楼栋",
+  campuses: "＋ 新建校区",
+  buildings: "＋ 新建楼栋",
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
   rules: "＋ 新建提成规则",
@@ -2659,9 +2651,8 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "pay-ads") return payAdsConfig;
     // IKBW0Q：校区打印机（系统域，校区自管）
     if (section.value === "printers") return printersConfig;
-    // IKBWRT：admin 平台超管在校区 tab 同用 hq 校区管理视图
-    if (section.value === "campuses" && campusPlatformView.value)
-      return hqCampusesConfig;
+    // IKCRS8：campuses 板块=纯校区管理（菜单仅 admin 可见，hq 走总部组）
+    if (section.value === "campuses") return hqCampusesConfig;
     // IKAJSM → IKCJ46：官方商品库独立菜单（/official-products）走官方库视图
     if (section.value === "official-products" && isHqView.value)
       return hqProductsConfig;
@@ -2673,8 +2664,9 @@ const section = computed(() => String(route.params.section)),
     if (section.value === "marketing") {
       if (mktTab.value === "promotions") return createLabels.promotions;
     }
-    // IKAJSL：campuses 板块两视角——hq/admin（校区 tab）建校区，校区角色建楼栋
-    if (section.value === "campuses" && campusPlatformView.value)
+    // IKCRS8：campuses 板块校区建档限平台管理员（operations 无菜单入口，
+    // 直敲路由仅只读，无新建按钮）
+    if (section.value === "campuses" && isPlatformAdmin.value)
       return "＋ 新建校区";
     // IKCJ46：官方商品库菜单建档；商品管理菜单从官方库导入
     if (section.value === "official-products")
@@ -2754,10 +2746,8 @@ async function load() {
   // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
   // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
-    (isPlatformAdmin.value &&
-      ["orders", "users", "audit", "campuses"].includes(section.value)) ||
-    // IKBWRT：admin 校区管理 tab 同 hq 预载校区下拉
-    (section.value === "campuses" && campusPlatformView.value)
+    isPlatformAdmin.value &&
+    ["orders", "users", "audit", "campuses"].includes(section.value)
   )
     void ensureCampusOptions().catch(() => {});
   try {
@@ -3382,8 +3372,9 @@ function openCreate() {
   else if (section.value === "promotions") openPromotionCreate();
   else if (section.value === "pay-ads") openBannerCreate("pay-success");
   else if (section.value === "banners") openBannerCreate();
-  else if (section.value === "campuses")
-    campusPlatformView.value ? openCampusCreate() : openBuildingCreate();
+  // IKCRS8：校区建档=平台管理员；楼栋建档走独立 buildings 板块
+  else if (section.value === "campuses") openCampusCreate();
+  else if (section.value === "buildings") openBuildingCreate();
   else if (section.value === "staff") openStaffCreate();
   // IKBW0Q：打印机板块新建 = 绑定（已绑定时走行内/抽屉「换绑」）
   else if (section.value === "printers") openPrinterBind();
@@ -4014,9 +4005,10 @@ async function cancelInviteRow(row: AdminRow) {
         <p>{{ config.desc }}</p>
       </div>
       <div class="head-actions">
-        <!-- 配送费配置（IK9SO6）：校区侧入口；hq/admin 校区 tab 在编辑表单里逐校配置 -->
+        <!-- 配送费配置（IK9SO6 → IKCRS8）：楼栋管理页入口（本校区，admin/operations）；
+             校区管理页的逐校配置在校区编辑表单里 -->
         <button
-          v-if="section === 'campuses' && !campusPlatformView && canWrite('campuses')"
+          v-if="section === 'buildings' && canWriteSection"
           class="btn ghost"
           @click="openDeliveryConfig"
         >
@@ -4053,24 +4045,7 @@ async function cancelInviteRow(row: AdminRow) {
           促销活动
         </button>
       </div>
-      <!-- IKBWRT：admin 平台超管校区双视角——校区管理（平台级，同 hq）/楼栋管理（本校区） -->
-      <div
-        v-if="section === 'campuses' && role === 'admin'"
-        class="segmented inv-tabs"
-      >
-        <button
-          :class="{ active: campusTab === 'campuses' }"
-          @click="switchCampusTab('campuses')"
-        >
-          校区管理
-        </button>
-        <button
-          :class="{ active: campusTab === 'buildings' }"
-          @click="switchCampusTab('buildings')"
-        >
-          楼栋管理
-        </button>
-      </div>
+      <!-- IKCRS8：campusTab 双视角切换拆除——校区管理/楼栋管理已拆独立菜单 -->
       <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
       <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力，订单先接入）；点 Tab 即服务端过滤 -->
@@ -4495,37 +4470,41 @@ async function cancelInviteRow(row: AdminRow) {
                       {{ confirmRowId === row.id ? "确认删除" : "删除" }}
                     </button>
                   </template>
-                  <!-- IKCJ3M：校区/楼栋——按视角分叉（IKBWRT 双 tab） -->
+                  <!-- IKCJ3M/IKCRS8：校区管理与楼栋管理拆独立板块；
+                       校区写操作限平台管理员（后端 controller 同口径） -->
                   <template
-                    v-else-if="section === 'campuses' && canWriteSection"
+                    v-else-if="
+                      section === 'campuses' && isPlatformAdmin && canWriteSection
+                    "
                   >
                     <button
-                      v-if="campusPlatformView"
                       class="btn mini primary"
                       @click="openCampusEdit(row)"
                     >
                       编辑
                     </button>
-                    <template v-else>
-                      <button
-                        class="btn mini primary"
-                        @click="openBuildingEdit(row as Building)"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        class="btn mini ghost"
-                        @click="openRooms(row as Building)"
-                      >
-                        寝室
-                      </button>
-                      <button
-                        class="btn mini danger-btn"
-                        @click="removeBuildingInline(row)"
-                      >
-                        {{ confirmRowId === row.id ? "确认删除" : "删除" }}
-                      </button>
-                    </template>
+                  </template>
+                  <template
+                    v-else-if="section === 'buildings' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini primary"
+                      @click="openBuildingEdit(row as Building)"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      @click="openRooms(row as Building)"
+                    >
+                      寝室
+                    </button>
+                    <button
+                      class="btn mini danger-btn"
+                      @click="removeBuildingInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    </button>
                   </template>
                   <!-- IKCJ3M：员工——编辑/软删除行内直达 -->
                   <template v-else-if="section === 'staff' && canWriteSection">
@@ -5160,28 +5139,29 @@ async function cancelInviteRow(row: AdminRow) {
               {{ confirmDelete ? "确认删除" : "删除类别" }}
             </button></template
           >
-          <template v-else-if="section === 'campuses' && canWriteSection">
-            <!-- IKAJSL：hq 管校区本体（信息/启停/配送费），楼栋归校区后台；
-                 IKBWRT：admin 校区管理 tab 同 hq，楼栋 tab 走校区角色分支 -->
-            <button
-              v-if="campusPlatformView"
-              class="btn primary"
-              @click="openCampusEdit(selected)"
-            >
+          <template
+            v-else-if="
+              section === 'campuses' && isPlatformAdmin && canWriteSection
+            "
+          >
+            <!-- IKAJSL/IKCRS8：校区本体管理（信息/启停/配送费逐校配置），
+                 写操作限平台管理员（后端 controller 同口径） -->
+            <button class="btn primary" @click="openCampusEdit(selected)">
               编辑校区</button
-            ><template v-else
-              ><button
-                class="btn primary"
-                @click="openBuildingEdit(selected as Building)"
-              >
-                编辑楼栋</button
-              ><button class="btn ghost" @click="openRooms(selected as Building)">
-                寝室管理
-              </button
-              ><button class="btn danger-btn" @click="removeBuilding">
-                {{ confirmDelete ? "确认删除" : "删除楼栋" }}
-              </button></template
             >
+          </template>
+          <template v-else-if="section === 'buildings' && canWriteSection">
+            <button
+              class="btn primary"
+              @click="openBuildingEdit(selected as Building)"
+            >
+              编辑楼栋</button
+            ><button class="btn ghost" @click="openRooms(selected as Building)">
+              寝室管理
+            </button
+            ><button class="btn danger-btn" @click="removeBuilding">
+              {{ confirmDelete ? "确认删除" : "删除楼栋" }}
+            </button>
           </template>
           <template v-else-if="section === 'staff' && canWriteSection">
             <button class="btn primary" @click="openStaffEdit(selected as Staff)">
