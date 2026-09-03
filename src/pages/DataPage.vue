@@ -3691,6 +3691,19 @@ function openPrinterBind(row?: Printer) {
           label: "终端号 (SN)",
           placeholder: "机身底部标签 / 自检页上的 SN",
         },
+        // IKCZOX：小票联数——1=单联无联名；2=商家联+骑手联；3=再加用户联
+        {
+          key: "copies",
+          label: "打印联数",
+          type: "select",
+          wide: true,
+          optional: true,
+          options: () => [
+            { value: "1", label: "1 联（单张小票）" },
+            { value: "2", label: "2 联（商家联 + 骑手联）" },
+            { value: "3", label: "3 联（商家联 + 骑手联 + 用户联）" },
+          ],
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写名称");
@@ -3698,15 +3711,22 @@ function openPrinterBind(row?: Printer) {
         await api.bindPrinter({
           name: String(d.name).trim(),
           sn: String(d.sn).trim(),
+          copies: Number(d.copies || 1),
         });
       },
     },
-    { name: row?.name ?? "", sn: row?.sn ?? "" },
+    { name: row?.name ?? "", sn: row?.sn ?? "", copies: String(row?.copies ?? 1) },
   );
 }
+/** 联数展示文案（IKCZOX）：1/2/3 联含义与绑定表单一致。 */
+function printerCopiesLabel(row: Printer) {
+  const n = row.copies ?? 1;
+  if (n === 3) return "3 联（商家 + 骑手 + 用户）";
+  if (n === 2) return "2 联（商家 + 骑手）";
+  return "1 联（单张小票）";
+}
 /** 测试打印（IKBW0Q）：行内/抽屉一键验证连通，云端失败原样提示。 */
-async function testPrintRow(row: Printer) {
-  try {
+async function testPrintRow(row: Printer) {  try {
     await api.testPrintPrinter(row.id);
     notify("测试小票已发送，请在打印机旁确认出纸");
   } catch (error) {
@@ -4195,6 +4215,11 @@ async function cancelInviteRow(row: AdminRow) {
                   ? "已启用"
                   : "已停用"
               }}</strong>
+            </div>
+            <!-- IKCZOX：当前小票联数（换绑表单可改） -->
+            <div>
+              <span>打印联数</span
+              ><strong>{{ printerCopiesLabel(filtered[0] as Printer) }}</strong>
             </div>
             <div>
               <span>绑定时间</span

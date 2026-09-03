@@ -197,6 +197,8 @@ export interface Printer {
   sn: string;
   /** 预留列（IKC3FF：芯烨云无按台密钥，恒为空串）。 */
   key: string;
+  /** 小票联数（IKCZOX）：1=单联无联名；2=商家联+骑手联；3=再加用户联。 */
+  copies: number;
   status: string;
   createdAt: string;
   updatedAt: string;
