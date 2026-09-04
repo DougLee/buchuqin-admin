@@ -405,11 +405,44 @@
   color: #153628;
   font-weight: 700;
 }
-.raw-checkbox {
+/* IKD7TL：自绘 checkbox——原生控件曾被 .product-form input 的通栏样式
+   拉伸成大方块（0-1-1 specificity 压过旧 .raw-checkbox 0-1-0），文字被
+   挤竖排。用 .checkbox-row 前缀（0-2-0）压回 + appearance:none 自绘：
+   18px 圆角框、品牌绿选中底、白色对勾、focus 可见环 */
+.checkbox-row .raw-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
   width: 18px;
   height: 18px;
-  accent-color: var(--brand);
-  margin: 8px 0 0;
+  margin: 0;
+  border: 1.5px solid #c2d4c9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.checkbox-row .raw-checkbox::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+.checkbox-row .raw-checkbox:checked {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.checkbox-row .raw-checkbox:checked::before {
+  transform: scale(1);
+}
+.checkbox-row .raw-checkbox:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 /* IKB3KG 方案A：账号可运营校区多选（复选卡片横排） */
 .campus-checks {
