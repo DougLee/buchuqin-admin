@@ -558,14 +558,10 @@
   font-size: 12px;
   flex: none;
 }
-/* IKA0UT：列表内联操作按钮（出库/改状态）+ 手动改状态弹窗 */
-.row-actions {
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
+/* IKA0UT：列表内联操作按钮（出库/改状态）+ 手动改状态弹窗。
+   旧 .row-actions { display:flex; ... } 已删（IKD6FG）：它把表格操作列 td
+   从 table-cell 变成匿名 cell 包裹，与 style.css 的 td.row-actions width:1%
+   叠加时列宽解析崩坏（表格错位事故根因）；td 样式统一收敛在 style.css。 */
 .btn.mini {
   padding: 6px 12px;
   font-size: 12px;

@@ -1220,10 +1220,14 @@ td {
 .table-wrap {
   overflow-x: auto;
 }
-/* 操作列（IKD6FG 道哥反馈）：贴内容宽 + 按钮居中——此前无样式被表格
-   均分成宽列（库存页两颗小按钮右边一大片空白）；width:1% 是「最小内容
-   宽」惯用法，按钮多的列表（订单 3-4 颗）列自动放宽，nowrap 防换行 */
-.row-actions {
+/* 操作列（IKD6FG 道哥反馈）：贴内容宽 + 按钮居中。
+   ⚠️ drawer.css 里同名 .row-actions 是 display:flex（旧行内按钮布局），
+   flex 会把 td 脱离 table-cell（浏览器套匿名 cell 包裹），再叠 width:1%
+   列宽解析循环崩坏——IKD6FG 表格错位事故根因。此处用 td 前缀提高
+   specificity 压回 table-cell；width:1% 在真 table-cell 上才是安全的
+   「最小内容宽」惯用法（订单 3-4 颗按钮的列自动放宽），nowrap 防换行。 */
+td.row-actions {
+  display: table-cell;
   width: 1%;
   white-space: nowrap;
   text-align: center;
