@@ -593,7 +593,23 @@ function openCouponCreate() {
           placeholder: "例如：到店出示享第二杯半价",
           wide: true,
         },
-        { key: "total", label: "发放总量", type: "number", min: 1 },
+        // IKDEN2：发放总量可选不限量（total=null），与「长期有效」同款交互
+        {
+          key: "totalMode",
+          label: "发放总量",
+          type: "select",
+          options: () => [
+            { value: "limited", label: "限量" },
+            { value: "unlimited", label: "不限量" },
+          ],
+        },
+        {
+          key: "total",
+          label: "总量张数",
+          type: "number",
+          min: 1,
+          visible: (d) => d.totalMode !== "unlimited",
+        },
         {
           key: "expiryMode",
           label: "有效期",
@@ -617,12 +633,20 @@ function openCouponCreate() {
           throw new Error("请填写面额");
         if (d.expiryMode !== "forever" && !d.expiresAt)
           throw new Error("请选择有效期，或切换为长期有效");
-        // 面额/门槛表单输元，提交前统一转分；partner 券恒 0 不参与下单
+        if (
+          d.totalMode !== "unlimited" &&
+          !(Number(d.total) >= 1)
+        )
+          throw new Error("请填写发放总量，或切换为不限量");
+        // 面额/门槛表单输元，提交前统一转分；partner 券恒 0 不参与下单；
+        // IKDEN2：不限量不传 total（后端记 null）
         await api.createCoupon({
           name: String(d.name).trim(),
           amount: partner ? 0 : yuanToFen(d.amount),
           threshold: partner ? 0 : yuanToFen(d.threshold),
-          total: Number(d.total),
+          ...(d.totalMode === "unlimited"
+            ? {}
+            : { total: Number(d.total) }),
           ...(d.expiryMode === "forever"
             ? {}
             : { expiresAt: String(d.expiresAt) }),
@@ -638,6 +662,8 @@ function openCouponCreate() {
       name: "",
       amount: 5,
       threshold: 20,
+      // IKDEN2：默认限量，总量输入框随开关显隐
+      totalMode: "limited",
       total: 100,
       expiryMode: "date",
       expiresAt: nextMonth,
@@ -3651,6 +3677,9 @@ function display(row: AdminRow, key: string) {
   if (key === "expiresAt")
     // IKDCVO：null = 长期有效
     return v == null || v === "" ? "长期有效" : fmtDate(String(v));
+  // IKDEN2：发放总量 null = 不限量（总量/剩余列同口径）
+  if (key === "total" || key === "remain")
+    return v == null || v === "" ? "不限量" : String(v);
   // IKDCVO：券品种/发放方式中文化；异业券不参与下单，面额/门槛显示 —
   if (key === "kind")
     return (
@@ -6708,7 +6737,7 @@ async function cancelInviteRow(row: AdminRow) {
                   :key="c.id"
                   :value="c.id"
                 >
-                  {{ c.name }}（剩 {{ c.remain }} 张）
+                  {{ c.name }}（{{ c.remain == null ? "不限量" : `剩 ${c.remain} 张` }}）
                 </option>
               </select>
             </label>
@@ -6724,7 +6753,7 @@ async function cancelInviteRow(row: AdminRow) {
                     :key="c.id"
                     :value="c.id"
                   >
-                    {{ c.name }}（剩 {{ c.remain }} 张）
+                    {{ c.name }}（{{ c.remain == null ? "不限量" : `剩 ${c.remain} 张` }}）
                   </option>
                 </select>
               </label>

@@ -244,14 +244,16 @@ export interface Coupon {
   amount: number;
   /** 使用门槛（分）。partner 券恒为 0。 */
   threshold: number;
-  total: number;
+  /** 发放总量；null = 不限量（IKDEN2）。 */
+  total: number | null;
   status: string;
   /** 过期时间；null = 长期有效（IKDCVO）。 */
   expiresAt: string | null;
   issued: number;
   claimed: number;
   used: number;
-  remain: number;
+  /** 剩余可发；null = 不限量（IKDEN2）。 */
+  remain: number | null;
 }
 
 export interface Building {
