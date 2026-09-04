@@ -140,6 +140,9 @@ interface FieldDef {
   hint?: (data: Record<string, FormValue>) => string | undefined;
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
   folder?: string;
+  /** 上传前居中裁切到目标宽高比（IKDEUR 三修）：C 端 banner scaleToFill
+   *  严格铺满的防变形保险，目前仅 Banner 背景图（2.55）使用。 */
+  cropRatio?: number;
 }
 interface FormMeta {
   eyebrow: string;
@@ -1806,13 +1809,16 @@ const BANNER_DETAIL_IMAGE_FIELD: FieldDef = {
   wide: true,
   folder: "app/banner-detail",
 };
-/** Banner 背景图（IK9VBI）：落 COS app/ 目录（小程序素材），商品图/类别图仍走 uploads/。 */
+/** Banner 背景图（IK9VBI）：落 COS app/ 目录（小程序素材），商品图/类别图仍走 uploads/。
+ *  IKDEUR 三修：cropRatio=2.55 上传前居中裁切——C 端 scaleToFill 严格铺满的
+ *  防变形保险（比例偏离超 1% 才裁，比例吻合的图原样直传）。 */
 const BANNER_IMAGE_FIELD: FieldDef = {
   key: "image",
-  label: "背景图（选填，存 app/ 目录供小程序直连）",
+  label: "背景图（选填，自动裁至 2.55:1 满宽展示）",
   type: "image",
   wide: true,
   folder: "app",
+  cropRatio: 2.55,
 };
 /** 展示位置（IKA57F）：首页轮播 / 支付成功页广告位。 */
 const BANNER_PLACEMENT_FIELD: FieldDef = {
@@ -6366,12 +6372,14 @@ async function cancelInviteRow(row: AdminRow) {
                 </option>
               </select></label
             >
-            <!-- 图片字段（IK9RWX 上传基建）：COS 上传 + URL 兜底，类别图/Banner 图复用 -->
+            <!-- 图片字段（IK9RWX 上传基建）：COS 上传 + URL 兜底，类别图/Banner 图复用；
+                 cropRatio（IKDEUR 三修）= 上传前 canvas 居中裁到目标比例 -->
             <div v-else-if="field.type === 'image'" :class="{ wide: field.wide }">
               <span class="field-label">{{ field.label }}</span>
               <ImageUploadField
                 :model-value="String(formData[field.key] ?? '')"
                 :folder="field.folder"
+                :crop-ratio="field.cropRatio"
                 @update:model-value="formData[field.key] = $event"
               />
             </div>
