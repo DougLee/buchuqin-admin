@@ -1320,7 +1320,7 @@ function onSaleProductOptions() {
   }));
 }
 /** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
- *  stocktake=盘点校准（提交实际清点数量，替代原 delta 增量口径）。 */
+ *  stocktake=盘点（提交实际清点数量，替代原 delta 增量口径）。 */
 function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   // 采购申请制：非平台角色的「采购入库」改走申请通道，总部审核后自动入库
   if (kind === "stock-in" && !isPlatformAdmin.value) {
@@ -1332,9 +1332,9 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   openForm(
     {
       eyebrow: isStockIn ? "STOCK IN" : "STOCKTAKE",
-      title: isStockIn ? "采购入库" : "盘点校准",
-      submit: isStockIn ? "确认入库" : "提交校准",
-      done: isStockIn ? "入库成功，库存已更新" : "盘点校准已生效",
+      title: isStockIn ? "采购入库" : "盘点",
+      submit: isStockIn ? "确认入库" : "提交盘点",
+      done: isStockIn ? "入库成功，库存已更新" : "盘点已生效",
       fields: [
         { key: "productId", label: "商品", type: "select", wide: true, options: productOptions },
         {
@@ -4646,6 +4646,16 @@ async function toggleCouponRow(row: AdminRow) {
     notify(error instanceof Error ? error.message : "操作失败", true);
   }
 }
+/** 优惠券删除（IKDES1）：从未发放（claimed=0）才显示；行内两击确认。 */
+async function removeCouponInline(row: AdminRow) {
+  if (!rowConfirmFirst(row.id)) return;
+  try {
+    await api.deleteCoupon(row.id);
+    await rowDone("优惠券已删除");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
 async function togglePromotionRow(row: AdminRow) {
   const record = row as unknown as Promotion;
   const next = record.status === "active" ? "disabled" : "active";
@@ -5039,8 +5049,8 @@ async function cancelInviteRow(row: AdminRow) {
           批量下架
         </button>
       </template>
-      <!-- IKA0V2：采购入库为日常主操作排前；IKD6FJ：盘点改校准口径、
-           校区角色「采购入库」变「采购申请」（平台角色保留直接入库） -->
+      <!-- IKA0V2：采购入库为日常主操作排前；IKD6FJ：盘点入口（原「校准」
+           文案统一为「盘点」）、校区角色「采购入库」变「采购申请」（平台角色保留直接入库） -->
       <template
         v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')"
       >
@@ -5048,7 +5058,7 @@ async function cancelInviteRow(row: AdminRow) {
           {{ isPlatformAdmin ? "采购入库" : "采购申请" }}
         </button>
         <button class="btn ghost" @click="openStockForm('stocktake')">
-          盘点校准
+          盘点
         </button>
       </template>
       <button class="btn ghost" @click="exportData">导出数据</button>
@@ -5404,7 +5414,7 @@ async function cancelInviteRow(row: AdminRow) {
                     </button>
                   </template>
                   <!-- IKD6FG → IKD6FJ：库存行内直达（预填本行商品）——
-                       入库/申请采购按角色分流，盘点改「校准」口径 -->
+                       入库/申请采购按角色分流，行内「校准」改「盘点」 -->
                   <template
                     v-else-if="
                       section === 'inventory' &&
@@ -5422,7 +5432,7 @@ async function cancelInviteRow(row: AdminRow) {
                       class="btn mini ghost"
                       @click="openStockForm('stocktake', (row as Product).id)"
                     >
-                      校准
+                      盘点
                     </button>
                   </template>
                   <!-- IKD6FJ：采购申请审核台——平台角色对待审行通过/拒绝直达 -->
@@ -5486,7 +5496,9 @@ async function cancelInviteRow(row: AdminRow) {
                         (row as Coupon).status === "paused" ? "启用" : "暂停"
                       }}
                     </button>
+                    <!-- IKDERC 跟进：编辑入口暂隐藏（道哥 2026-09-04），恢复 = 删除 v-if="false" -->
                     <button
+                      v-if="false"
                       class="btn mini ghost"
                       @click="openCouponEdit(row as Coupon)"
                     >
@@ -5497,6 +5509,13 @@ async function cancelInviteRow(row: AdminRow) {
                       @click="openIssue(row as Coupon)"
                     >
                       定向发放
+                    </button>
+                    <button
+                      v-if="!(row as Coupon).claimed"
+                      class="btn mini danger-btn"
+                      @click="removeCouponInline(row)"
+                    >
+                      {{ confirmRowId === row.id ? "确认删除？" : "删除" }}
                     </button>
                   </template>
                   <!-- IKC9M4 + IKCJ3M：类别显隐开关 + 编辑/删除直达 -->

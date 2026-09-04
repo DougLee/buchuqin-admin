@@ -326,7 +326,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  /** 盘点校准（IKD6FJ）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。 */
+  /** 盘点（IKD6FJ，原「盘点校准」）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。 */
   stocktake: (data: {
     productId: string;
     countedQty: number;
@@ -678,6 +678,11 @@ export const api = {
     request<Coupon>(`/admin/coupons/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    }),
+  /** 优惠券删除（IKDES1）：仅未发放（claimed=0）可删，后端同口径校验。 */
+  deleteCoupon: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/admin/coupons/${id}`, {
+      method: "DELETE",
     }),
   /** 定向发放（IKD6FI）：userIds 与定向条件（手机号 / 楼栋楼层寝室）至少一种，
    *  后端并集去重，返回实发张数。 */
