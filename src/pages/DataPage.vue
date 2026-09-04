@@ -1721,6 +1721,30 @@ const campusFilter = ref("");
 const categoryFilter = ref("");
 const staffRoleFilter = ref("");
 const orderDeliveryFilter = ref("");
+/* IKD6FG 反馈：分类筛选升级可搜索下拉（原生 select 无搜索能力）。
+   blur 关菜单 + mousedown.prevent 选中，避免失焦先于点击的经典时序问题 */
+const categorySearchOpen = ref(false);
+const categorySearchText = ref("");
+const selectedCategoryName = computed(
+  () => categories.value.find((c) => c.id === categoryFilter.value)?.name ?? "",
+);
+const filteredCategoryOptions = computed(() => {
+  const kw = categorySearchText.value.trim().toLowerCase();
+  if (!kw) return categories.value;
+  return categories.value.filter((c) => c.name.toLowerCase().includes(kw));
+});
+function openCategorySearch() {
+  categorySearchOpen.value = true;
+  categorySearchText.value = "";
+}
+function pickCategory(id: string) {
+  categoryFilter.value = id;
+  categorySearchOpen.value = false;
+}
+function clearCategoryFilter() {
+  categoryFilter.value = "";
+  categorySearchOpen.value = false;
+}
 const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 const isHqRole = computed(() => role.value === "hq");
 /** IKBFJ4：平台超管 admin 与 hq 同权（账号管理表单按此放开校区选择）。 */
@@ -4152,18 +4176,53 @@ async function cancelInviteRow(row: AdminRow) {
           {{ b.name }}
         </option>
       </select>
-      <!-- IKD6FG：分类筛选（官方商品库/商品管理/库存共用类别字典） -->
-      <select
+      <!-- IKD6FG：分类筛选升级可搜索下拉（官方商品库/商品管理/库存共用；
+           输入即按名称模糊过滤，选中回填名称，blur 关菜单） -->
+      <div
         v-if="['products', 'official-products', 'inventory'].includes(section)"
-        v-model="categoryFilter"
-        class="filter-btn"
-        aria-label="分类筛选"
+        class="category-combobox"
       >
-        <option value="">全部分类</option>
-        <option v-for="c in categories" :key="c.id" :value="c.id">
-          {{ c.name }}
-        </option>
-      </select>
+        <input
+          :value="
+            categorySearchOpen
+              ? categorySearchText
+              : selectedCategoryName || '全部分类'
+          "
+          :placeholder="categorySearchOpen ? '输入关键字过滤分类...' : ''"
+          aria-label="分类筛选"
+          role="combobox"
+          :aria-expanded="categorySearchOpen"
+          @focus="openCategorySearch"
+          @input="
+            categorySearchText = ($event.target as HTMLInputElement).value;
+            categorySearchOpen = true;
+          "
+          @blur="categorySearchOpen = false"
+        />
+        <ul
+          v-if="categorySearchOpen"
+          class="category-combobox__menu"
+          role="listbox"
+        >
+          <li
+            :class="{ active: !categoryFilter }"
+            @mousedown.prevent="clearCategoryFilter"
+          >
+            全部分类
+          </li>
+          <li
+            v-for="c in filteredCategoryOptions"
+            :key="c.id"
+            :class="{ active: categoryFilter === c.id }"
+            @mousedown.prevent="pickCategory(c.id)"
+          >
+            {{ c.name }}
+          </li>
+          <li v-if="!filteredCategoryOptions.length" class="empty">
+            无匹配分类
+          </li>
+        </ul>
+      </div>
       <!-- IKD6FG：履约人员角色筛选 -->
       <select
         v-if="section === 'staff'"
