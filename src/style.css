@@ -1220,6 +1220,14 @@ td {
 .table-wrap {
   overflow-x: auto;
 }
+/* 操作列（IKD6FG 道哥反馈）：贴内容宽 + 按钮居中——此前无样式被表格
+   均分成宽列（库存页两颗小按钮右边一大片空白）；width:1% 是「最小内容
+   宽」惯用法，按钮多的列表（订单 3-4 颗）列自动放宽，nowrap 防换行 */
+.row-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
 /* 表格图片列（类别图/Banner 图）：统一缩略，原图尺寸裸奔会把行撑爆 */
 .cell-thumb {
   display: block;
