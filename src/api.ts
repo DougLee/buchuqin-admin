@@ -66,6 +66,9 @@ function listQuery(query?: ListQuery): string {
     query.campusId ? `campus=${encodeURIComponent(query.campusId)}` : "",
     // IKB3K9：商品状态 Tab 的服务端过滤
     query.status ? `status=${encodeURIComponent(query.status)}` : "",
+    // IKD6FG：分类筛选（商品管理/官方商品库/库存总览共用；IKDCDP 补序列化——
+    // loader 传了 categoryId 但白名单漏拼，请求从未带上，筛选一直不生效）
+    query.categoryId ? `categoryId=${encodeURIComponent(query.categoryId)}` : "",
   ]
     .filter(Boolean)
     .join("&");
