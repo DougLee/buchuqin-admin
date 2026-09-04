@@ -4,17 +4,23 @@
   background: #061d1680;
   z-index: 50;
   display: flex;
-  justify-content: flex-end;
+  /* IKD7TL（道哥拍板）：右侧抽屉全量改居中弹框——原 justify-content:flex-end
+     弃用，7 个框（详情/新建/寝室/发券/改状态/快编/导入）一并居中 */
+  align-items: center;
+  justify-content: center;
   backdrop-filter: blur(3px);
 }
 .drawer {
   position: relative;
   width: min(460px, 92vw);
-  height: 100%;
+  /* IKD7TL：height:100% 改高度自适应——短表单（改状态）不空旷；
+     超长内容（商品新建/用户流水）90vh 封顶，滚动机制不变 */
+  max-height: min(90vh, 900px);
   background: #f7faf7;
   padding: 26px;
-  box-shadow: -20px 0 50px #062e2330;
-  animation: slide-in 0.22s ease;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+  animation: pop-in 0.2s ease;
   /* IKCIA5：内容超长时抽屉自身滚动——操作条 sticky 跟随，不再 absolute 悬浮遮表单 */
   overflow-y: auto;
 }
@@ -129,6 +135,17 @@
     transform: translateX(100%);
   }
   to {
+    transform: none;
+  }
+}
+/* IKD7TL：居中弹框入场（slide-in 保留给改密 pwd-card 等仍在用的场景） */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
     transform: none;
   }
 }
