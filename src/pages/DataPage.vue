@@ -1716,6 +1716,11 @@ const userBuildingFilter = ref(""),
 watch(userBuildingFilter, () => resetAndLoad());
 /* ---------- IKAJSL：hq 跨校区视角的校区筛选（订单/用户/审计；校区角色无此下拉） ---------- */
 const campusFilter = ref("");
+/* IKD6FG：列表分类/类型维度筛选（状态 Tab 之外的第二维度）——
+   分类筛选商品库(official-products/products)与库存共用一个 ref，切换板块重置 */
+const categoryFilter = ref("");
+const staffRoleFilter = ref("");
+const orderDeliveryFilter = ref("");
 const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 const isHqRole = computed(() => role.value === "hq");
 /** IKBFJ4：平台超管 admin 与 hq 同权（账号管理表单按此放开校区选择）。 */
@@ -1732,6 +1737,10 @@ const isHqView = computed(
 /** IKCRS8：campuses=纯校区管理（平台视图），楼栋独立 /buildings 板块——
  *  原 IKBWRT 双 tab（campusTab/campusPlatformView）拆除。 */
 watch(campusFilter, () => resetAndLoad());
+/* IKD6FG：分类/角色/配送方式筛选变化即回第 1 页重载 */
+watch([categoryFilter, staffRoleFilter, orderDeliveryFilter], () =>
+  resetAndLoad(),
+);
 async function ensureCampusOptions() {
   if (!campusOptionsData.value.length)
     campusOptionsData.value = await api.campuses();
@@ -2019,6 +2028,8 @@ const hqProductsConfig: SectionConfig = {
         {
           ...query,
           status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+          // IKD6FG：分类筛选
+          categoryId: categoryFilter.value || undefined,
         },
         // IKCHEW：admin 双视角透传（hq/校区角色后端忽略 view）
         productView.value,
@@ -2097,7 +2108,11 @@ const configs: Record<string, SectionConfig> = {
       return api
         .orders(
           tab.statuses.length ? tab.statuses.join(",") : "all",
-          campusQuery(query),
+          campusQuery({
+            ...query,
+            // IKD6FG：配送方式筛选
+            deliveryMode: orderDeliveryFilter.value || undefined,
+          }),
         )
         .then((res) => ({
           // IKB1XM：列表补商品/用户两列（数据本就随行返回，前端派生展示）
@@ -2155,6 +2170,8 @@ const configs: Record<string, SectionConfig> = {
           {
             ...query,
             status: tab.statuses.length ? tab.statuses.join(",") : undefined,
+            // IKD6FG：分类筛选
+            categoryId: categoryFilter.value || undefined,
           },
           // IKCHEW：admin 本校区视角透传 view（校区角色后端忽略）
           productView.value,
@@ -2226,7 +2243,13 @@ const configs: Record<string, SectionConfig> = {
     eyebrow: "WAREHOUSE INVENTORY",
     desc: "掌握实际、锁定和可售库存，提前处理临期预警。",
     loader: (query) =>
-      api.inventory(query).then((res) => ({
+      api
+        .inventory({
+          ...query,
+          // IKD6FG：分类筛选
+          categoryId: categoryFilter.value || undefined,
+        })
+        .then((res) => ({
         rows: res.items.map((p) => ({
           ...p,
           locationText:
@@ -2273,7 +2296,14 @@ const configs: Record<string, SectionConfig> = {
     desc: "楼长与配送员账号状态、绩效和服务范围。",
     loader: (query) =>
       api
-        .staff(query, tabStatusOf(STAFF_STATUS_TABS))
+        .staff(
+          {
+            ...query,
+            // IKD6FG：角色筛选
+            role: staffRoleFilter.value || undefined,
+          },
+          tabStatusOf(STAFF_STATUS_TABS),
+        )
         .then((res) => ({
           rows: res.items.map((x) => ({
             ...x,
@@ -2792,9 +2822,15 @@ async function loadCategories() {
 watch(
   section,
   (s) => {
-    if (s === "products" || s === "categories") void loadCategories();
+    // IKD6FG：分类筛选覆盖官方商品库/商品管理/库存，进页时备好类别字典；
+    // 切板块重置三个筛选 ref，防跨板块选项串入（IKB5PA 同教训）
+    if (["products", "official-products", "inventory", "categories"].includes(s))
+      void loadCategories();
     // 库位字典（IKA0VG）：商品表单/库位管理共用
     if (s === "products" || s === "locations") void ensureLocations();
+    categoryFilter.value = "";
+    staffRoleFilter.value = "";
+    orderDeliveryFilter.value = "";
   },
   { immediate: true },
 );
@@ -4115,6 +4151,41 @@ async function cancelInviteRow(row: AdminRow) {
         <option v-for="b in buildings" :key="b.id" :value="b.id">
           {{ b.name }}
         </option>
+      </select>
+      <!-- IKD6FG：分类筛选（官方商品库/商品管理/库存共用类别字典） -->
+      <select
+        v-if="['products', 'official-products', 'inventory'].includes(section)"
+        v-model="categoryFilter"
+        class="filter-btn"
+        aria-label="分类筛选"
+      >
+        <option value="">全部分类</option>
+        <option v-for="c in categories" :key="c.id" :value="c.id">
+          {{ c.name }}
+        </option>
+      </select>
+      <!-- IKD6FG：履约人员角色筛选 -->
+      <select
+        v-if="section === 'staff'"
+        v-model="staffRoleFilter"
+        class="filter-btn"
+        aria-label="角色筛选"
+      >
+        <option value="">全部角色</option>
+        <option v-for="r in ROLE_OPTIONS" :key="r.value" :value="r.value">
+          {{ r.label }}
+        </option>
+      </select>
+      <!-- IKD6FG：订单配送方式筛选 -->
+      <select
+        v-if="section === 'orders'"
+        v-model="orderDeliveryFilter"
+        class="filter-btn"
+        aria-label="配送方式筛选"
+      >
+        <option value="">全部配送方式</option>
+        <option value="instant">即时达</option>
+        <option value="scheduled">预约达</option>
       </select>
       <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计） -->
       <select

@@ -23,6 +23,12 @@ export interface ListQuery extends PageQuery {
   campusId?: string;
   /** 逗号状态过滤（IKB3K9 商品状态 Tab；订单走独立 status 路径参数）。 */
   status?: string;
+  /** 分类筛选（IKD6FG：商品库/库存列表）。 */
+  categoryId?: string;
+  /** 配送方式筛选（IKD6FG：订单列表，instant/scheduled）。 */
+  deliveryMode?: string;
+  /** 角色筛选（IKD6FG：履约人员列表）。 */
+  role?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
