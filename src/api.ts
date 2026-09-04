@@ -661,6 +661,24 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  /** 优惠券编辑（IKDERC）：全字段可选；已发放券面额/门槛后端锁定，
+   *  total/expiresAt 传 null = 转不限量/长期。 */
+  updateCoupon: (
+    id: string,
+    data: Partial<{
+      status: "active" | "paused";
+      name: string;
+      remark: string;
+      amount: number;
+      threshold: number;
+      total: number | null;
+      expiresAt: string | null;
+    }>,
+  ) =>
+    request<Coupon>(`/admin/coupons/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   /** 定向发放（IKD6FI）：userIds 与定向条件（手机号 / 楼栋楼层寝室）至少一种，
    *  后端并集去重，返回实发张数。 */
   issueCoupon: (

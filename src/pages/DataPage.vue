@@ -134,6 +134,8 @@ interface FieldDef {
   optionalLabel?: string;
   /** 条件显隐（IK9U3Y）：按当前表单值判断，如角色=配送员时隐藏绑定楼栋。 */
   visible?: (data: Record<string, FormValue>) => boolean;
+  /** 条件禁用（IKDERC）：如已发放券的面额/门槛锁定。 */
+  disabled?: (data: Record<string, FormValue>) => boolean;
   /** 字段级动态风险提醒（IKB3K1）：返回 undefined 不渲染。 */
   hint?: (data: Record<string, FormValue>) => string | undefined;
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
@@ -668,6 +670,145 @@ function openCouponCreate() {
       expiryMode: "date",
       expiresAt: nextMonth,
       remark: "",
+    },
+  );
+}
+/** 优惠券编辑（IKDERC）：已发放（claimed>0）锁面额/门槛；总量只能放大或
+ *  转不限量；kind/trigger 展示但不可改。 */
+function openCouponEdit(c: Coupon) {
+  const locked = c.claimed > 0;
+  const lockHint = locked
+    ? `已发放 ${c.claimed} 张，面额/门槛锁定（资金口径），可调名称/总量/有效期`
+    : undefined;
+  openForm(
+    {
+      eyebrow: "EDIT COUPON",
+      title: `编辑优惠券 · ${c.name}`,
+      submit: "保存修改",
+      done: "优惠券已更新",
+      fields: [
+        {
+          key: "kind",
+          label: "券品种",
+          type: "select",
+          options: () => [
+            c.kind === "platform"
+              ? { value: "platform", label: "金额券（下单自动抵扣）" }
+              : { value: "partner", label: "异业券（到店出示，暂不核销）" },
+          ],
+          disabled: () => true,
+        },
+        {
+          key: "trigger",
+          label: "发放方式",
+          type: "select",
+          options: () => [
+            {
+              value: c.trigger,
+              label:
+                (
+                  {
+                    manual: "手动领取（领券中心）",
+                    lottery: "转盘抽奖发放",
+                    signup: "新人注册自动发放",
+                  } as Record<string, string>
+                )[c.trigger] ?? c.trigger,
+            },
+          ],
+          disabled: () => true,
+        },
+        { key: "name", label: "券名称", wide: true },
+        {
+          key: "amount",
+          label: "面额（元）",
+          type: "number",
+          min: 0.01,
+          step: 0.01,
+          visible: () => c.kind === "platform",
+          disabled: () => locked,
+          hint: () => lockHint,
+        },
+        {
+          key: "threshold",
+          label: "使用门槛（元）",
+          type: "number",
+          min: 0,
+          step: 0.01,
+          visible: () => c.kind === "platform",
+          disabled: () => locked,
+        },
+        { key: "remark", label: "优惠说明（选填）", wide: true },
+        {
+          key: "totalMode",
+          label: "发放总量",
+          type: "select",
+          options: () => [
+            { value: "limited", label: "限量" },
+            { value: "unlimited", label: "不限量" },
+          ],
+          hint: () =>
+            locked && c.total !== null
+              ? `当前已发 ${c.claimed} 张，新总量不能小于已发数`
+              : undefined,
+        },
+        {
+          key: "total",
+          label: "总量张数",
+          type: "number",
+          min: 1,
+          visible: (d) => d.totalMode !== "unlimited",
+        },
+        {
+          key: "expiryMode",
+          label: "有效期",
+          type: "select",
+          options: () => [
+            { value: "date", label: "固定日期" },
+            { value: "forever", label: "长期有效" },
+          ],
+        },
+        {
+          key: "expiresAt",
+          label: "有效期至",
+          type: "date",
+          visible: (d) => d.expiryMode !== "forever",
+        },
+      ],
+      save: async (d) => {
+        if (!String(d.name || "").trim()) throw new Error("请填写券名称");
+        await api.updateCoupon(c.id, {
+          name: String(d.name).trim(),
+          remark: String(d.remark || "").trim(),
+          ...(c.kind === "platform" && !locked
+            ? {
+                amount: yuanToFen(d.amount),
+                threshold: yuanToFen(d.threshold),
+              }
+            : {}),
+          ...(d.totalMode === "unlimited"
+            ? { total: null }
+            : Number(d.total) >= 1
+              ? { total: Number(d.total) }
+              : {}),
+          ...(d.expiryMode === "forever"
+            ? { expiresAt: null }
+            : d.expiresAt
+              ? { expiresAt: String(d.expiresAt) }
+              : {}),
+        });
+      },
+    },
+    {
+      kind: c.kind,
+      trigger: c.trigger,
+      name: c.name,
+      amount: Number(fenToYuan(c.amount)),
+      threshold: Number(fenToYuan(c.threshold)),
+      remark: c.remark || "",
+      totalMode: c.total === null ? "unlimited" : "limited",
+      total: c.total ?? 100,
+      expiryMode: c.expiresAt ? "date" : "forever",
+      expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : "",
     },
   );
 }
@@ -5346,6 +5487,12 @@ async function cancelInviteRow(row: AdminRow) {
                       }}
                     </button>
                     <button
+                      class="btn mini ghost"
+                      @click="openCouponEdit(row as Coupon)"
+                    >
+                      编辑
+                    </button>
+                    <button
                       class="btn mini primary"
                       @click="openIssue(row as Coupon)"
                     >
@@ -6184,7 +6331,10 @@ async function cancelInviteRow(row: AdminRow) {
             </label>
             <label v-else-if="field.type === 'select'" :class="{ wide: field.wide }"
               >{{ field.label
-              }}<select v-model="formData[field.key]">
+              }}<select
+                v-model="formData[field.key]"
+                :disabled="field.disabled?.(formData)"
+              >
                 <option v-if="field.optional" value="">
                   {{ field.optionalLabel ?? "不绑定" }}
                 </option>
@@ -6242,6 +6392,7 @@ async function cancelInviteRow(row: AdminRow) {
                 :min="field.min"
                 :step="field.step"
                 :placeholder="field.placeholder"
+                :disabled="field.disabled?.(formData)"
             />
               <!-- IKB3K1：字段级动态风险提醒（券面额≥门槛等） -->
               <p v-if="field.hint?.(formData)" class="form-hint">
