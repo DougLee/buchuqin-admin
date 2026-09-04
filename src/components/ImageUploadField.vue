@@ -6,57 +6,14 @@ import { resolveImageUrl } from "../utils/image";
  * COS 图片上传字段（IK9RWX，ADR-0003）：上传按钮 + URL 手输兜底 + 缩略预览。
  * v-model 绑定 URL 字符串；商品头图 / 类别图 / Banner 图三处复用。
  * folder=app 时落 COS app/ 目录（Banner 背景图等小程序素材，IK9VBI）。
- * cropRatio（IKDEUR 三修配套）：C 端 banner 改 scaleToFill 严格铺满后，
- * 比例不符的图会被拉伸变形——传目标宽高比（如 2.55），上传前 canvas
- * 居中裁切，运营无感。
  */
-const props = defineProps<{
-  modelValue: string;
-  folder?: string;
-  cropRatio?: number;
-}>();
+const props = defineProps<{ modelValue: string; folder?: string }>();
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
 }>();
 const fileInput = ref<HTMLInputElement>(),
   uploading = ref(false),
   error = ref("");
-/** 居中裁切到目标宽高比（比例已吻合则原样返回不重编码）。 */
-async function cropToRatio(file: File, ratio: number): Promise<File> {
-  const bitmap = await createImageBitmap(file);
-  let sx = 0,
-    sy = 0,
-    sw = bitmap.width,
-    sh = bitmap.height;
-  const cur = sw / sh;
-  if (Math.abs(cur - ratio) > 0.01) {
-    if (cur > ratio) {
-      // 图偏宽：居中裁左右
-      sw = Math.round(sh * ratio);
-      sx = Math.round((bitmap.width - sw) / 2);
-    } else {
-      // 图偏高：居中裁上下
-      sh = Math.round(sw / ratio);
-      sy = Math.round((bitmap.height - sh) / 2);
-    }
-  } else {
-    bitmap.close();
-    return file;
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
-  canvas.getContext("2d")!.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
-  bitmap.close();
-  const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, mime, 0.92),
-  );
-  if (!blob) return file;
-  return new File([blob], file.name.replace(/\.\w+$/, mime === "image/png" ? ".png" : ".jpg"), {
-    type: mime,
-  });
-}
 async function onPick(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -65,8 +22,7 @@ async function onPick(event: Event) {
   uploading.value = true;
   error.value = "";
   try {
-    const picked = props.cropRatio ? await cropToRatio(file, props.cropRatio) : file;
-    emit("update:modelValue", await uploadImage(picked, props.folder));
+    emit("update:modelValue", await uploadImage(file, props.folder));
   } catch (err) {
     error.value = err instanceof Error ? err.message : "上传失败";
   } finally {
