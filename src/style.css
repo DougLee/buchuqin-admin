@@ -1468,7 +1468,8 @@ td.row-actions {
 /* 自助改密弹窗（IK9KWO → IKCJ3L 独立样式：左对齐表单 + 关闭钮 + 密码可见切换） */
 .pwd-card {
   width: 360px;
-  background: #f7faf7;
+  /* IKD7TL 扩展：底色与弹框体系统一为纯白面板 */
+  background: #fff;
   border-radius: 18px;
   padding: 22px 24px 24px;
   box-shadow: 0 30px 80px #04150f59;
