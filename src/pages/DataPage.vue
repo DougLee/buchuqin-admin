@@ -5409,7 +5409,11 @@ async function cancelInviteRow(row: AdminRow) {
         </div>
         <div class="product-form">
           <template v-for="field in visibleFields" :key="field.key">
-            <label v-if="field.type === 'checkbox'" :class="{ wide: field.wide }">
+            <label
+              v-if="field.type === 'checkbox'"
+              class="check-field"
+              :class="{ wide: field.wide }"
+            >
               <span class="checkbox-row">
                 <input
                   v-model="formData[field.key]"
