@@ -4318,7 +4318,9 @@ async function cancelInviteRow(row: AdminRow) {
         </option>
       </select>
       <!-- IKD6FG：分类筛选升级可搜索下拉（官方商品库/商品管理/库存共用；
-           输入即按名称模糊过滤，选中回填名称，blur 关菜单） -->
+           输入即按名称模糊过滤，选中回填名称，blur 关菜单）。
+           IKDCGI：选项 mousedown.prevent 后焦点滞留 input，再次点击不再触发
+           focus → 菜单打不开；@click 每次按下都触发，连续切换无需移开光标 -->
       <div
         v-if="['products', 'official-products', 'inventory'].includes(section)"
         class="category-combobox"
@@ -4334,8 +4336,6 @@ async function cancelInviteRow(row: AdminRow) {
           role="combobox"
           :aria-expanded="categorySearchOpen"
           @focus="openCategorySearch"
-          <!-- IKDCGI：mousedown.prevent 选中后焦点滞留 input，再次点击不再触发
-               focus → 菜单打不开；click 每次按下都触发，保证连续切换无需移开光标 -->
           @click="openCategorySearch"
           @keydown.esc="
             categorySearchOpen = false;
