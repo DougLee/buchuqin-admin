@@ -2536,7 +2536,8 @@ const hqProductsConfig: SectionConfig = {
   // IKCHEW：admin 官方库视角透传 view（hq 后端忽略）
   countsLoader: () => api.productStatusCounts(productView.value),
   columns: [
-    ["skuNo", "SKU"],
+    // IKDEP0：SKU 列（伪编号）换商品缩略图，点击看大图
+    ["image", "图片"],
     ["name", "商品"],
     ["categoryId", "分类"],
     // IKC1AC：价格三层（进货价仅总部可见；官方售价更名批发价格）
@@ -2680,7 +2681,8 @@ const configs: Record<string, SectionConfig> = {
     // IKCHEW：admin 本校区视角透传 view（校区角色后端忽略）
     countsLoader: () => api.productStatusCounts(productView.value),
     columns: [
-      ["skuNo", "SKU"],
+      // IKDEP0：SKU 列（伪编号）换商品缩略图，点击看大图
+      ["image", "图片"],
       ["name", "商品"],
       ["categoryId", "分类"],
       ["price", "售价"],
@@ -3628,6 +3630,12 @@ const MONEY_KEYS = [
   "threshold",
   "reward",
 ];
+/** IKDEP0：商品详情图列表（images[] 去掉与主图重复的首图，空数组不渲染） */
+function detailImages(p: Product): string[] {
+  const list = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  const main = p.image || "";
+  return list.filter((src) => src !== main);
+}
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
@@ -5166,13 +5174,14 @@ async function cancelInviteRow(row: AdminRow) {
                   ><!-- 流水数量列（含 IKA0UQ 出库负数） --><span
                     v-else-if="col[0] === 'quantity' && section === 'inventory-txns'"
                     >{{ txnQuantity(row) }}</span
-                  ><!-- 图片列（IK9RX0 类别图）：有图缩略预览，无图占位 -->
+                  ><!-- 图片列（IK9RX0 类别图；IKDEP0 商品列复用）：有图缩略、点击看大图，无图占位 -->
                   <img
                     v-else-if="col[0] === 'image' && display(row, 'image') !== '—'"
-                    class="cell-thumb"
+                    class="cell-thumb cell-thumb--zoom"
                     :src="resolveImageUrl(String(display(row, 'image')))"
                     alt="图片"
                     loading="lazy"
+                    @click="previewImage = resolveImageUrl(String(display(row, 'image')))"
                   /><span v-else>{{ display(row, col[0]) }}</span>
                 </td>
                 <td class="row-actions">
@@ -5712,14 +5721,43 @@ async function cancelInviteRow(row: AdminRow) {
         </template>
         <div v-else class="drawer-fields">
           <template v-if="isProductsSection && canWriteSection"
-            ><!-- IKA0UW：原信息摘要——编辑前原值一眼可读 -->
+            ><!-- IKDEP0：商品图区——主图+详情多图，点击看大图；未配图给占位 -->
+            <div class="product-hero">
+              <img
+                v-if="(selected as Product).image"
+                class="product-hero__main"
+                :src="resolveImageUrl(String((selected as Product).image))"
+                alt="商品主图"
+                loading="lazy"
+                @click="
+                  previewImage = resolveImageUrl(
+                    String((selected as Product).image),
+                  )
+                "
+              /><span
+                v-else
+                class="product-hero__main product-hero__blank"
+                >暂无图片</span
+              >
+              <div
+                v-if="detailImages(selected as Product).length"
+                class="product-hero__more"
+              >
+                <img
+                  v-for="(src, i) in detailImages(selected as Product)"
+                  :key="i"
+                  :src="resolveImageUrl(src)"
+                  alt="详情图"
+                  loading="lazy"
+                  @click="previewImage = resolveImageUrl(src)"
+                />
+              </div>
+            </div>
+            <!-- IKA0UW：原信息摘要——编辑前原值一眼可读（IKDEP0 去 SKU 伪编号） -->
             <div class="origin-summary">
               <div>
-                <span>商品名 / SKU</span
-                ><strong
-                  >{{ display(selected, "name") }} ·
-                  {{ display(selected, "skuNo") }}</strong
-                >
+                <span>商品名</span
+                ><strong>{{ display(selected, "name") }}</strong>
               </div>
               <div>
                 <span>分类 / 状态</span
