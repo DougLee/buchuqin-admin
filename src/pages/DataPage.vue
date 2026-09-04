@@ -427,11 +427,12 @@ function openStaffCreate() {
         { key: "name", label: "姓名", placeholder: "真实姓名" },
         { key: "staffNo", label: "工号", placeholder: "例如：BM-006" },
         { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
-        STAFF_BUILDING_FIELD,
+        // IKD7TL：状态紧跟角色同行（绑定楼栋 wide 字段随后独占一行）
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
           { value: "offline", label: "离线" },
         ] },
+        STAFF_BUILDING_FIELD,
       ],
       save: async (d) => void (await api.createStaff(staffPayload(d))),
     },
@@ -451,11 +452,12 @@ function openStaffEdit(row: Staff) {
         { key: "name", label: "姓名" },
         { key: "staffNo", label: "工号" },
         { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
-        STAFF_BUILDING_FIELD,
+        // IKD7TL：状态紧跟角色同行（绑定楼栋 wide 字段随后独占一行）
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
           { value: "offline", label: "离线" },
         ] },
+        STAFF_BUILDING_FIELD,
       ],
       save: async (d) => void (await api.updateStaff(row.id, staffPayload(d))),
     },
