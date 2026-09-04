@@ -4334,6 +4334,13 @@ async function cancelInviteRow(row: AdminRow) {
           role="combobox"
           :aria-expanded="categorySearchOpen"
           @focus="openCategorySearch"
+          <!-- IKDCGI：mousedown.prevent 选中后焦点滞留 input，再次点击不再触发
+               focus → 菜单打不开；click 每次按下都触发，保证连续切换无需移开光标 -->
+          @click="openCategorySearch"
+          @keydown.esc="
+            categorySearchOpen = false;
+            ($event.target as HTMLInputElement).blur();
+          "
           @input="
             categorySearchText = ($event.target as HTMLInputElement).value;
             categorySearchOpen = true;

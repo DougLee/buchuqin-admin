@@ -1142,6 +1142,11 @@ td {
   background: #fff;
   color: #4d6157;
   font-size: 12px;
+  /* IKDCGI：点 padding 区也能聚焦 input 开菜单 */
+  cursor: text;
+}
+.category-combobox:hover {
+  border-color: var(--brand);
 }
 .category-combobox input {
   width: 150px;
