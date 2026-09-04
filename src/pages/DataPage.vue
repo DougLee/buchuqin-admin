@@ -984,7 +984,7 @@ function onSaleProductOptions() {
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
 }
-function openStockForm(kind: "stock-in" | "adjust") {
+function openStockForm(kind: "stock-in" | "adjust", productId?: string) {
   void ensureProducts();
   const isStockIn = kind === "stock-in";
   openForm(
@@ -1019,9 +1019,10 @@ function openStockForm(kind: "stock-in" | "adjust") {
           await api.adjustInventory({ productId: String(d.productId), delta: qty, reason });
       },
     },
+    // IKD6FG：行内入口预填本行商品；顶部按钮走空初始值
     isStockIn
-      ? { productId: "", quantity: 1, reason: "" }
-      : { productId: "", delta: 1, reason: "" },
+      ? { productId: productId ?? "", quantity: 1, reason: "" }
+      : { productId: productId ?? "", delta: 1, reason: "" },
   );
 }
 /** 状态筛选重置为 all；值有变化时由 statusFilter watcher 接管重载，避免重复请求。 */
@@ -4557,6 +4558,23 @@ async function cancelInviteRow(row: AdminRow) {
                       @click="pullUpstreamRow(row)"
                     >
                       拉取更新
+                    </button>
+                  </template>
+                  <!-- IKD6FG：库存——行内入库/调整直达（预填本行商品，免顶部表单再找） -->
+                  <template
+                    v-else-if="section === 'inventory' && canWriteSection"
+                  >
+                    <button
+                      class="btn mini primary"
+                      @click="openStockForm('stock-in', (row as Product).id)"
+                    >
+                      入库
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      @click="openStockForm('adjust', (row as Product).id)"
+                    >
+                      调整
                     </button>
                   </template>
                   <!-- IKCJ3M：促销——编辑/停启行内直达（独立菜单 + marketing tab 双入口） -->
