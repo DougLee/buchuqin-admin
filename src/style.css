@@ -1228,7 +1228,9 @@ td {
    「最小内容宽」惯用法（订单 3-4 颗按钮的列自动放宽），nowrap 防换行。 */
 td.row-actions {
   display: table-cell;
-  width: 1%;
+  /* width 从 1% 提到 150px（道哥反馈适当加宽）：2 颗按钮列两侧多留呼吸感；
+     4 颗按钮的订单列 min-content 超过建议值仍贴内容，不受影响 */
+  width: 150px;
   white-space: nowrap;
   text-align: center;
 }
