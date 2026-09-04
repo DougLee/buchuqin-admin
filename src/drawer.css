@@ -20,10 +20,12 @@
      系统面板语言；head/actions 双 sticky 固定，中间内容整体滚动——
      长表单滚动时标题与按钮恒在，配合细滚动条提供「还有内容」感知 */
   background: #fff;
-  /* 底部 padding 归零：sticky bottom:0 的按钮条活动范围被限制在包含块
-     （content box）内，padding-bottom 不为 0 时按钮条盖不到底缘、内容会
-     从缝隙露出（白底+分隔线后显形）；末元素留白由下方 last-child 规则接管 */
-  padding: 26px 26px 0;
+  /* padding 全归零：sticky 元素被钳制在包含块（父 content box）内——曾用
+     「容器 padding 26 + head 负 margin 上提」做通栏 header，实测 head 被
+     sticky 钳回 padding 之下而占位仍按负 margin 计算，两者重叠盖住首行
+     label（换绑/改名弹框事故）。改为 head/actions 自带 padding、中间内容
+     统一侧边距（见下方 > 选择器），无负 margin 即无钳制 */
+  padding: 0;
   border-radius: 18px;
   box-shadow: 0 24px 70px #062e2340;
   animation: pop-in 0.2s ease;
@@ -39,8 +41,8 @@
   border-radius: 6px;
 }
 .drawer-head {
-  /* sticky + 负 margin 法：head 初始位置不变（抵消容器 padding），滚动后
-     背景盖满可视顶、贴边固定；内容从其下方滚过被遮，标题永不消失 */
+  /* sticky 贴顶 + 自带 padding（容器 padding 已归零，无负 margin/无钳制）：
+     滚动时标题固定，内容从分隔线下方滚过被白底遮住 */
   position: sticky;
   top: 0;
   z-index: 2;
@@ -48,9 +50,13 @@
   justify-content: space-between;
   align-items: flex-start;
   background: #fff;
-  margin: -26px -26px 0;
   padding: 26px 26px 14px;
   border-bottom: 1px solid var(--line);
+}
+/* 中间内容统一左右边距（head/actions 自带通栏 padding，容器 padding=0） */
+.drawer > :not(.drawer-head):not(.drawer-actions) {
+  margin-left: 26px;
+  margin-right: 26px;
 }
 .drawer-head h2 {
   margin: 2px 0;
@@ -125,13 +131,13 @@
   /* IKCIA5（2026-09-01）：absolute 改 sticky——内容短时跟在表单后，
      内容长时贴住抽屉可视底边；IKD7TL 扩展：白底 + 顶部 1px 分隔 + 上飘
      阴影，滚动到底部时按钮条与内容有清晰的层级分界。
-     margin 底部不再负抵消（容器 padding-bottom 已归零），按钮条直达底缘 */
+     自带通栏 padding（无负 margin → 不受 sticky 包含块钳制），直达底缘 */
   position: sticky;
   bottom: 0;
   z-index: 1;
   display: flex;
   gap: 10px;
-  margin: 14px -26px 0;
+  margin: 14px 0 0;
   padding: 14px 26px 26px;
   background: #fff;
   border-top: 1px solid var(--line);
