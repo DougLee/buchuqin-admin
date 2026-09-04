@@ -3691,7 +3691,8 @@ function openPrinterBind(row?: Printer) {
           label: "终端号 (SN)",
           placeholder: "机身底部标签 / 自检页上的 SN",
         },
-        // IKCZOX：小票联数——1=单联无联名；2=商家联+骑手联；3=再加用户联
+        // IKD6H4：小票联数（IKCZOX 初版联序已调整）——1=单联无联名；
+        // 2=商家联+客户联；3=再加骑手联
         {
           key: "copies",
           label: "打印联数",
@@ -3700,8 +3701,8 @@ function openPrinterBind(row?: Printer) {
           optional: true,
           options: () => [
             { value: "1", label: "1 联（单张小票）" },
-            { value: "2", label: "2 联（商家联 + 骑手联）" },
-            { value: "3", label: "3 联（商家联 + 骑手联 + 用户联）" },
+            { value: "2", label: "2 联（商家联 + 客户联）" },
+            { value: "3", label: "3 联（商家联 + 客户联 + 骑手联）" },
           ],
         },
       ],
@@ -3718,11 +3719,11 @@ function openPrinterBind(row?: Printer) {
     { name: row?.name ?? "", sn: row?.sn ?? "", copies: String(row?.copies ?? 1) },
   );
 }
-/** 联数展示文案（IKCZOX）：1/2/3 联含义与绑定表单一致。 */
+/** 联数展示文案（IKD6H4）：1/2/3 联含义与绑定表单一致。 */
 function printerCopiesLabel(row: Printer) {
   const n = row.copies ?? 1;
-  if (n === 3) return "3 联（商家 + 骑手 + 用户）";
-  if (n === 2) return "2 联（商家 + 骑手）";
+  if (n === 3) return "3 联（商家 + 客户 + 骑手）";
+  if (n === 2) return "2 联（商家 + 客户）";
   return "1 联（单张小票）";
 }
 /** 测试打印（IKBW0Q）：行内/抽屉一键验证连通，云端失败原样提示。 */
