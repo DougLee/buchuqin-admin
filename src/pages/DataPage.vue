@@ -500,13 +500,40 @@ function openCouponCreate() {
       submit: "保存并启用",
       done: "优惠券已创建并启用",
       fields: [
+        // IKDCVO：券品种 + 发放方式（kind × trigger）
+        {
+          key: "kind",
+          label: "券品种",
+          type: "select",
+          options: () => [
+            { value: "platform", label: "金额券（下单自动抵扣）" },
+            { value: "partner", label: "异业券（到店出示，暂不核销）" },
+          ],
+        },
         { key: "name", label: "券名称", placeholder: "例如：满 20 减 5 寝室券", wide: true },
+        {
+          key: "trigger",
+          label: "发放方式",
+          type: "select",
+          options: () => [
+            { value: "manual", label: "手动领取（领券中心）" },
+            { value: "lottery", label: "转盘抽奖发放" },
+            { value: "signup", label: "新人注册自动发放" },
+          ],
+          hint: (d) =>
+            d.trigger === "signup"
+              ? "每个新注册用户自动发放一张（已持有不重复发）"
+              : d.trigger === "lottery"
+                ? "不进领券中心，转盘中奖自动入账（转盘奖位需选择此券）"
+                : undefined,
+        },
         {
           key: "amount",
           label: "面额（元）",
           type: "number",
           min: 0.01,
           step: 0.01,
+          visible: (d) => d.kind === "platform",
           // IKB3K1：面额≥门槛的风险提醒（无门槛券恒触发，重点提示大面额）
           hint: (d) =>
             Number(d.amount) >= Number(d.threshold || 0)
@@ -515,24 +542,70 @@ function openCouponCreate() {
                 : "无门槛券每单立减全额面额，面额过大易产生 0 元订单，请慎重配置"
               : undefined,
         },
-        { key: "threshold", label: "使用门槛（元）", type: "number", min: 0, step: 0.01 },
+        {
+          key: "threshold",
+          label: "使用门槛（元）",
+          type: "number",
+          min: 0,
+          step: 0.01,
+          visible: (d) => d.kind === "platform",
+        },
+        {
+          key: "remark",
+          label: "优惠说明（选填）",
+          placeholder: "例如：到店出示享第二杯半价",
+          wide: true,
+        },
         { key: "total", label: "发放总量", type: "number", min: 1 },
-        { key: "expiresAt", label: "有效期至", type: "date" },
+        {
+          key: "expiryMode",
+          label: "有效期",
+          type: "select",
+          options: () => [
+            { value: "date", label: "固定日期" },
+            { value: "forever", label: "长期有效" },
+          ],
+        },
+        {
+          key: "expiresAt",
+          label: "有效期至",
+          type: "date",
+          visible: (d) => d.expiryMode !== "forever",
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
-        if (!d.expiresAt) throw new Error("请选择有效期");
-        // 面额/门槛表单输元，提交前统一转分
+        const partner = d.kind === "partner";
+        if (!partner && !(Number(d.amount) > 0))
+          throw new Error("请填写面额");
+        if (d.expiryMode !== "forever" && !d.expiresAt)
+          throw new Error("请选择有效期，或切换为长期有效");
+        // 面额/门槛表单输元，提交前统一转分；partner 券恒 0 不参与下单
         await api.createCoupon({
           name: String(d.name).trim(),
-          amount: yuanToFen(d.amount),
-          threshold: yuanToFen(d.threshold),
+          amount: partner ? 0 : yuanToFen(d.amount),
+          threshold: partner ? 0 : yuanToFen(d.threshold),
           total: Number(d.total),
-          expiresAt: String(d.expiresAt),
+          ...(d.expiryMode === "forever"
+            ? {}
+            : { expiresAt: String(d.expiresAt) }),
+          kind: partner ? "partner" : "platform",
+          trigger: (d.trigger as "manual" | "lottery" | "signup") || "manual",
+          remark: String(d.remark || "").trim(),
         });
       },
     },
-    { name: "", amount: 5, threshold: 20, total: 100, expiresAt: nextMonth },
+    {
+      kind: "platform",
+      trigger: "manual",
+      name: "",
+      amount: 5,
+      threshold: 20,
+      total: 100,
+      expiryMode: "date",
+      expiresAt: nextMonth,
+      remark: "",
+    },
   );
 }
 async function toggleCoupon() {
@@ -1997,7 +2070,9 @@ function wheelContentText(p?: {
 }): string {
   if (!p) return "—";
   if (p.type === "coupon") return p.couponName || "（券已删除）";
-  if (p.type === "partner") return p.bizTitle || "（图文）";
+  // IKDCVO：partner 配券优先展示券名，未配券回落图文
+  if (p.type === "partner")
+    return p.couponName || p.bizTitle || "（图文）";
   return "—";
 }
 /** 奖位类型徽标配色（平台券绿/异业券橙/谢谢参与灰/未配置描边）。 */
@@ -2518,12 +2593,15 @@ const configs: Record<string, SectionConfig> = {
       ),
     columns: [
       ["name", "优惠券"],
+      ["kind", "类型"],
+      ["trigger", "发放"],
       ["amount", "面额"],
       ["threshold", "门槛"],
       ["total", "总量"],
       ["remain", "剩余"],
       ["claimed", "领取"],
       ["used", "核销"],
+      ["expiresAt", "有效期"],
       ["status", "状态"],
     ],
   },
@@ -2542,12 +2620,15 @@ const configs: Record<string, SectionConfig> = {
       ),
     columns: [
       ["name", "优惠券"],
+      ["kind", "类型"],
+      ["trigger", "发放"],
       ["amount", "面额"],
       ["threshold", "门槛"],
       ["total", "总量"],
       ["remain", "剩余"],
       ["claimed", "领取"],
       ["used", "核销"],
+      ["expiresAt", "有效期"],
       ["status", "状态"],
     ],
   },
@@ -3258,7 +3339,30 @@ function display(row: AdminRow, key: string) {
   if (key === "contentText") return v ? String(v) : "—";
   if (key === "floor")
     return v === null || v === undefined || v === "" ? "*" : String(v);
-  if (key === "expiresAt") return fmtDate(String(v));
+  if (key === "expiresAt")
+    // IKDCVO：null = 长期有效
+    return v == null || v === "" ? "长期有效" : fmtDate(String(v));
+  // IKDCVO：券品种/发放方式中文化；异业券不参与下单，面额/门槛显示 —
+  if (key === "kind")
+    return (
+      ({ platform: "金额券", partner: "异业券" } as Record<string, string>)[
+        String(v)
+      ] ?? String(v ?? "—")
+    );
+  if (key === "trigger")
+    return (
+      (
+        { manual: "手动领取", lottery: "转盘", signup: "注册发" } as Record<
+          string,
+          string
+        >
+      )[String(v)] ?? String(v ?? "—")
+    );
+  if (
+    (key === "amount" || key === "threshold") &&
+    record.kind === "partner"
+  )
+    return "—";
   if (typeof v === "boolean") return v ? "在线" : "离线";
   if (typeof v === "number" && MONEY_KEYS.includes(key))
     return `¥${fenToYuan(v)}`;
@@ -3629,6 +3733,7 @@ function onWheelTypeChange(i: number) {
   p.bizImage = undefined;
   p.bizNote = undefined;
   if (p.type === "coupon" && !p.label) p.label = "优惠券";
+  if (p.type === "partner" && !p.label) p.label = "异业券";
   if (p.type === "none") p.label = "谢谢参与";
 }
 async function submitWheel() {
@@ -3645,6 +3750,10 @@ async function submitWheel() {
       prizes: form.prizes.map((p) => ({
         ...p,
         label: p.label.trim() || (p.type === "none" ? "谢谢参与" : ""),
+        // partner 未选券时不下发空串 couponId（避免后端误判为配券）
+        ...(p.type === "partner" && !p.couponId
+          ? { couponId: undefined }
+          : {}),
       })),
     });
     notify("转盘配置已保存");
@@ -6070,14 +6179,33 @@ async function cancelInviteRow(row: AdminRow) {
             <label v-if="prize.type === 'coupon'" class="wheel-row__field">
               <span>优惠券</span>
               <select v-model="prize.couponId">
-                <option value="" disabled>选择发放中的优惠券</option>
-                <option v-for="c in wheelCoupons" :key="c.id" :value="c.id">
+                <option value="" disabled>选择发放中的金额券</option>
+                <option
+                  v-for="c in wheelCoupons.filter((c) => c.kind === 'platform')"
+                  :key="c.id"
+                  :value="c.id"
+                >
                   {{ c.name }}（剩 {{ c.remain }} 张）
                 </option>
               </select>
             </label>
             <template v-if="prize.type === 'partner'">
+              <!-- IKDCVO：配异业券则抽中直接发券入账（我的优惠券可见，暂不核销）；
+                   未配券回落图文展示。配券后图片可不传。 -->
               <label class="wheel-row__field">
+                <span>异业券（选填，选中即抽中发券）</span>
+                <select v-model="prize.couponId">
+                  <option value="">不配券，用下方图文展示</option>
+                  <option
+                    v-for="c in wheelCoupons.filter((c) => c.kind === 'partner')"
+                    :key="c.id"
+                    :value="c.id"
+                  >
+                    {{ c.name }}（剩 {{ c.remain }} 张）
+                  </option>
+                </select>
+              </label>
+              <label v-if="!prize.couponId" class="wheel-row__field">
                 <span>福利标题</span>
                 <input
                   v-model.trim="prize.bizTitle"
@@ -6086,14 +6214,16 @@ async function cancelInviteRow(row: AdminRow) {
                 />
               </label>
               <div class="wheel-row__field">
-                <span>图文图片（可含商家二维码）</span>
+                <span>
+                  图文图片（可含商家二维码{{ prize.couponId ? "，选填" : "" }}）
+                </span>
                 <ImageUploadField
                   :model-value="prize.bizImage ?? ''"
                   folder="app/wheel"
                   @update:model-value="prize.bizImage = $event"
                 />
               </div>
-              <label class="wheel-row__field">
+              <label v-if="!prize.couponId" class="wheel-row__field">
                 <span>说明（选填）</span>
                 <input
                   v-model.trim="prize.bizNote"
@@ -6114,7 +6244,7 @@ async function cancelInviteRow(row: AdminRow) {
           </div>
         </div>
         <p class="form-hint plain">
-          概率按权重占比随机，与历史抽奖无关；平台券发完后该奖位自动按「谢谢参与」处理，不超发。
+          概率按权重占比随机，与历史抽奖无关；平台券发完后该奖位自动按「谢谢参与」处理，异业券发完后自动回落到图文展示，均不超发。
         </p>
         <div class="drawer-actions">
           <button class="btn ghost" @click="wheelEditOpen = false">取消</button

@@ -526,13 +526,18 @@ export const api = {
         listQuery(query),
       )}`,
     ),
-  /** amount / threshold 为整数分（表单输元，经 yuanToFen 转换后提交）。 */
+  /** amount / threshold 为整数分（表单输元，经 yuanToFen 转换后提交）。
+   *  IKDCVO：kind/trigger/remark 可选；expiresAt 空 = 长期有效；
+   *  partner 异业券 amount/threshold 固定传 0。 */
   createCoupon: (data: {
     name: string;
     amount: number;
     threshold: number;
     total: number;
-    expiresAt: string;
+    expiresAt?: string;
+    kind?: "platform" | "partner";
+    trigger?: "manual" | "lottery" | "signup";
+    remark?: string;
   }) =>
     request<Coupon>("/admin/coupons", {
       method: "POST",
