@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { api, fetchAllPages } from "../api";
+import { api, downloadRoomTemplate, fetchAllPages } from "../api";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
@@ -29,10 +29,12 @@ import type {
   LeaveRequest,
   LeaveRow,
   ListQuery,
+  MarketingMapData,
   Order,
   PagedResponse,
   Product,
   Promotion,
+  PurchaseRequest,
   Room,
   RuleRow,
   Settlement,
@@ -384,6 +386,41 @@ async function removeRoom(roomId: string) {
     roomError.value = error instanceof Error ? error.message : "删除失败";
   }
 }
+/* 寝室批量导入（IKD6FH）：模板下载 + xlsx 上传，楼栋内重复寝室后端自动跳过 */
+const roomsImporting = ref(false),
+  roomsImportInput = ref<HTMLInputElement>();
+async function downloadRoomsTemplate() {
+  if (!roomsBuilding.value) return;
+  try {
+    await downloadRoomTemplate(roomsBuilding.value.id);
+    notify("模板已下载，按「楼层 / 寝室号」两列填写");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "模板下载失败", true);
+  }
+}
+function pickRoomsImportFile() {
+  roomsImportInput.value?.click();
+}
+async function onRoomsImportFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // 清空以便重复选择同一文件
+  if (!roomsBuilding.value || !file) return;
+  roomsImporting.value = true;
+  roomError.value = "";
+  try {
+    const res = await api.importRooms(roomsBuilding.value.id, file);
+    notify(`导入 ${res.imported} 条，跳过 ${res.skipped} 条`);
+    // 行级错误不阻塞合法行入库，就地展示前几条
+    if (res.errors.length)
+      roomError.value = `部分行未导入：${res.errors.slice(0, 3).join("；")}`;
+    await loadRooms();
+  } catch (error) {
+    roomError.value = error instanceof Error ? error.message : "导入失败";
+  } finally {
+    roomsImporting.value = false;
+  }
+}
 
 /* ---------- 员工账号 ---------- */
 const ROLE_OPTIONS = [
@@ -628,7 +665,13 @@ const issueOpen = ref(false),
   usersLoading = ref(false),
   usersError = ref(""),
   issueChecked = ref<Record<string, boolean>>({}),
-  manualUserIds = ref("");
+  manualUserIds = ref(""),
+  // IKD6FI：定向方式——用户多选之外新增「按手机号」「按寝室」（楼栋+楼层+寝室号）
+  issueMode = ref<"users" | "phones" | "rooms">("users"),
+  issuePhones = ref(""),
+  issueBuildingId = ref(""),
+  issueFloor = ref<number | "">(""),
+  issueRoomNos = ref("");
 async function openIssue(coupon: Coupon) {
   selected.value = undefined;
   issueCouponRow.value = coupon;
@@ -636,6 +679,13 @@ async function openIssue(coupon: Coupon) {
   usersError.value = "";
   issueChecked.value = {};
   manualUserIds.value = "";
+  // IKD6FI：寝室定向的楼栋下拉
+  issueMode.value = "users";
+  issuePhones.value = "";
+  issueBuildingId.value = "";
+  issueFloor.value = "";
+  issueRoomNos.value = "";
+  void ensureBuildings().catch(() => {});
   usersLoading.value = true;
   try {
     users.value = await fetchAllPages(api.adminUsers);
@@ -663,17 +713,58 @@ function userLabel(u: AdminUser) {
 function userSub(u: AdminUser) {
   return u.phoneMasked || u.id;
 }
+/* IKD6FI：手机号/寝室号均按换行、逗号（中英文）、分号切分 */
+function issueTokenList(text: string): string[] {
+  return text
+    .split(/[\s,，;；]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+const issuePhoneList = computed(() => issueTokenList(issuePhones.value));
+const issueRoomNoList = computed(() => issueTokenList(issueRoomNos.value));
+/** 提交就绪（IKD6FI）：按当前定向方式校验必填项。 */
+const issueReady = computed(() => {
+  if (issueMode.value === "users") return selectedUserIds.value.length > 0;
+  if (issueMode.value === "phones") return issuePhoneList.value.length > 0;
+  return !!issueBuildingId.value;
+});
 async function confirmIssue() {
   if (!issueCouponRow.value) return;
-  const ids = selectedUserIds.value;
-  if (!ids.length) {
-    usersError.value = "请先勾选或输入至少一名用户";
-    return;
-  }
   usersError.value = "";
+  // IKD6FI：三种定向方式组装 body，后端与显式 userIds 并集去重
+  const body: {
+    userIds?: string[];
+    phones?: string[];
+    buildingId?: string;
+    floor?: number;
+    roomNos?: string[];
+  } = {};
+  if (issueMode.value === "users") {
+    const ids = selectedUserIds.value;
+    if (!ids.length) {
+      usersError.value = "请先勾选或输入至少一名用户";
+      return;
+    }
+    body.userIds = ids;
+  } else if (issueMode.value === "phones") {
+    if (!issuePhoneList.value.length) {
+      usersError.value = "请输入至少一个手机号";
+      return;
+    }
+    body.phones = issuePhoneList.value;
+  } else {
+    if (!issueBuildingId.value) {
+      usersError.value = "请选择楼栋";
+      return;
+    }
+    body.buildingId = issueBuildingId.value;
+    // 楼层/寝室号选填，用于收窄范围
+    if (issueFloor.value !== "") body.floor = Number(issueFloor.value);
+    if (issueRoomNoList.value.length) body.roomNos = issueRoomNoList.value;
+  }
   try {
-    await api.issueCoupon(issueCouponRow.value.id, ids);
-    notify(`已向 ${ids.length} 名用户定向发放`);
+    const res = await api.issueCoupon(issueCouponRow.value.id, body);
+    notify(`已定向发放 ${res.issued} 张券`);
     issueOpen.value = false;
     await load();
   } catch (error) {
@@ -1061,45 +1152,141 @@ function onSaleProductOptions() {
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
 }
-function openStockForm(kind: "stock-in" | "adjust", productId?: string) {
+/** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
+ *  stocktake=盘点校准（提交实际清点数量，替代原 delta 增量口径）。 */
+function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
+  // 采购申请制：非平台角色的「采购入库」改走申请通道，总部审核后自动入库
+  if (kind === "stock-in" && !isPlatformAdmin.value) {
+    openPurchaseRequestForm(productId);
+    return;
+  }
   void ensureProducts();
   const isStockIn = kind === "stock-in";
   openForm(
     {
-      eyebrow: isStockIn ? "STOCK IN" : "STOCK ADJUST",
-      title: isStockIn ? "采购入库" : "盘点调整",
-      submit: isStockIn ? "确认入库" : "确认调整",
-      done: isStockIn ? "入库成功，库存已更新" : "盘点调整已生效",
+      eyebrow: isStockIn ? "STOCK IN" : "STOCKTAKE",
+      title: isStockIn ? "采购入库" : "盘点校准",
+      submit: isStockIn ? "确认入库" : "提交校准",
+      done: isStockIn ? "入库成功，库存已更新" : "盘点校准已生效",
       fields: [
         { key: "productId", label: "商品", type: "select", wide: true, options: productOptions },
         {
-          key: isStockIn ? "quantity" : "delta",
-          label: isStockIn ? "入库数量" : "调整数量（正加负减）",
+          key: isStockIn ? "quantity" : "countedQty",
+          label: isStockIn ? "入库数量" : "实际清点数量",
           type: "number",
           step: 1,
-          placeholder: isStockIn ? "本次采购入库数量" : "例如 -3 表示盘亏 3 件",
+          min: isStockIn ? undefined : 0,
+          placeholder: isStockIn
+            ? "本次采购入库数量"
+            : "仓库实盘数，系统自动与账面比对",
         },
-        { key: "reason", label: "原因备注", placeholder: isStockIn ? "例如：8 月第二周采购" : "例如：月底盘点盘亏", wide: true },
+        {
+          key: "reason",
+          label: "原因备注",
+          placeholder: isStockIn ? "例如：8 月第二周采购" : "例如：月底盘点",
+          wide: true,
+        },
       ],
       save: async (d) => {
         if (!d.productId) throw new Error("请选择商品");
         const reason = String(d.reason || "").trim();
-        if (!reason) throw new Error("请填写原因备注");
-        const qty = Number(isStockIn ? d.quantity : d.delta);
-        if (!Number.isFinite(qty) || (isStockIn ? qty <= 0 : qty === 0))
+        if (isStockIn && !reason) throw new Error("请填写原因备注");
+        const qty = Number(isStockIn ? d.quantity : d.countedQty);
+        if (!Number.isFinite(qty) || (isStockIn ? qty <= 0 : qty < 0))
           throw new Error(
-            isStockIn ? "入库数量必须大于 0" : "调整数量不能为 0",
+            isStockIn ? "入库数量必须大于 0" : "清点数量不能为负数",
           );
         if (isStockIn)
           await api.stockIn({ productId: String(d.productId), quantity: qty, reason });
-        else
-          await api.adjustInventory({ productId: String(d.productId), delta: qty, reason });
+        else {
+          const res = await api.stocktake({
+            productId: String(d.productId),
+            countedQty: qty,
+            ...(reason ? { reason } : {}),
+          });
+          // 完成文案带回「账面→实际（差额）」结果（submitForm 持 meta 引用读 done）
+          if (formMeta.value)
+            formMeta.value.done = `账面 ${res.before} → 实际 ${
+              res.countedQty
+            }（差 ${res.delta > 0 ? "+" : ""}${res.delta}）${
+              res.applied ? "" : "，账实相符未落流水"
+            }`;
+        }
       },
     },
     // IKD6FG：行内入口预填本行商品；顶部按钮走空初始值
     isStockIn
       ? { productId: productId ?? "", quantity: 1, reason: "" }
-      : { productId: productId ?? "", delta: 1, reason: "" },
+      : { productId: productId ?? "", countedQty: 0, reason: "" },
+  );
+}
+/** 采购申请表单（IKD6FJ）：校区角色提交，hq 在「采购申请」视图审核。 */
+function openPurchaseRequestForm(productId?: string) {
+  void ensureProducts();
+  openForm(
+    {
+      eyebrow: "PURCHASE REQUEST",
+      title: "采购申请",
+      submit: "提交申请",
+      done: "已提交，等待总部审核",
+      fields: [
+        { key: "productId", label: "商品", type: "select", wide: true, options: productOptions },
+        {
+          key: "quantity",
+          label: "申请数量",
+          type: "number",
+          step: 1,
+          placeholder: "本次申请采购数量",
+        },
+        { key: "reason", label: "原因备注", placeholder: "例如：开学季备货", wide: true },
+      ],
+      save: async (d) => {
+        if (!d.productId) throw new Error("请选择商品");
+        const qty = Number(d.quantity);
+        if (!Number.isFinite(qty) || qty <= 0)
+          throw new Error("申请数量必须大于 0");
+        const reason = String(d.reason || "").trim();
+        await api.createPurchaseRequest({
+          productId: String(d.productId),
+          quantity: qty,
+          ...(reason ? { reason } : {}),
+        });
+      },
+    },
+    { productId: productId ?? "", quantity: 1, reason: "" },
+  );
+}
+/** 采购审核（IKD6FJ）：通过后后端事务内自动入库，note 进审计。 */
+function openPurchaseAudit(row: AdminRow, action: "approved" | "rejected") {
+  const req = row as unknown as PurchaseRequest;
+  openForm(
+    {
+      eyebrow: "PURCHASE AUDIT",
+      title: `采购审核 · ${req.productName}`,
+      submit: action === "approved" ? "通过并入库" : "拒绝申请",
+      done: action === "approved" ? "已通过，库存已自动入库" : "已拒绝",
+      fields: [
+        {
+          key: "note",
+          label: "审核备注（选填）",
+          type: "textarea",
+          wide: true,
+          // 申请上下文随字段提示展示（IKB3K1 hint 通道）
+          hint: () =>
+            `申请数量 ${req.quantity} · 申请人 ${req.applyByName || "—"}${
+              req.reason ? ` · 原因：${req.reason}` : ""
+            }`,
+        },
+      ],
+      save: async (d) => {
+        await api.auditPurchaseRequest(
+          row.id,
+          action,
+          String(d.note || "").trim(),
+        );
+      },
+    },
+    { note: "" },
   );
 }
 /** 状态筛选重置为 all；值有变化时由 statusFilter watcher 接管重载，避免重复请求。 */
@@ -1173,6 +1360,60 @@ const TXN_TYPE_TEXT: Record<string, string> = {
 function toTxnRow(t: InventoryTxn): AdminRow {
   return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
 }
+/* ---------- 采购申请审核台（IKD6FJ）：库存板块第二视图 ---------- */
+/** 状态 Tab（首键 all 对齐现有 statusTabs 惯例）；后端全量返回非分页，前端切片。 */
+const PR_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending", label: "待审核", statuses: ["pending"] },
+  { key: "approved", label: "已通过", statuses: ["approved"] },
+  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
+];
+const purchaseRequestConfig: SectionConfig = {
+  title: "采购申请",
+  eyebrow: "PURCHASE REQUESTS",
+  desc: "校区提交采购申请，总部审核通过后自动入库。",
+  loader: async (query) => {
+    const all = await api.purchaseRequests(
+      tabStatusOf(PR_STATUS_TABS),
+      campusScope(),
+    );
+    const start = (query.page - 1) * query.pageSize;
+    return {
+      rows: all.slice(start, start + query.pageSize).map((x) => ({
+        ...x,
+        // 原因常留空，表格空串统一展示 —
+        reasonText: x.reason || "—",
+      })) as unknown as AdminRow[],
+      total: all.length,
+    };
+  },
+  statusTabs: PR_STATUS_TABS,
+  countsLoader: () =>
+    countByStatus(
+      (s) =>
+        api
+          .purchaseRequests(s, campusScope())
+          .then((xs) => ({ total: xs.length })),
+      ["pending", "approved", "rejected"],
+    ),
+  columns: [
+    ["campusName", "校区"],
+    ["productName", "商品"],
+    ["quantity", "数量"],
+    ["reasonText", "原因"],
+    ["applyByName", "申请人"],
+    ["createdAt", "申请时间"],
+    ["status", "状态"],
+  ],
+};
+/* ---------- 营销地图（IKD6FI）：非表格视图，loader 置空防误拉列表 ---------- */
+const marketingMapConfig: SectionConfig = {
+  title: "营销地图",
+  eyebrow: "MARKETING MAP",
+  desc: "按楼栋×楼层×寝室透视近 N 天下单分布，定向发券选点参考。",
+  loader: async () => ({ rows: [], total: 0 }),
+  columns: [],
+};
 /**
  * 仓库订单（IKA0UQ，IK9U3Z 出库动作延续）：待出库订单（paid+picking 历史单）
  * 按库位指引拣货复核，确认出库后一步转「待配送」，库存不二次扣（支付已扣）。
@@ -1274,12 +1515,64 @@ function switchDispTab(tab: "leaves" | "invites") {
   dispTab.value = tab;
   resetStatusFilterAndLoad();
 }
+/* ---------- 库存板块子视图（IKD6FJ）：库存总览 / 采购申请审核台 ---------- */
+const invTab = ref<"stock" | "requests">("stock");
+function switchInvTab(tab: "stock" | "requests") {
+  invTab.value = tab;
+  resetStatusFilterAndLoad();
+}
 
 /* ---------- Banner 管理（IK9RX2）：营销板块第二个 tab，校园维度 ---------- */
-const mktTab = ref<"coupons" | "banners" | "promotions">("coupons");
-function switchMktTab(tab: "coupons" | "banners" | "promotions") {
+/* IKD6FI：营销板块新增「营销地图」tab（楼栋×楼层×寝室下单热力） */
+const mktTab = ref<"coupons" | "banners" | "promotions" | "map">("coupons");
+function switchMktTab(tab: "coupons" | "banners" | "promotions" | "map") {
   mktTab.value = tab;
+  // 地图视图不走表格 loader：切进来即备好楼栋下拉并拉聚合数据
+  if (tab === "map") {
+    void ensureBuildings().catch(() => {});
+    void loadMarketingMap();
+  }
   resetStatusFilterAndLoad();
+}
+/* ---------- 营销地图（IKD6FI）：楼栋×楼层×寝室下单热力 ---------- */
+const mapBuildingId = ref(""),
+  mapDays = ref(30),
+  mapData = ref<MarketingMapData | null>(null),
+  mapLoading = ref(false),
+  mapError = ref("");
+const isMktMapTab = computed(
+  () => section.value === "marketing" && mktTab.value === "map",
+);
+async function loadMarketingMap() {
+  if (!mapBuildingId.value) {
+    mapData.value = null;
+    mapError.value = "";
+    return;
+  }
+  mapLoading.value = true;
+  mapError.value = "";
+  try {
+    // hq 跨校区视角带 campus（campusScope 读顶栏校区筛选，校区角色 undefined）
+    mapData.value = await api.marketingMap(
+      mapBuildingId.value,
+      mapDays.value,
+      campusScope(),
+    );
+  } catch (error) {
+    mapData.value = null;
+    mapError.value = error instanceof Error ? error.message : "地图加载失败";
+  } finally {
+    mapLoading.value = false;
+  }
+}
+watch(mapBuildingId, () => void loadMarketingMap());
+watch(mapDays, () => void loadMarketingMap());
+/** 格子热力分档（IKD6FI）：0=灰、1-2/3-5/6+ 绿色递进（纯 class 分档即可）。 */
+function mapCellClass(orders: number): string {
+  if (!orders) return "lv0";
+  if (orders <= 2) return "lv1";
+  if (orders <= 5) return "lv2";
+  return "lv3";
 }
 /* ---------- 商品板块双视角（IKCHEW → IKCJ46 独立菜单化）----------
    官方商品库拆为独立菜单 /official-products，/products 恒为本校区商品：
@@ -1304,9 +1597,9 @@ watch(
   (tab) => {
     if (
       section.value === "marketing" &&
-      ["coupons", "promotions"].includes(String(tab))
+      ["coupons", "promotions", "map"].includes(String(tab))
     )
-      mktTab.value = String(tab) as "coupons" | "promotions";
+      mktTab.value = String(tab) as "coupons" | "promotions" | "map";
   },
   { immediate: true },
 );
@@ -1838,7 +2131,11 @@ const isHqView = computed(
 );
 /** IKCRS8：campuses=纯校区管理（平台视图），楼栋独立 /buildings 板块——
  *  原 IKBWRT 双 tab（campusTab/campusPlatformView）拆除。 */
-watch(campusFilter, () => resetAndLoad());
+watch(campusFilter, () => {
+  resetAndLoad();
+  // IKD6FI：营销地图跟随校区筛选重新拉取
+  if (isMktMapTab.value) void loadMarketingMap();
+});
 /* IKD6FG：分类/角色/配送方式筛选变化即回第 1 页重载 */
 watch([categoryFilter, staffRoleFilter, orderDeliveryFilter], () =>
   resetAndLoad(),
@@ -2843,8 +3140,14 @@ const section = computed(() => String(route.params.section)),
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
         : dispatchInvitesConfig;
-    if (section.value === "marketing" && mktTab.value === "promotions")
-      return promotionConfig;
+    // IKD6FJ：库存板块第二视图——采购申请审核台
+    if (section.value === "inventory" && invTab.value === "requests")
+      return purchaseRequestConfig;
+    if (section.value === "marketing") {
+      if (mktTab.value === "promotions") return promotionConfig;
+      // IKD6FI：营销地图非表格视图，空 loader 防误拉券列表
+      if (mktTab.value === "map") return marketingMapConfig;
+    }
     // IKBDK7：/promotions 独立菜单（IKB5PB 拆分）——漏接会回落 orders 列表
     if (section.value === "promotions") return promotionConfig;
     // IKAJSL：Banner 独立板块（总部导航）；校区 hq 分流校区配置
@@ -2864,6 +3167,8 @@ const section = computed(() => String(route.params.section)),
   /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
   createLabel = computed(() => {
     if (section.value === "marketing") {
+      // IKD6FI：营销地图视图无新建语义（返回空串隐藏主按钮）
+      if (mktTab.value === "map") return "";
       if (mktTab.value === "promotions") return createLabels.promotions;
     }
     // IKCRS8：campuses 板块校区建档限平台管理员（operations 无菜单入口，
@@ -2949,7 +3254,10 @@ async function load() {
   // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
     isPlatformAdmin.value &&
-    ["orders", "users", "audit", "campuses"].includes(section.value)
+    // IKD6FJ/IKD6FI：采购申请与营销地图的 hq 跨校区视角同样要校区下拉
+    ["orders", "users", "audit", "campuses", "inventory", "marketing"].includes(
+      section.value,
+    )
   )
     void ensureCampusOptions().catch(() => {});
   try {
@@ -3242,6 +3550,7 @@ watch(
     selected.value = undefined;
     selectedProductIds.value = [];
     dispTab.value = "leaves";
+    invTab.value = "stock";
     mktTab.value = "coupons";
     // IKB3KE：搜索词跨板块串扰——切板块清空，各板块条件相互独立
     if (keyword.value) {
@@ -4375,6 +4684,19 @@ async function cancelInviteRow(row: AdminRow) {
         <button :class="{ active: mktTab === 'promotions' }" @click="switchMktTab('promotions')">
           促销活动
         </button>
+        <!-- IKD6FI：营销地图（楼栋×楼层×寝室下单热力） -->
+        <button :class="{ active: mktTab === 'map' }" @click="switchMktTab('map')">
+          营销地图
+        </button>
+      </div>
+      <!-- IKD6FJ：库存板块子视图——库存总览 / 采购申请审核台 -->
+      <div v-if="section === 'inventory'" class="segmented inv-tabs">
+        <button :class="{ active: invTab === 'stock' }" @click="switchInvTab('stock')">
+          库存总览
+        </button>
+        <button :class="{ active: invTab === 'requests' }" @click="switchInvTab('requests')">
+          采购申请
+        </button>
       </div>
       <!-- IKCRS8：campusTab 双视角切换拆除——校区管理/楼栋管理已拆独立菜单 -->
       <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
@@ -4503,9 +4825,15 @@ async function cancelInviteRow(row: AdminRow) {
         <option value="instant">即时达</option>
         <option value="scheduled">预约达</option>
       </select>
-      <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计） -->
+      <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计；
+           IKD6FJ/IKD6FI：采购申请与营销地图同样支持跨校区） -->
       <select
-        v-if="isPlatformAdmin && ['orders', 'users', 'audit'].includes(section)"
+        v-if="
+          isPlatformAdmin &&
+          ['orders', 'users', 'audit', 'inventory', 'marketing'].includes(
+            section,
+          )
+        "
         v-model="campusFilter"
         class="filter-btn"
         aria-label="校区筛选"
@@ -4533,13 +4861,16 @@ async function cancelInviteRow(row: AdminRow) {
           批量下架
         </button>
       </template>
-      <!-- IKA0V2：采购入库为日常主操作排前，盘点调整次之 -->
-      <template v-if="section === 'inventory' && canWrite('inventory')">
+      <!-- IKA0V2：采购入库为日常主操作排前；IKD6FJ：盘点改校准口径、
+           校区角色「采购入库」变「采购申请」（平台角色保留直接入库） -->
+      <template
+        v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')"
+      >
         <button class="btn primary" @click="openStockForm('stock-in')">
-          采购入库
+          {{ isPlatformAdmin ? "采购入库" : "采购申请" }}
         </button>
-        <button class="btn ghost" @click="openStockForm('adjust')">
-          盘点调整
+        <button class="btn ghost" @click="openStockForm('stocktake')">
+          盘点校准
         </button>
       </template>
       <button class="btn ghost" @click="exportData">导出数据</button>
@@ -4550,7 +4881,14 @@ async function cancelInviteRow(row: AdminRow) {
     </div>
     <div class="data-panel">
       <div class="data-summary">
-        <div>
+        <!-- IKD6FI：营销地图视图摘要改为单量/金额口径 -->
+        <div v-if="isMktMapTab">
+          <strong>{{ mapData?.totals.orders ?? 0 }}</strong
+          ><span> 单 · 近 {{ mapDays }} 天 · ¥{{
+            fenToYuan(mapData?.totals.amount ?? 0)
+          }}</span>
+        </div>
+        <div v-else>
           <strong>{{ total }}</strong
           ><span> 条记录</span>
         </div>
@@ -4639,6 +4977,72 @@ async function cancelInviteRow(row: AdminRow) {
               {{ confirmDelete ? "确认解绑" : "解绑打印机" }}
             </button>
           </div>
+        </div>
+      </div>
+      <!-- IKD6FI：营销地图——楼层卡 × 寝室格热力，替代表格视图 -->
+      <div v-else-if="isMktMapTab" class="table-wrap">
+        <div class="marketing-map">
+          <div class="map-controls">
+            <select v-model="mapBuildingId" class="filter-btn" aria-label="楼栋">
+              <option value="">选择楼栋</option>
+              <option v-for="b in buildings" :key="b.id" :value="b.id">
+                {{ b.name }}
+              </option>
+            </select>
+            <select
+              v-model.number="mapDays"
+              class="filter-btn"
+              aria-label="统计天数"
+            >
+              <option :value="7">近 7 天</option>
+              <option :value="30">近 30 天</option>
+              <option :value="90">近 90 天</option>
+            </select>
+          </div>
+          <p v-if="mapError" class="form-hint">{{ mapError }}</p>
+          <p v-else-if="mapLoading" class="form-hint plain">
+            正在统计下单数据...
+          </p>
+          <p v-else-if="!mapBuildingId" class="form-hint plain">
+            选择楼栋后查看各楼层寝室的下单分布（格子越绿单量越高）。
+          </p>
+          <template v-else-if="mapData">
+            <p class="map-legend">
+              {{ mapData.building.name }} · 近 {{ mapData.days }} 天共
+              {{ mapData.totals.orders }} 单 · ¥{{
+                fenToYuan(mapData.totals.amount)
+              }}
+            </p>
+            <div v-if="!mapData.floors.length" class="form-hint plain">
+              该楼栋暂无订单记录。
+            </div>
+            <div
+              v-for="floor in mapData.floors"
+              :key="floor.floor"
+              class="map-floor"
+            >
+              <div class="map-floor-head">
+                <strong>{{ floor.floor }} 层</strong>
+                <span
+                  >{{ floor.orders }} 单 · ¥{{
+                    fenToYuan(floor.amount)
+                  }}</span
+                >
+              </div>
+              <div class="map-room-grid">
+                <div
+                  v-for="cell in floor.rooms"
+                  :key="cell.room"
+                  class="map-room"
+                  :class="mapCellClass(cell.orders)"
+                >
+                  <strong>{{ cell.room }}</strong>
+                  <span>{{ cell.orders }} 单 · ¥{{ fenToYuan(cell.amount) }}</span>
+                  <small>{{ cell.users }} 人下单</small>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
       <div v-else class="table-wrap">
@@ -4820,21 +5224,49 @@ async function cancelInviteRow(row: AdminRow) {
                       拉取更新
                     </button>
                   </template>
-                  <!-- IKD6FG：库存——行内入库/调整直达（预填本行商品，免顶部表单再找） -->
+                  <!-- IKD6FG → IKD6FJ：库存行内直达（预填本行商品）——
+                       入库/申请采购按角色分流，盘点改「校准」口径 -->
                   <template
-                    v-else-if="section === 'inventory' && canWriteSection"
+                    v-else-if="
+                      section === 'inventory' &&
+                      invTab === 'stock' &&
+                      canWriteSection
+                    "
                   >
                     <button
                       class="btn mini primary"
                       @click="openStockForm('stock-in', (row as Product).id)"
                     >
-                      入库
+                      {{ isPlatformAdmin ? "入库" : "申请" }}
                     </button>
                     <button
                       class="btn mini ghost"
-                      @click="openStockForm('adjust', (row as Product).id)"
+                      @click="openStockForm('stocktake', (row as Product).id)"
                     >
-                      调整
+                      校准
+                    </button>
+                  </template>
+                  <!-- IKD6FJ：采购申请审核台——平台角色对待审行通过/拒绝直达 -->
+                  <template
+                    v-else-if="
+                      section === 'inventory' &&
+                      invTab === 'requests' &&
+                      isPlatformAdmin &&
+                      canWriteSection &&
+                      (row as unknown as PurchaseRequest).status === 'pending'
+                    "
+                  >
+                    <button
+                      class="btn mini primary"
+                      @click="openPurchaseAudit(row, 'approved')"
+                    >
+                      通过
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      @click="openPurchaseAudit(row, 'rejected')"
+                    >
+                      拒绝
                     </button>
                   </template>
                   <!-- IKCJ3M：促销——编辑/停启行内直达（独立菜单 + marketing tab 双入口） -->
@@ -5045,7 +5477,8 @@ async function cancelInviteRow(row: AdminRow) {
           </tbody>
         </table>
       </div>
-      <div class="pagination">
+      <!-- IKD6FI：营销地图视图无分页语义 -->
+      <div v-if="!isMktMapTab" class="pagination">
         <span
           >第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</span
         >
@@ -5781,6 +6214,30 @@ async function cancelInviteRow(row: AdminRow) {
               @keyup.enter="addRoom" /></label
           ><button class="btn primary" @click="addRoom">添加寝室</button>
         </div>
+        <!-- IKD6FH：批量导入——模板下载 + xlsx 上传（楼栋内重复寝室自动跳过） -->
+        <div class="room-import">
+          <button
+            class="btn ghost"
+            :disabled="roomsImporting"
+            @click="downloadRoomsTemplate"
+          >
+            下载模板
+          </button>
+          <button
+            class="btn primary"
+            :disabled="roomsImporting"
+            @click="pickRoomsImportFile"
+          >
+            {{ roomsImporting ? "导入中..." : "批量导入" }}
+          </button>
+          <input
+            ref="roomsImportInput"
+            type="file"
+            accept=".xlsx"
+            hidden
+            @change="onRoomsImportFile"
+          />
+        </div>
         <p v-if="roomError" class="form-hint">{{ roomError }}</p>
         <p v-if="roomsLoading" class="form-hint plain">正在加载寝室列表...</p>
         <div v-else class="room-list">
@@ -5809,36 +6266,102 @@ async function cancelInviteRow(row: AdminRow) {
         <p class="form-hint plain">
           勾选目标用户后发放，同一用户不会重复获得未使用的券。
         </p>
-        <p v-if="usersLoading" class="form-hint plain">正在加载用户列表...</p>
-        <div v-else class="user-check-list">
-          <label v-for="user in users" :key="user.id" class="user-check">
-            <input v-model="issueChecked[user.id]" type="checkbox" />
-            <div>
-              <strong>{{ userLabel(user) }}</strong>
-              <small>{{ userSub(user) }}</small>
-            </div>
-          </label>
-          <div v-if="!users.length" class="form-hint plain">
-            暂无可选用户列表。
-          </div>
+        <!-- IKD6FI：定向方式——按用户勾选 / 按手机号 / 按寝室（楼栋+楼层+寝室号） -->
+        <div class="segmented inv-tabs issue-modes">
+          <button
+            :class="{ active: issueMode === 'users' }"
+            @click="issueMode = 'users'"
+          >
+            按用户
+          </button>
+          <button
+            :class="{ active: issueMode === 'phones' }"
+            @click="issueMode = 'phones'"
+          >
+            按手机号
+          </button>
+          <button
+            :class="{ active: issueMode === 'rooms' }"
+            @click="issueMode = 'rooms'"
+          >
+            按寝室
+          </button>
         </div>
-        <label class="manual-ids"
-          >手工指定用户 ID（换行或逗号分隔，可选）
+        <template v-if="issueMode === 'users'">
+          <p v-if="usersLoading" class="form-hint plain">
+            正在加载用户列表...
+          </p>
+          <div v-else class="user-check-list">
+            <label v-for="user in users" :key="user.id" class="user-check">
+              <input v-model="issueChecked[user.id]" type="checkbox" />
+              <div>
+                <strong>{{ userLabel(user) }}</strong>
+                <small>{{ userSub(user) }}</small>
+              </div>
+            </label>
+            <div v-if="!users.length" class="form-hint plain">
+              暂无可选用户列表。
+            </div>
+          </div>
+          <label class="manual-ids"
+            >手工指定用户 ID（换行或逗号分隔，可选）
+            <textarea
+              v-model.trim="manualUserIds"
+              rows="3"
+              placeholder="user-001&#10;user-002"
+            ></textarea>
+          </label>
+        </template>
+        <!-- IKD6FI：按手机号定向（用户绑定手机号，后端最多 500 个） -->
+        <label v-else-if="issueMode === 'phones'" class="manual-ids"
+          >按手机号发放（每行一个或逗号分隔，最多 500 个）
           <textarea
-            v-model.trim="manualUserIds"
-            rows="3"
-            placeholder="user-001&#10;user-002"
+            v-model.trim="issuePhones"
+            rows="6"
+            placeholder="13800000001&#10;13800000002"
           ></textarea>
         </label>
+        <!-- IKD6FI：按寝室定向——楼栋必填，楼层/寝室号选填收窄范围 -->
+        <template v-else>
+          <label class="manual-ids">楼栋
+            <select v-model="issueBuildingId" class="issue-select">
+              <option value="">选择楼栋</option>
+              <option v-for="b in buildings" :key="b.id" :value="b.id">
+                {{ b.name }}
+              </option>
+            </select>
+          </label>
+          <label class="manual-ids"
+            >楼层（选填，收窄范围）
+            <input
+              v-model.number="issueFloor"
+              class="issue-select"
+              type="number"
+              min="1"
+              placeholder="例如：6"
+            />
+          </label>
+          <label class="manual-ids"
+            >寝室号（选填，逗号或换行分隔）
+            <textarea
+              v-model.trim="issueRoomNos"
+              rows="3"
+              placeholder="612, 613&#10;701"
+            ></textarea>
+          </label>
+          <p class="form-hint plain">
+            按用户填过的收货地址匹配，未填地址的用户无法按寝室触达。
+          </p>
+        </template>
         <p v-if="usersError" class="form-hint">{{ usersError }}</p>
-        <p class="form-hint plain">
+        <p v-if="issueMode === 'users'" class="form-hint plain">
           已选择 {{ selectedUserIds.length }} 名用户
         </p>
         <div class="drawer-actions">
           <button class="btn ghost" @click="issueOpen = false">取消</button
           ><button
             class="btn primary"
-            :disabled="!selectedUserIds.length"
+            :disabled="!issueReady"
             @click="confirmIssue"
           >
             确认发放

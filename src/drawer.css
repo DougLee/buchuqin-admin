@@ -773,3 +773,108 @@
     grid-template-columns: 1fr;
   }
 }
+/* ---------- 寝室批量导入（IKD6FH） ---------- */
+.room-import {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+/* ---------- 定向发券抽屉（IKD6FI） ---------- */
+.issue-modes {
+  margin-top: 12px;
+}
+.issue-select {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin-top: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 11px;
+  outline: 0;
+  color: #153628;
+}
+.issue-select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #159c5515;
+}
+/* ---------- 营销地图（IKD6FI）：楼层卡 × 寝室格热力 ---------- */
+.marketing-map {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.map-controls {
+  display: flex;
+  gap: 10px;
+}
+.map-legend {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.map-floor {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.map-floor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.map-floor-head strong {
+  font-size: 13px;
+  color: #153628;
+}
+.map-floor-head span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.map-room-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+}
+.map-room {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.map-room strong {
+  font-size: 12px;
+}
+.map-room span {
+  font-size: 10px;
+}
+.map-room small {
+  font-size: 10px;
+  opacity: 0.75;
+}
+/* 热力分档：0 单灰、1-2/3-5/6+ 绿色递进（IKD6FI） */
+.map-room.lv0 {
+  background: #eef1ef;
+  color: var(--muted);
+}
+.map-room.lv1 {
+  background: #e2f3e9;
+  color: #0b4b36;
+}
+.map-room.lv2 {
+  background: #bfe5cf;
+  color: #062e23;
+}
+.map-room.lv3 {
+  background: #8fd6ab;
+  color: #052b21;
+}
+@media (max-width: 600px) {
+  .map-room-grid {
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  }
+}

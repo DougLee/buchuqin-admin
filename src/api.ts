@@ -18,7 +18,9 @@ import type {
   HqDashboardData,
   DispatchInvitation,
   InventoryTxn,
+  MarketingMapData,
   Printer,
+  PurchaseRequest,
   LeaveRequest,
   ListQuery,
   Order,
@@ -27,8 +29,10 @@ import type {
   Product,
   Promotion,
   Room,
+  RoomImportResult,
   Settlement,
   Staff,
+  StocktakeResult,
   WheelConfig,
   WheelPrizeInput,
 } from "./types";
@@ -164,6 +168,44 @@ export async function uploadImage(file: File, folder?: string): Promise<string> 
   return body.data.url;
 }
 
+/**
+ * 寝室导入模板下载（IKD6FH）：xlsx 二进制下载，通用 request 走 JSON 信封
+ * 不适用，单独 fetch+blob+a[download]（鉴权与 401 清会话行为同 uploadImage）。
+ * 文件名优先取 Content-Disposition 的 UTF-8 filename*（后端附楼栋名）。
+ */
+export async function downloadRoomTemplate(buildingId: string): Promise<void> {
+  const response = await fetch(
+    `/api/v1/admin/buildings/${buildingId}/rooms/template`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+  );
+  if (response.status === 401) {
+    clearSession();
+    token = "";
+    window.location.hash = "#/login";
+    throw new Error("登录已失效，请重新登录");
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | ApiResult<unknown>
+      | null;
+    throw new Error(body?.message || `模板下载失败（${response.status}）`);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = utf8
+    ? decodeURIComponent(utf8[1])
+    : plain
+      ? plain[1]
+      : "rooms-template.xlsx";
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   /** IKAJSL：hq 不带 campus = 跨校区汇总；带 campus = 单校区明细 */
   dashboard: (campusId?: string) =>
@@ -284,6 +326,47 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** 盘点校准（IKD6FJ）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。 */
+  stocktake: (data: {
+    productId: string;
+    countedQty: number;
+    reason?: string;
+  }) =>
+    request<StocktakeResult>("/admin/inventory/stocktake", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 采购申请列表（IKD6FJ）：全量数组（take 200 倒序，非分页信封）；hq 可带校区。 */
+  purchaseRequests: (status?: string, campusId?: string) =>
+    request<PurchaseRequest[]>(
+      `/admin/inventory/purchase-requests${withQuery(
+        status ? `status=${encodeURIComponent(status)}` : "",
+        campusId ? `campus=${encodeURIComponent(campusId)}` : "",
+      )}`,
+    ),
+  /** 提交采购申请（IKD6FJ）：校区角色「采购入库」改走申请通道，总部审核后自动入库。 */
+  createPurchaseRequest: (data: {
+    productId: string;
+    quantity: number;
+    reason?: string;
+  }) =>
+    request<{ id: string }>("/admin/inventory/purchase-requests", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 采购审核（IKD6FJ）：仅平台角色（hq/admin）；approved 由后端事务内自动入库。 */
+  auditPurchaseRequest: (
+    id: string,
+    action: "approved" | "rejected",
+    note?: string,
+  ) =>
+    request<{ id: string; status: string }>(
+      `/admin/inventory/purchase-requests/${id}/audit`,
+      {
+        method: "POST",
+        body: JSON.stringify({ action, ...(note ? { note } : {}) }),
+      },
+    ),
   orders: (status = "all", query?: ListQuery) =>
     request<PagedResponse<Order>>(
       `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
@@ -518,6 +601,35 @@ export const api = {
     request<Room>(`/admin/buildings/${buildingId}/rooms/${roomId}`, {
       method: "DELETE",
     }),
+  /** 寝室批量导入（IKD6FH）：multipart 不可复用通用 request（写死 JSON 头会
+   *  破坏 FormData 边界），单独走 fetch，鉴权与 401 行为同 uploadImage。 */
+  importRooms: async (
+    buildingId: string,
+    file: File,
+  ): Promise<RoomImportResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(
+      `/api/v1/admin/buildings/${buildingId}/rooms/import`,
+      {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      },
+    );
+    if (response.status === 401) {
+      clearSession();
+      token = "";
+      window.location.hash = "#/login";
+      throw new Error("登录已失效，请重新登录");
+    }
+    const body = (await response.json().catch(() => null)) as ApiResult<
+      RoomImportResult
+    > | null;
+    if (!response.ok || !body)
+      throw new Error(body?.message || `导入失败（${response.status}）`);
+    return body.data;
+  },
   /** IKB5PA：status 过滤（active/paused，状态 Tab 用）。 */
   coupons: (query?: ListQuery, status?: string) =>
     request<PagedResponse<Coupon>>(
@@ -548,11 +660,35 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
-  issueCoupon: (id: string, userIds: string[]) =>
-    request<Coupon>(`/admin/coupons/${id}/issue`, {
-      method: "POST",
-      body: JSON.stringify({ userIds }),
-    }),
+  /** 定向发放（IKD6FI）：userIds 与定向条件（手机号 / 楼栋楼层寝室）至少一种，
+   *  后端并集去重，返回实发张数。 */
+  issueCoupon: (
+    id: string,
+    data: {
+      userIds?: string[];
+      phones?: string[];
+      buildingId?: string;
+      floor?: number;
+      roomNos?: string[];
+    },
+  ) =>
+    request<{ issued: number; targets: string[]; couponId: string }>(
+      `/admin/coupons/${id}/issue`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
+  /* ---------- 营销地图（IKD6FI）：楼栋×楼层×寝室下单聚合 ---------- */
+  /** hq 跨校区视角需带 campus（未选校区时后端 400 提示先选校区）。 */
+  marketingMap: (buildingId: string, days: number, campusId?: string) =>
+    request<MarketingMapData>(
+      `/admin/marketing/map${withQuery(
+        `buildingId=${encodeURIComponent(buildingId)}`,
+        `days=${days}`,
+        campusId ? `campus=${encodeURIComponent(campusId)}` : "",
+      )}`,
+    ),
   /** 首页 Banner（IK9RX2）：营销活动板块内 tab 管理。
    *  IKB5PB：placement 过滤（支付广告位菜单只看 pay-success）；
    *  IKB5PA：status 过滤（启用/隐藏 Tab）。 */

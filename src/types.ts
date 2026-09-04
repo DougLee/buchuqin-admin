@@ -684,3 +684,72 @@ export interface WheelRow {
   weightPct: number;
   active: boolean;
 }
+
+/* ---------- 寝室批量导入（IKD6FH） ---------- */
+
+/** 导入结果：合法行照常入库，行级错误（楼层非法/寝室号空）收集进 errors。 */
+export interface RoomImportResult {
+  total: number;
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+/* ---------- 盘点校准与采购申请（IKD6FJ） ---------- */
+
+/** 盘点校准结果：delta = 实际-账面差额；账实相符（delta=0）时 applied=false 不落流水。 */
+export interface StocktakeResult {
+  productId: string;
+  before: number;
+  countedQty: number;
+  delta: number;
+  applied: boolean;
+}
+
+/** 采购申请行：后端全量返回（take 200 倒序，非分页信封）。 */
+export interface PurchaseRequest {
+  id: string;
+  campusId: string;
+  /** hq 跨校区视角的校区名。 */
+  campusName: string;
+  productId: string;
+  productName: string;
+  productStock: number;
+  quantity: number;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  applyByName: string;
+  auditByName: string;
+  auditNote: string;
+  createdAt: string;
+  auditedAt: string;
+}
+
+/* ---------- 营销地图（IKD6FI）：楼栋×楼层×寝室下单聚合 ---------- */
+
+export interface MarketingMapRoom {
+  room: string;
+  orders: number;
+  /** 金额（分）。 */
+  amount: number;
+  users: number;
+}
+
+export interface MarketingMapFloor {
+  floor: number;
+  orders: number;
+  /** 金额（分）。 */
+  amount: number;
+  rooms: MarketingMapRoom[];
+}
+
+export interface MarketingMapData {
+  building: { id: string; name: string };
+  days: number;
+  totals: {
+    orders: number;
+    /** 金额（分）。 */
+    amount: number;
+  };
+  floors: MarketingMapFloor[];
+}
