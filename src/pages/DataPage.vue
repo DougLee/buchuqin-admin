@@ -478,7 +478,7 @@ async function removeStaff() {
   }
   try {
     await api.deleteStaff(selected.value.id);
-    notify("员工账号已软删除");
+    notify("员工账号已删除");
     selected.value = undefined;
     await load();
   } catch (error) {
@@ -4049,7 +4049,7 @@ async function removeStaffInline(row: AdminRow) {
   if (!rowConfirmFirst(row.id)) return;
   try {
     await api.deleteStaff(row.id);
-    await rowDone("员工已软删除");
+    await rowDone("员工已删除");
   } catch (error) {
     notify(error instanceof Error ? error.message : "删除失败", true);
   }
@@ -4683,7 +4683,7 @@ async function cancelInviteRow(row: AdminRow) {
                       {{ confirmRowId === row.id ? "确认删除" : "删除" }}
                     </button>
                   </template>
-                  <!-- IKCJ3M：员工——编辑/软删除行内直达 -->
+                  <!-- IKCJ3M：员工——编辑/删除行内直达（实现为软删除，对用户只说删除） -->
                   <template v-else-if="section === 'staff' && canWriteSection">
                     <button
                       class="btn mini primary"
@@ -4695,7 +4695,7 @@ async function cancelInviteRow(row: AdminRow) {
                       class="btn mini danger-btn"
                       @click="removeStaffInline(row)"
                     >
-                      {{ confirmRowId === row.id ? "确认软删除" : "软删除" }}
+                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
                     </button>
                   </template>
                   <!-- IKCJ3M：账号——编辑/改密/删除行内直达 -->
@@ -5344,7 +5344,7 @@ async function cancelInviteRow(row: AdminRow) {
             <button class="btn primary" @click="openStaffEdit(selected as Staff)">
               编辑员工</button
             ><button class="btn danger-btn" @click="removeStaff">
-              {{ confirmDelete ? "确认软删除" : "软删除账号" }}
+              {{ confirmDelete ? "确认删除" : "删除账号" }}
             </button>
           </template>
           <template v-else-if="section === 'accounts' && canWriteSection">
