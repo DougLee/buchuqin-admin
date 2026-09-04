@@ -2284,7 +2284,8 @@ const configs: Record<string, SectionConfig> = {
         total: res.total,
       })),
     columns: [
-      ["skuNo", "SKU"],
+      // IKD6FG：SKU 列换商品缩略图（拣货/盘点认图不认码）
+      ["image", "商品图"],
       ["name", "商品"],
       ["locationText", "库位"],
       ["actualStock", "实际"],
@@ -4476,7 +4477,7 @@ async function cancelInviteRow(row: AdminRow) {
                     v-else-if="col[0] === 'image' && display(row, 'image') !== '—'"
                     class="cell-thumb"
                     :src="resolveImageUrl(String(display(row, 'image')))"
-                    alt="类别图"
+                    alt="图片"
                     loading="lazy"
                   /><span v-else>{{ display(row, col[0]) }}</span>
                 </td>
