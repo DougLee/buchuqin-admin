@@ -29,6 +29,8 @@ import type {
   Room,
   Settlement,
   Staff,
+  WheelConfig,
+  WheelPrizeInput,
 } from "./types";
 
 interface ApiResult<T> {
@@ -711,4 +713,11 @@ export const api = {
       `/admin/printers/${id}/test-print`,
       { method: "POST", body: "{}" },
     ),
+  /* ---------- 抽奖大转盘（IKD6FC）：单校区单配置 ---------- */
+  wheel: () => request<WheelConfig>("/admin/wheel"),
+  upsertWheel: (data: { active: boolean; prizes: WheelPrizeInput[] }) =>
+    request("/admin/wheel", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };

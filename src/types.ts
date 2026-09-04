@@ -595,7 +595,8 @@ export type AdminRow =
   | RuleRow
   | AfterSaleRow
   | AccountRow
-  | CategoryRow;
+  | CategoryRow
+  | WheelRow;
 
 /* 类别字典表格行（name/sort 全局字典 + 派生商品数 + 类别图 IK9RX0） */
 export interface CategoryRow {
@@ -642,4 +643,37 @@ export interface RuleRow extends CommissionRule {
   buildingName: string | null;
   weightRange: string;
   modeText: string;
+}
+
+/* ---------- 抽奖大转盘（IKD6FC） ---------- */
+export interface WheelPrize {
+  type: "coupon" | "partner" | "none";
+  label: string;
+  couponId?: string;
+  bizTitle?: string;
+  bizImage?: string;
+  bizNote?: string;
+  weight: number;
+  /** GET /admin/wheel 附加读视图。 */
+  couponName?: string;
+  couponLeft?: number | null;
+  weightPct?: number;
+}
+export interface WheelConfig {
+  active: boolean;
+  prizes: WheelPrize[];
+}
+export type WheelPrizeInput = WheelPrize;
+
+/* 抽奖转盘奖位行（IKD6FC）：单例配置展开的 8 行视图 */
+export interface WheelRow {
+  /** 行键：奖位序号派生（单例配置无真实 id）。 */
+  id: string;
+  index: number;
+  typeText: string;
+  label: string;
+  content: string;
+  weight: number;
+  weightPct: number;
+  active: boolean;
 }

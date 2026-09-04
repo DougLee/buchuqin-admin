@@ -1656,3 +1656,29 @@ td.row-actions {
   display: flex;
   gap: 10px;
 }
+
+/* ---------- 抽奖转盘（IKD6FC）：奖位类型徽标 ---------- */
+.wheel-type {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+.wheel-type.is-coupon {
+  background: #eaf8e8;
+  color: #07883b;
+}
+.wheel-type.is-partner {
+  background: #fff4e8;
+  color: #c2570f;
+}
+.wheel-type.is-none {
+  background: #eef1ef;
+  color: #667069;
+}
+.wheel-type.is-unset {
+  background: #fff;
+  color: #9aa5a0;
+  border: 1px dashed #d7e2da;
+}

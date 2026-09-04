@@ -87,6 +87,8 @@ const MARKETING_ITEMS: [string, string, string][] = [
   ["/coupons", "marketing", "优惠券配置"],
   ["/promotions", "marketing", "限时秒杀"],
   ["/pay-ads", "marketing", "支付广告位"],
+  // IKD6FC：抽奖大转盘（首页入口显隐随活动开关）
+  ["/wheel", "wheel", "抽奖转盘"],
 ];
 const hqGroups = [
   {

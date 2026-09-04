@@ -40,6 +40,8 @@ import type {
   UserOrderRow,
   UserStats,
   WechatGroup,
+  WheelPrizeInput,
+  WheelRow,
 } from "../types";
 const route = useRoute(),
   rows = ref<AdminRow[]>([]),
@@ -1946,6 +1948,66 @@ const wechatGroupsConfig: SectionConfig = {
     ["updatedAt", "更新时间"],
   ],
 };
+/* ---------- 抽奖大转盘（IKD6FC）：单例配置，8 奖位行展示 ---------- */
+const WHEEL_TYPE_LABEL: Record<string, string> = {
+  coupon: "平台券",
+  partner: "异业券",
+  none: "谢谢参与",
+};
+const wheelConfig: SectionConfig = {
+  title: "抽奖转盘",
+  eyebrow: "MARKETING WHEEL",
+  desc: "配置小程序首页大转盘的奖品与概率；开启后首页显示抽奖入口，每日限抽 1 次。",
+  // 单例配置：8 奖位固定 8 行；未配置时给占位行（保存经编辑弹框 upsert）
+  loader: async (query) => {
+    const cfg = await api.wheel();
+    const rows = Array.from({ length: 8 }, (_, i) => {
+      const p = cfg.prizes[i];
+      return {
+        id: `wheel-${i}`,
+        index: i,
+        typeText: p ? WHEEL_TYPE_LABEL[p.type] ?? p.type : "未配置",
+        label: p?.label ?? "—",
+        content: wheelContentText(p),
+        weight: p?.weight ?? 0,
+        weightPct: p?.weightPct ?? 0,
+        active: cfg.active,
+      };
+    });
+    const start = (query.page - 1) * query.pageSize;
+    return {
+      rows: rows.slice(start, start + query.pageSize) as unknown as AdminRow[],
+      total: rows.length,
+    };
+  },
+  columns: [
+    ["index", "奖位"],
+    ["typeText", "类型"],
+    ["label", "扇区文案"],
+    ["content", "内容"],
+    ["weight", "权重"],
+    ["weightPct", "概率"],
+  ] as [string, string][],
+};
+function wheelContentText(p?: {
+  type: string;
+  couponName?: string;
+  bizTitle?: string;
+  bizImage?: string;
+}): string {
+  if (!p) return "—";
+  if (p.type === "coupon") return p.couponName || "（券已删除）";
+  if (p.type === "partner") return p.bizTitle || "（图文）";
+  return "—";
+}
+/** 奖位类型徽标配色（平台券绿/异业券橙/谢谢参与灰/未配置描边）。 */
+function wheelTypeClass(row: AdminRow): string {
+  const t = String((row as WheelRow).typeText ?? "");
+  if (t === "平台券") return "is-coupon";
+  if (t === "异业券") return "is-partner";
+  if (t === "谢谢参与") return "is-none";
+  return "is-unset";
+}
 /** 上传/替换群码：楼栋选空 = 校级大群；同楼栋重复保存即替换。 */
 function openWechatGroupForm(row?: AdminRow) {
   selected.value = undefined;
@@ -2183,6 +2245,7 @@ const configs: Record<string, SectionConfig> = {
   },
   users: usersConfig,
   "wechat-groups": wechatGroupsConfig,
+  wheel: wheelConfig,
   products: {
     title: "商品管理",
     eyebrow: "PRODUCT CENTER",
@@ -3527,6 +3590,72 @@ async function pullUpstreamRow(row: AdminRow) {
     notify(error instanceof Error ? error.message : "拉取失败", true);
   }
 }
+/* ---------- 抽奖转盘编辑弹窗（IKD6FC）：开关 + 8 奖位逐项配置 ---------- */
+const wheelEditOpen = ref(false),
+  wheelSaving = ref(false),
+  wheelCoupons = ref<Coupon[]>([]),
+  wheelForm = ref<{ active: boolean; prizes: WheelPrizeInput[] }>({
+    active: false,
+    prizes: [],
+});
+function blankPrize(): WheelPrizeInput {
+  return { type: "none", label: "", weight: 0 };
+}
+async function openWheelEdit() {
+  wheelEditOpen.value = true;
+  try {
+    const [cfg, coupons] = await Promise.all([
+      api.wheel(),
+      api.coupons({ page: 1, pageSize: 200 }, "active"),
+    ]);
+    wheelCoupons.value = coupons.items;
+    wheelForm.value = {
+      active: cfg.active,
+      prizes: Array.from({ length: 8 }, (_, i) => ({
+        ...blankPrize(),
+        ...(cfg.prizes[i] ?? {}),
+      })),
+    };
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "转盘配置加载失败", true);
+    wheelEditOpen.value = false;
+  }
+}
+/** 类型切换时清掉不属于新类型的残留字段，避免脏数据提交。 */
+function onWheelTypeChange(i: number) {
+  const p = wheelForm.value.prizes[i];
+  p.couponId = undefined;
+  p.bizTitle = undefined;
+  p.bizImage = undefined;
+  p.bizNote = undefined;
+  if (p.type === "coupon" && !p.label) p.label = "优惠券";
+  if (p.type === "none") p.label = "谢谢参与";
+}
+async function submitWheel() {
+  if (wheelSaving.value) return;
+  const form = wheelForm.value;
+  if (form.active && form.prizes.every((p) => !(p.weight > 0))) {
+    notify("开启活动至少要有一个奖位权重大于 0", true);
+    return;
+  }
+  wheelSaving.value = true;
+  try {
+    await api.upsertWheel({
+      active: form.active,
+      prizes: form.prizes.map((p) => ({
+        ...p,
+        label: p.label.trim() || (p.type === "none" ? "谢谢参与" : ""),
+      })),
+    });
+    notify("转盘配置已保存");
+    wheelEditOpen.value = false;
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  } finally {
+    wheelSaving.value = false;
+  }
+}
 async function lookup() {
   const code = productForm.value.barcode.trim();
   if (!/^\d{8,14}$/.test(code)) {
@@ -4099,6 +4228,14 @@ async function cancelInviteRow(row: AdminRow) {
         >
           配送费配置
         </button>
+        <!-- IKD6FC：抽奖转盘单例配置入口 -->
+        <button
+          v-if="section === 'wheel' && canWriteSection"
+          class="btn primary"
+          @click="openWheelEdit"
+        >
+          编辑奖池
+        </button>
         <button v-if="canCreate" class="btn primary" @click="openCreate">
           {{ createLabel || "＋ 新建记录" }}
         </button>
@@ -4428,7 +4565,12 @@ async function cancelInviteRow(row: AdminRow) {
                 </td>
                 <td v-for="col in config.columns" :key="col[0]">
                   <span
-                    v-if="col[0] === 'typeText' && section === 'inventory-txns'"
+                    v-if="col[0] === 'typeText' && section === 'wheel'"
+                    class="wheel-type"
+                    :class="wheelTypeClass(row)"
+                    >{{ display(row, "typeText") }}</span
+                  ><span
+                    v-else-if="col[0] === 'typeText' && section === 'inventory-txns'"
                     class="status"
                     :class="{ success: isStockIn(row) }"
                     >{{ display(row, "typeText") }}</span
@@ -5868,6 +6010,109 @@ async function cancelInviteRow(row: AdminRow) {
             @click="submitImport"
           >
             {{ importing ? "导入中..." : `导入所选（${importSelected.length}）` }}
+          </button>
+        </div>
+      </aside>
+    </div>
+    <!-- 抽奖转盘编辑（IKD6FC）：开关 + 8 奖位逐项配置 -->
+    <div v-if="wheelEditOpen" class="drawer-mask" @click.self="wheelEditOpen = false">
+      <aside class="drawer wheel-drawer">
+        <div class="drawer-head">
+          <div>
+            <h2>编辑奖池</h2>
+          </div>
+          <button aria-label="关闭" @click="wheelEditOpen = false">×</button>
+        </div>
+        <div class="wheel-active">
+          <label class="checkbox-row">
+            <input
+              v-model="wheelForm.active"
+              type="checkbox"
+              class="raw-checkbox"
+            />
+            活动开启（关闭后小程序首页隐藏抽奖入口）
+          </label>
+        </div>
+        <div class="wheel-grid">
+          <div
+            v-for="(prize, i) in wheelForm.prizes"
+            :key="i"
+            class="wheel-row"
+          >
+            <div class="wheel-row__head">
+              <span class="wheel-row__no">奖位 {{ i + 1 }}</span>
+              <select
+                v-model="prize.type"
+                class="wheel-row__type"
+                :aria-label="`奖位 ${i + 1} 类型`"
+                @change="onWheelTypeChange(i)"
+              >
+                <option value="coupon">平台券</option>
+                <option value="partner">异业券</option>
+                <option value="none">谢谢参与</option>
+              </select>
+            </div>
+            <label v-if="prize.type !== 'none'" class="wheel-row__field">
+              <span>扇区文案</span>
+              <input
+                v-model.trim="prize.label"
+                maxlength="12"
+                :placeholder="prize.type === 'coupon' ? '如：5元券' : '如：奶茶券'"
+              />
+            </label>
+            <label v-if="prize.type === 'coupon'" class="wheel-row__field">
+              <span>优惠券</span>
+              <select v-model="prize.couponId">
+                <option value="" disabled>选择发放中的优惠券</option>
+                <option v-for="c in wheelCoupons" :key="c.id" :value="c.id">
+                  {{ c.name }}（剩 {{ c.remain }} 张）
+                </option>
+              </select>
+            </label>
+            <template v-if="prize.type === 'partner'">
+              <label class="wheel-row__field">
+                <span>福利标题</span>
+                <input
+                  v-model.trim="prize.bizTitle"
+                  maxlength="40"
+                  placeholder="如：茶百道 · 买一送一"
+                />
+              </label>
+              <div class="wheel-row__field">
+                <span>图文图片（可含商家二维码）</span>
+                <ImageUploadField
+                  :model-value="prize.bizImage ?? ''"
+                  folder="app/wheel"
+                  @update:model-value="prize.bizImage = $event"
+                />
+              </div>
+              <label class="wheel-row__field">
+                <span>说明（选填）</span>
+                <input
+                  v-model.trim="prize.bizNote"
+                  maxlength="120"
+                  placeholder="如：到店出示该页面即可享受优惠"
+                />
+              </label>
+            </template>
+            <label class="wheel-row__field wheel-row__weight">
+              <span>权重（0 = 永不命中）</span>
+              <input
+                v-model.number="prize.weight"
+                type="number"
+                min="0"
+                max="1000"
+              />
+            </label>
+          </div>
+        </div>
+        <p class="form-hint plain">
+          概率按权重占比随机，与历史抽奖无关；平台券发完后该奖位自动按「谢谢参与」处理，不超发。
+        </p>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="wheelEditOpen = false">取消</button
+          ><button class="btn primary" :disabled="wheelSaving" @click="submitWheel">
+            {{ wheelSaving ? "保存中..." : "保存配置" }}
           </button>
         </div>
       </aside>

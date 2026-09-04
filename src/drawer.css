@@ -698,3 +698,78 @@
    的 overflow:hidden 会禁掉整体滚动，必须移除；fields 的 padding-bottom:96px
    是 absolute 按钮时代的让位遗产，sticky 占流内空间后只留巨大空底（「底部
    看不到内容」错觉来源之一），一并删除 */
+
+/* ---------- 抽奖转盘编辑弹窗（IKD6FC） ---------- */
+.wheel-drawer {
+  /* 8 奖位两列排布，比默认弹框稍宽 */
+  width: min(680px, 94vw);
+}
+.wheel-active {
+  padding: 4px 0 14px;
+}
+.wheel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.wheel-row {
+  background: #f4f8f5;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.wheel-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wheel-row__no {
+  font-size: 12px;
+  font-weight: 800;
+  color: #33413a;
+}
+.wheel-row__type {
+  border: 1px solid #d7e2da;
+  border-radius: 8px;
+  background: #fff;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #33413a;
+}
+.wheel-row__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: #667069;
+}
+.wheel-row__field > span {
+  font-weight: 700;
+}
+.wheel-row__field input,
+.wheel-row__field select {
+  border: 1px solid #d7e2da;
+  border-radius: 8px;
+  background: #fff;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 12px;
+  color: #33413a;
+  width: 100%;
+}
+.wheel-row__field input:focus,
+.wheel-row__field select:focus {
+  outline: 2px solid #25b95a40;
+  border-color: #25b95a;
+}
+.wheel-row__weight input {
+  max-width: 120px;
+}
+@media (max-width: 640px) {
+  .wheel-grid {
+    grid-template-columns: 1fr;
+  }
+}

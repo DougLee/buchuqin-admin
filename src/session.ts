@@ -168,6 +168,8 @@ const SECTION_ALIAS: Record<string, string> = {
   "pay-ads": "banners",
   // IKCJ46：官方商品库独立菜单（权限复用 products 板块）
   "official-products": "products",
+  // IKD6FC：抽奖转盘独立菜单（权限复用 marketing 板块）
+  wheel: "marketing",
 };
 
 export function canSee(section: string): boolean {
