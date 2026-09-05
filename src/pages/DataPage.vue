@@ -1473,6 +1473,8 @@ const month = ref(monthOptions.value[0]);
 watch(month, () => {
   if (section.value === "finance") resetAndLoad();
 });
+/** IKDFIN：当月金额汇总（分）——列表加载时随当月全量账单算出，摘要行展示。 */
+const financeTotals = ref({ payable: 0, paid: 0 });
 /** 各板块表格统一返回：当前页行 + 服务端总数。 */
 interface PageRows {
   rows: AdminRow[];
@@ -1691,7 +1693,14 @@ function switchInvTab(tab: "stock" | "requests") {
 
 /* ---------- Banner 管理（IK9RX2）：营销板块第二个 tab，校园维度 ---------- */
 /* IKD6FI：营销板块新增「营销地图」tab（楼栋×楼层×寝室下单热力） */
-const mktTab = ref<"coupons" | "banners" | "promotions" | "map">("coupons");
+/* IKDFIN：深链初值在声明处读取（原 immediate watcher 在 section 声明前
+   执行回调，dev 模式 TDZ 崩掉所有板块首屏；深链响应改由下方非 immediate watch 承担） */
+const MKT_TABS = ["coupons", "promotions", "map"] as const;
+const mktTab = ref<"coupons" | "banners" | "promotions" | "map">(
+  (MKT_TABS as readonly string[]).includes(String(route.query.tab))
+    ? (String(route.query.tab) as "coupons" | "promotions" | "map")
+    : "coupons",
+);
 function switchMktTab(tab: "coupons" | "banners" | "promotions" | "map") {
   mktTab.value = tab;
   // 地图视图不走表格 loader：切进来即备好楼栋下拉并拉聚合数据
@@ -1759,16 +1768,17 @@ const productView = computed<"official" | "campus">(() => {
   return "campus";
 });
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
+// IKDFIN：去 immediate——初值已在 mktTab 声明处读取；immediate 会在 setup 期
+// （section 尚未声明）触发回调，dev 模式直接 TDZ 崩掉整页
 watch(
   () => route.query.tab,
   (tab) => {
     if (
       section.value === "marketing" &&
-      ["coupons", "promotions", "map"].includes(String(tab))
+      (MKT_TABS as readonly string[]).includes(String(tab))
     )
       mktTab.value = String(tab) as "coupons" | "promotions" | "map";
   },
-  { immediate: true },
 );
 /** Banner 主题色展示：预置键转中文，自定义 hex 原样。 */
 const BANNER_COLOR_TEXT: Record<string, string> = {
@@ -2991,16 +3001,39 @@ const configs: Record<string, SectionConfig> = {
     title: "财务结算",
     eyebrow: "FINANCE SETTLEMENT",
     desc: "月度账单确认、打款与跨期调整（月份可筛选）。",
-    // IKB5PA：账单状态 Tab（待确认/已确认/已打款），随当前账期计数
-    loader: (query) =>
-      api.settlements(month.value, query, tabStatusOf(BILL_STATUS_TABS))
-        .then(unwrap),
+    // IKB5PA：账单状态 Tab（待确认/已确认/已打款），随当前账期计数。
+    // IKDFIN：后端 GET /admin/settlements 只认 month/page/pageSize/keyword，
+    // status 参数被 controller 丢弃（service 支持但未透传）——Tab 过滤与角标
+    // 改前端做：拉当月全量后按状态过滤切片（同采购申请模式），角标直接数
+    // 全量。修复：切 Tab 列表不过滤、三状态角标全等于当月总数、「全部」
+    // 角标被三倍放大（如 8 条账单显示「全部 24 / 各状态 8」）。
+    loader: async (query) => {
+      const all = await fetchAllPages((q) =>
+        api.settlements(month.value, { ...q, keyword: query.keyword }),
+      );
+      const status = tabStatusOf(BILL_STATUS_TABS);
+      const hit = status ? all.filter((b) => b.status === status) : all;
+      // 金额汇总随列表刷新（当月应结 / 其中已打款，单位分）
+      financeTotals.value = {
+        payable: all.reduce((n, b) => n + b.payable, 0),
+        paid: all
+          .filter((b) => b.status === "paid")
+          .reduce((n, b) => n + b.payable, 0),
+      };
+      const start = (query.page - 1) * query.pageSize;
+      return {
+        rows: hit.slice(start, start + query.pageSize) as unknown as AdminRow[],
+        total: hit.length,
+      };
+    },
     statusTabs: BILL_STATUS_TABS,
-    countsLoader: () =>
-      countByStatus(
-        (s) => api.settlements(month.value, { page: 1, pageSize: 1 }, s),
-        ["pending-review", "confirmed", "paid"],
-      ),
+    countsLoader: async () => {
+      const all = await fetchAllPages((q) => api.settlements(month.value, q));
+      const counts: Record<string, number> = {};
+      for (const s of ["pending-review", "confirmed", "paid"])
+        counts[s] = all.filter((b) => b.status === s).length;
+      return counts;
+    },
     columns: [
       ["staffName", "人员"],
       ["roleText", "角色"],
@@ -3378,6 +3411,24 @@ const section = computed(() => String(route.params.section)),
   totalPages = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
   );
+/** 2026-09-05 道哥：多页时展开页码序列（全站分页器共用）。
+ *  ≤7 页直接展示 1..N；>7 页展示「首页 + 当前页窗口 + 末页」：
+ *  窗口默认取当前页±1，靠近首/末页时向边缘展开（收敛为 1..5…N / 1…N-4..N），
+ *  保证省略号只出现在被跳过的一侧、永不连续、序列无重复页码。 */
+const pageList = computed<(number | "…")[]>(() => {
+  const pages = totalPages.value;
+  const cur = page.value;
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  // 窗口左右端点（含端点）：中间形态 1 … cur-1 cur cur+1 … N
+  const start = Math.max(2, Math.min(cur - 1, pages - 4));
+  const end = Math.min(pages - 1, Math.max(cur + 1, 5));
+  const list: (number | "…")[] = [1];
+  if (start > 2) list.push("…");
+  for (let p = start; p <= end; p++) list.push(p);
+  if (end < pages - 1) list.push("…");
+  list.push(pages);
+  return list;
+});
 /** Tab 角标计数（IKAJSP）：原始状态→数量，随 load() 并行刷新。 */
 const statusCounts = ref<Record<string, number>>({});
 function statusTabCount(tab: StatusTab) {
@@ -3732,12 +3783,13 @@ watch(
   },
 );
 const STATUS_TEXT: Record<string, string> = {
-  "pending-review": "待复核",
+  // IKDFIN：与财务 Tab 文案对齐（原「待复核/已支付」，两值仅财务账单外露）
+  "pending-review": "待确认",
   pending: "待审核",
   approved: "已通过",
   rejected: "已拒绝",
   confirmed: "已确认",
-  paid: "已支付",
+  paid: "已打款",
   active: "启用",
   paused: "已暂停",
   disabled: "已停用",
@@ -5087,6 +5139,13 @@ async function cancelInviteRow(row: AdminRow) {
           · 本月活跃 {{ userStatsData.monthActive }} · 人均订单
           {{ userStatsData.avgOrders }} 单
         </p>
+        <!-- IKDFIN：财务摘要——当月应结/已打款合计（随列表全量算出，分→元） -->
+        <p v-else-if="section === 'finance'">
+          <span class="live-dot"></span>
+          当月应结 ¥{{ fenToYuan(financeTotals.payable, true) }} · 已打款 ¥{{
+            fenToYuan(financeTotals.paid, true)
+          }}
+        </p>
         <p v-else>
           <span class="live-dot"></span>
           {{ section === "inventory-txns" ? "流水已同步" : "数据已同步" }}
@@ -5701,7 +5760,19 @@ async function cancelInviteRow(row: AdminRow) {
           </label>
           <div>
             <button :disabled="page === 1" @click="page--">←</button
-            ><button class="active">{{ page }}</button
+            ><!-- 2026-09-05 道哥：多页时展开页码序列（pageList：≤7 全展示，
+                 >7 首末页+当前页窗口，边界收敛规则见 script 注释）；
+                 页码可点、当前页高亮，'…' 为不可点占位 --><template
+              v-for="(p, i) in pageList"
+              :key="`${i}-${p}`"
+              ><button
+                v-if="p !== '…'"
+                :class="{ active: p === page }"
+                @click="page = p"
+              >
+                {{ p }}
+              </button>
+              <span v-else class="pager-ellipsis">…</span></template
             ><button :disabled="page === totalPages" @click="page++">→</button>
           </div>
           <label class="page-mode"
