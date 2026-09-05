@@ -795,6 +795,9 @@ export const api = {
     ),
   userOrders: (id: string) =>
     request<UserOrderRow[]>(`/admin/users/${id}/orders`),
+  /** 查看用户明文手机号（IKDG8V）：列表恒脱敏，按需单查 + 后端审计留痕。 */
+  revealUserPhone: (id: string) =>
+    request<{ id: string; phone: string }>(`/admin/users/${id}/phone`),
   /* 微信群二维码（IKAJSY） */
   wechatGroups: () => request<WechatGroup[]>("/admin/wechat-groups"),
   upsertWechatGroup: (data: { buildingId?: string; image: string }) =>

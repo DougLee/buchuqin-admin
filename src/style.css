@@ -1240,6 +1240,18 @@ td.row-actions {
   text-align: center;
 }
 /* 表格图片列（类别图/Banner 图）：统一缩略，原图尺寸裸奔会把行撑爆 */
+/* IKDG8V 手机号按需查看：打码态虚线下划线暗示可点，展开态品牌绿 */
+.phone-reveal {
+  cursor: pointer;
+}
+.phone-reveal:not(.phone-reveal--shown) {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.phone-reveal--shown {
+  color: #159c55;
+  font-weight: 600;
+}
 .cell-thumb {
   display: block;
   width: 40px;

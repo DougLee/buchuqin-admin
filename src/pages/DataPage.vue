@@ -880,6 +880,26 @@ function userLabel(u: AdminUser) {
 function userSub(u: AdminUser) {
   return u.phoneMasked || u.id;
 }
+/* IKDG8V：点击打码手机号按需查看明文——后端单查 + 审计留痕，本地缓存
+ * 到刷新（Map ref），再点收回打码；无号用户列渲染层已不可点。 */
+const revealedPhones = ref(new Map<string, string>());
+let phoneRevealBusy = false;
+async function togglePhone(row: AdminRow) {
+  const u = row as unknown as AdminUser;
+  if (phoneRevealBusy) return;
+  if (revealedPhones.value.has(u.id)) {
+    revealedPhones.value.delete(u.id);
+    return;
+  }
+  phoneRevealBusy = true;
+  try {
+    const { phone } = await api.revealUserPhone(u.id);
+    if (phone) revealedPhones.value.set(u.id, phone);
+    else notify("该用户未绑定手机号");
+  } finally {
+    phoneRevealBusy = false;
+  }
+}
 /* IKD6FI：手机号/寝室号均按换行、逗号（中英文）、分号切分 */
 function issueTokenList(text: string): string[] {
   return text
@@ -5353,6 +5373,23 @@ async function cancelInviteRow(row: AdminRow) {
                       ),
                     }"
                     >{{ display(row, col[0]) }}</span
+                  ><!-- IKDG8V：用户列表手机号列可点——按需单查明文（后端
+                       审计留痕），本地缓存到刷新，再点收回打码 --><span
+                    v-else-if="
+                      col[0] === 'phoneMasked' &&
+                      section === 'users' &&
+                      String(display(row, 'phoneMasked')).includes('****')
+                    "
+                    class="phone-reveal"
+                    :class="{
+                      'phone-reveal--shown': revealedPhones.get(row.id),
+                    }"
+                    title="点击查看完整手机号"
+                    @click="togglePhone(row)"
+                    >{{
+                      revealedPhones.get(row.id) ||
+                      display(row, "phoneMasked")
+                    }}</span
                   ><!-- IKAJSO：导入商品名旁亮「上游已更新」角标，抽屉/行内可一键拉取 -->
                   <template
                     v-else-if="col[0] === 'name' && isProductsSection"
