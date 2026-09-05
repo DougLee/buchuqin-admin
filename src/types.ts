@@ -282,6 +282,8 @@ export interface InventoryTxn {
   delta?: number;
   reason: string;
   operator: string;
+  /** 操作人人话化（IKDHKE）：AdminAccount 昵称/账号名，miss 回退 operator 原值 */
+  operatorName?: string;
   createdAt: string;
   product?: { id: string; name: string };
 }

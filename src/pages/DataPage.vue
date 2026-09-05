@@ -1537,7 +1537,7 @@ const inventoryTxnsConfig: SectionConfig = {
     ["product", "商品"],
     ["quantity", "数量"],
     ["reason", "原因"],
-    ["operator", "操作人"],
+    ["operatorName", "操作人"],
   ],
 };
 /** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
