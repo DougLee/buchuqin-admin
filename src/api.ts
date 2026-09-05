@@ -73,6 +73,14 @@ function listQuery(query?: ListQuery): string {
     // IKD6FG：分类筛选（商品管理/官方商品库/库存总览共用；IKDCDP 补序列化——
     // loader 传了 categoryId 但白名单漏拼，请求从未带上，筛选一直不生效）
     query.categoryId ? `categoryId=${encodeURIComponent(query.categoryId)}` : "",
+    // IKD6FG：订单配送方式筛选（instant/scheduled）——同 IKDCDP 病灶：
+    // loader 传了 deliveryMode 但白名单漏拼，请求从未带上（2026-09-05 道哥）
+    query.deliveryMode
+      ? `deliveryMode=${encodeURIComponent(query.deliveryMode)}`
+      : "",
+    // 全量断链审计（2026-09-05）：履约人员角色筛选——types/loader/后端三处
+    // 早已支持，唯独此处白名单漏拼，role 从未上请求（同 IKDCDP 病灶第四例）
+    query.role ? `role=${encodeURIComponent(query.role)}` : "",
   ]
     .filter(Boolean)
     .join("&");

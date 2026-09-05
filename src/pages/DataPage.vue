@@ -1566,14 +1566,24 @@ const purchaseRequestConfig: SectionConfig = {
       tabStatusOf(PR_STATUS_TABS),
       campusScope(),
     );
+    // 全量断链审计（2026-09-05）：该端点为全量数组且不认 keyword，搜索框
+    // 此前是死控件——与类别字典/财务账单同模式，前端按关键词过滤后切片
+    const kw = (query.keyword ?? "").trim().toLowerCase();
+    const hit = kw
+      ? all.filter((x) =>
+          [x.productName, x.campusName, x.applyByName, x.reason, x.status]
+            .filter(Boolean)
+            .some((v) => String(v).toLowerCase().includes(kw)),
+        )
+      : all;
     const start = (query.page - 1) * query.pageSize;
     return {
-      rows: all.slice(start, start + query.pageSize).map((x) => ({
+      rows: hit.slice(start, start + query.pageSize).map((x) => ({
         ...x,
         // 原因常留空，表格空串统一展示 —
         reasonText: x.reason || "—",
       })) as unknown as AdminRow[],
-      total: all.length,
+      total: hit.length,
     };
   },
   statusTabs: PR_STATUS_TABS,
@@ -3431,6 +3441,18 @@ const section = computed(() => String(route.params.section)),
   totalPages = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
   );
+/** 全量断链审计（2026-09-05）：校区下拉只在真正消费 campus 参数的视图渲染。
+ *  orders/users/audit 全视图（loader 走 campusQuery）；inventory 仅采购申请
+ *  tab（purchaseRequests 认 campus）；marketing 仅营销地图 tab。库存总览/
+ *  优惠券/秒杀按操作者本校区固定（hq 无这些板块权限，admin 跨校区走顶栏
+ *  切换运营校区）——下拉渲染在那儿是选了也不生效的死控件。 */
+const campusFilterVisible = computed(() => {
+  if (!isPlatformAdmin.value) return false;
+  if (["orders", "users", "audit"].includes(section.value)) return true;
+  if (section.value === "inventory") return invTab.value === "requests";
+  if (section.value === "marketing") return mktTab.value === "map";
+  return false;
+});
 /** 2026-09-05 道哥：多页时展开页码序列（全站分页器共用）。
  *  ≤7 页直接展示 1..N；>7 页展示「首页 + 当前页窗口 + 末页」：
  *  窗口默认取当前页±1，靠近首/末页时向边缘展开（收敛为 1..5…N / 1…N-4..N），
@@ -5011,9 +5033,14 @@ async function cancelInviteRow(row: AdminRow) {
       <!-- IKD6FG：分类筛选升级可搜索下拉（官方商品库/商品管理/库存共用；
            输入即按名称模糊过滤，选中回填名称，blur 关菜单）。
            IKDCGI：选项 mousedown.prevent 后焦点滞留 input，再次点击不再触发
-           focus → 菜单打不开；@click 每次按下都触发，连续切换无需移开光标 -->
+           focus → 菜单打不开；@click 每次按下都触发，连续切换无需移开光标。
+           全量断链审计（2026-09-05）：库存板块仅「库存总览」tab 消费
+           categoryId，采购申请 tab 的 loader 不认——原渲染为死控件 -->
       <div
-        v-if="['products', 'official-products', 'inventory'].includes(section)"
+        v-if="
+          ['products', 'official-products'].includes(section) ||
+          (section === 'inventory' && invTab === 'stock')
+        "
         class="category-combobox"
       >
         <input
@@ -5086,14 +5113,11 @@ async function cancelInviteRow(row: AdminRow) {
         <option value="scheduled">预约达</option>
       </select>
       <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计；
-           IKD6FJ/IKD6FI：采购申请与营销地图同样支持跨校区） -->
+           IKD6FJ/IKD6FI：采购申请与营销地图同样支持跨校区）。
+           全量断链审计（2026-09-05）：收敛到真正消费 campus 的视图——
+           库存总览/优惠券/秒杀 tab 后端按操作者本校区固定，下拉原为死控件 -->
       <select
-        v-if="
-          isPlatformAdmin &&
-          ['orders', 'users', 'audit', 'inventory', 'marketing'].includes(
-            section,
-          )
-        "
+        v-if="campusFilterVisible"
         v-model="campusFilter"
         class="filter-btn"
         aria-label="校区筛选"
