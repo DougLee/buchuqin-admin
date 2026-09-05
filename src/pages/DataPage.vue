@@ -238,7 +238,8 @@ function openBuildingCreate() {
       ],
       save: async (d) => void (await api.createBuilding(buildingPayload(d))),
     },
-    { name: "", floors: 6, gender: "mixed", hasElevator: true },
+    // 2026-09-05 道哥：电梯默认不勾选（多数学生楼无电梯，选错影响配送时效）
+    { name: "", floors: 6, gender: "mixed", hasElevator: false },
   );
 }
 /* ---------- 配送费配置（IK9SO6）：校园维度即时/预约达运费与起送门槛 ---------- */
