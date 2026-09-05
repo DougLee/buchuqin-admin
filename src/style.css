@@ -1273,6 +1273,18 @@ td.row-actions {
   background: var(--green);
   color: #fff;
 }
+/* 2026-09-05 道哥：页码序列省略号——非交互占位，无边框无背景、弱化色，
+   尺寸对齐页码按钮（30px）保证垂直居中一致 */
+.pagination .pager-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
+}
 .row-skeleton {
   height: 18px;
   background: linear-gradient(90deg, #eef2ef, #fafbfa, #eef2ef);
