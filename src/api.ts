@@ -536,6 +536,8 @@ export const api = {
     deliveryFeeInstant?: number;
     deliveryFeeScheduled?: number;
     deliveryThreshold?: number;
+    /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪。 */
+    buildingManagerBaseSalary?: number;
   }) =>
     request<Campus>("/admin/campuses", {
       method: "POST",
@@ -552,6 +554,7 @@ export const api = {
       deliveryFeeInstant: number;
       deliveryFeeScheduled: number;
       deliveryThreshold: number;
+      buildingManagerBaseSalary?: number;
     }>,
   ) =>
     request<Campus>(`/admin/campuses/${id}`, {

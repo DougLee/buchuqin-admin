@@ -2434,6 +2434,7 @@ function openCampusCreate() {
           step: 0.01,
         },
         { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+        { key: "baseSalary", label: "楼长月度底薪（元，0=无底薪）", type: "number", min: 0, step: 1 },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim() || !String(d.shortName || "").trim())
@@ -2447,6 +2448,7 @@ function openCampusCreate() {
           deliveryFeeInstant: yuanToFen(d.instant ?? 4),
           deliveryFeeScheduled: yuanToFen(d.scheduled ?? 2),
           deliveryThreshold: yuanToFen(d.threshold ?? 10),
+          buildingManagerBaseSalary: yuanToFen(d.baseSalary ?? 0),
         }));
       },
     },
@@ -2459,6 +2461,7 @@ function openCampusEdit(row: AdminRow) {
     deliveryFeeInstant?: number;
     deliveryFeeScheduled?: number;
     deliveryThreshold?: number;
+    buildingManagerBaseSalary?: number;
   };
   selected.value = undefined;
   openForm(
@@ -2484,6 +2487,7 @@ function openCampusEdit(row: AdminRow) {
         { key: "instant", label: "即时达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "scheduled", label: "预约达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+        { key: "baseSalary", label: "楼长月度底薪（元，0=无底薪）", type: "number", min: 0, step: 1 },
       ],
       save: async (d) =>
         void (await api.updateCampus(campus.id, {
@@ -2494,6 +2498,7 @@ function openCampusEdit(row: AdminRow) {
           status: String(d.status || "active") as "active" | "inactive",
           deliveryFeeInstant: yuanToFen(d.instant ?? 0),
           deliveryFeeScheduled: yuanToFen(d.scheduled ?? 0),
+          buildingManagerBaseSalary: yuanToFen(d.baseSalary ?? 0),
           deliveryThreshold: yuanToFen(d.threshold ?? 0),
         })),
     },
@@ -2506,6 +2511,7 @@ function openCampusEdit(row: AdminRow) {
       instant: Number(fenToYuan(campus.deliveryFeeInstant ?? 400)),
       scheduled: Number(fenToYuan(campus.deliveryFeeScheduled ?? 200)),
       threshold: Number(fenToYuan(campus.deliveryThreshold ?? 1000)),
+      baseSalary: Number(fenToYuan(campus.buildingManagerBaseSalary ?? 0)),
     },
   );
 }
