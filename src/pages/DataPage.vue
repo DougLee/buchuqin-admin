@@ -6636,9 +6636,9 @@ async function cancelInviteRow(row: AdminRow) {
           <div v-if="!rooms.length" class="form-hint plain">
             该楼栋还没有寝室记录，先在上方添加。
           </div>
+          <!-- 2026-09-08 道哥：二维码令牌为死字段（扫码交接已下线），不再展示 -->
           <div v-for="room in rooms" :key="room.id" class="room-row">
-            <strong>{{ room.floor }} 层 · {{ room.roomNo }} 寝</strong>
-            <small>二维码令牌 {{ room.qrToken }}</small>
+            <strong :data-floor="room.floor">{{ room.roomNo }} 寝</strong>
             <button class="text-btn danger-text" @click="removeRoom(room.id)">
               {{ roomConfirmId === room.id ? "确认删除" : "删除" }}
             </button>
