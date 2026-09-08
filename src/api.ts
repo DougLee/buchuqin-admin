@@ -662,6 +662,8 @@ export const api = {
     kind?: "platform" | "partner";
     trigger?: "manual" | "lottery" | "signup";
     remark?: string;
+    /** 支付后推荐（支付成功页领券卡） */
+    featuredAfterPay?: boolean;
   }) =>
     request<Coupon>("/admin/coupons", {
       method: "POST",
@@ -680,6 +682,8 @@ export const api = {
       status: "active" | "paused";
       name: string;
       remark: string;
+      /** 支付后推荐（支付成功页领券卡） */
+      featuredAfterPay?: boolean;
       amount: number;
       threshold: number;
       total: number | null;

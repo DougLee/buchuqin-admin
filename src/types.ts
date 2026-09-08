@@ -249,6 +249,8 @@ export interface Coupon {
   status: string;
   /** 过期时间；null = 长期有效（IKDCVO）。 */
   expiresAt: string | null;
+  /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
+  featuredAfterPay: boolean;
   issued: number;
   claimed: number;
   used: number;

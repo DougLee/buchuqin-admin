@@ -628,6 +628,12 @@ function openCouponCreate() {
           type: "date",
           visible: (d) => d.expiryMode !== "forever",
         },
+        // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示位
+        {
+          key: "featuredAfterPay",
+          label: "支付后推荐（支付成功页展示，用户可一键领取）",
+          type: "checkbox",
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
@@ -656,12 +662,14 @@ function openCouponCreate() {
           kind: partner ? "partner" : "platform",
           trigger: (d.trigger as "manual" | "lottery" | "signup") || "manual",
           remark: String(d.remark || "").trim(),
+          featuredAfterPay: !!d.featuredAfterPay,
         });
       },
     },
     {
       kind: "platform",
       trigger: "manual",
+      featuredAfterPay: false,
       name: "",
       amount: 5,
       threshold: 20,
@@ -774,10 +782,17 @@ function openCouponEdit(c: Coupon) {
           type: "date",
           visible: (d) => d.expiryMode !== "forever",
         },
+        // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示位
+        {
+          key: "featuredAfterPay",
+          label: "支付后推荐（支付成功页展示，用户可一键领取）",
+          type: "checkbox",
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
         await api.updateCoupon(c.id, {
+          featuredAfterPay: !!d.featuredAfterPay,
           name: String(d.name).trim(),
           remark: String(d.remark || "").trim(),
           ...(c.kind === "platform" && !locked
@@ -806,6 +821,7 @@ function openCouponEdit(c: Coupon) {
       amount: Number(fenToYuan(c.amount)),
       threshold: Number(fenToYuan(c.threshold)),
       remark: c.remark || "",
+      featuredAfterPay: !!c.featuredAfterPay,
       totalMode: c.total === null ? "unlimited" : "limited",
       total: c.total ?? 100,
       expiryMode: c.expiresAt ? "date" : "forever",
