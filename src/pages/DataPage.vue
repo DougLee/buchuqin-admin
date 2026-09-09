@@ -3759,10 +3759,18 @@ async function load() {
   // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
     isPlatformAdmin.value &&
-    // IKD6FJ/IKD6FI：采购申请与营销地图的 hq 跨校区视角同样要校区下拉
-    ["orders", "users", "audit", "campuses", "inventory", "marketing"].includes(
-      section.value,
-    )
+    // IKD6FJ/IKD6FI：采购申请与营销地图的 hq 跨校区视角同样要校区下拉；
+    // IKEAGE：招募（campusFilterVisible 已含，此处补加载白名单——漏了会导致
+    // 下拉只剩「全校区」）
+    [
+      "orders",
+      "users",
+      "audit",
+      "campuses",
+      "inventory",
+      "marketing",
+      "recruit",
+    ].includes(section.value)
   )
     void ensureCampusOptions().catch(() => {});
   try {
