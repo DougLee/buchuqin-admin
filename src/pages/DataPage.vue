@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, downloadRoomTemplate, fetchAllPages } from "../api";
+import IdCardImagesField from "../components/IdCardImagesField.vue";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
@@ -2066,6 +2067,20 @@ const recruitEdit = ref({
 });
 /** 审批两击确认（同 confirmDelete 惯例：第一击亮确认文案，第二击执行） */
 const recruitApproveArmed = ref(false);
+/** 抽屉当前招募报名（模板免 (selected as unknown as …) 长 cast 链） */
+const recruitApp = computed(
+  () => selected.value as unknown as RecruitingApplication | undefined,
+);
+/** 审核资料可编辑：有写权限且未到终态（approved/rejected 只读展示已录内容） */
+const recruitDocsEditable = computed(
+  () =>
+    canWriteSection.value &&
+    ["pending", "interviewing"].includes(recruitApp.value?.status ?? ""),
+);
+/** 已落库的身份证照片（终态只读展示用，过滤空串占位） */
+const recruitSavedImages = computed(() =>
+  (recruitApp.value?.idCardImages ?? []).filter(Boolean),
+);
 function recruitRow(): RecruitingApplication | undefined {
   return selected.value as unknown as RecruitingApplication | undefined;
 }
@@ -6225,43 +6240,35 @@ async function cancelInviteRow(row: AdminRow) {
             </table>
           </div>
         </template>
-        <!-- 楼长招募详情（IKEAGE）：候选人信息 + 身份证补录 + 面试/审批操作 -->
+        <!-- 楼长招募详情（IKEAGE）：报名信息 / 审核资料 / 审核操作 三段分区 -->
         <template v-else-if="section === 'recruit'">
+          <p class="drawer-sec">报名信息</p>
           <div class="drawer-fields">
             <div>
-              <span>姓名</span
-              ><strong>{{ (selected as unknown as RecruitingApplication).name }}</strong>
+              <span>姓名</span><strong>{{ recruitApp?.name }}</strong>
             </div>
             <div>
               <span>手机号</span
               ><strong
-                ><a
-                  :href="`tel:${(selected as unknown as RecruitingApplication).phone}`"
-                  >{{ (selected as unknown as RecruitingApplication).phone }}</a
-                ></strong
+                ><a :href="`tel:${recruitApp?.phone}`">{{
+                  recruitApp?.phone
+                }}</a></strong
               >
             </div>
             <div>
               <span>校区</span
-              ><strong>{{
-                (selected as unknown as RecruitingApplication).campusName || "—"
-              }}</strong>
+              ><strong>{{ recruitApp?.campusName || "—" }}</strong>
             </div>
             <div>
-              <span>报名楼栋</span
-              ><strong>{{ (selected as unknown as RecruitingApplication).buildingName }}</strong>
+              <span>报名楼栋</span><strong>{{ recruitApp?.buildingName }}</strong>
             </div>
             <div>
               <span>状态</span
               ><strong
                 ><span
                   class="status"
-                  :class="
-                    RECRUIT_STATUS_CLASS[(selected as unknown as RecruitingApplication).status]
-                  "
-                  >{{
-                    RECRUIT_STATUS_LABEL[(selected as unknown as RecruitingApplication).status]
-                  }}</span
+                  :class="RECRUIT_STATUS_CLASS[recruitApp?.status ?? '']"
+                  >{{ RECRUIT_STATUS_LABEL[recruitApp?.status ?? ""] }}</span
                 ></strong
               >
             </div>
@@ -6269,81 +6276,125 @@ async function cancelInviteRow(row: AdminRow) {
               <span>报名时间</span
               ><strong>{{ display(selected, "createdAt") }}</strong>
             </div>
-            <div v-if="(selected as unknown as RecruitingApplication).staffNo">
-              <span>实习楼长工号</span
-              ><strong>{{
-                (selected as unknown as RecruitingApplication).staffNo
-              }}</strong>
-            </div>
-            <div
-              v-if="(selected as unknown as RecruitingApplication).status === 'rejected'"
-              class="wide"
-            >
-              <span>拒绝原因</span
-              ><strong class="desc-full">{{
-                (selected as unknown as RecruitingApplication).rejectReason || "—"
-              }}</strong>
-            </div>
             <div class="wide">
               <span>自我介绍 / 备注</span
-              ><strong class="desc-full">{{
-                (selected as unknown as RecruitingApplication).note || "—"
-              }}</strong>
+              ><strong class="desc-full">{{ recruitApp?.note || "—" }}</strong>
             </div>
           </div>
-          <!-- 身份证补录（IKEAGE：线下收集后代录，C 端不采集；终态只读不隐——可继续补档） -->
-          <div v-if="canWriteSection" class="recruit-docs">
-            <p class="proof-label">身份证资料补录（线下收集后代录）</p>
-            <label
-              >身份证号
-              <input
-                v-model="recruitEdit.idCardNo"
-                maxlength="18"
-                placeholder="身份证号（选填）"
-            /></label>
-            <label
-              >运营备注
-              <input
-                v-model="recruitEdit.note"
-                maxlength="200"
-                placeholder="面试评价等（选填）"
-            /></label>
-            <div class="recruit-docs__images">
-              <span class="field-label">身份证照片</span>
-              <ProductImagesField v-model="recruitEdit.idCardImages" folder="recruit" />
+          <p class="drawer-sec">审核资料</p>
+          <!-- 编辑态（待联系/面试中 + 运营可写）：证件号/备注整行表单 + 双槽位照片 -->
+          <template v-if="recruitDocsEditable">
+            <div class="drawer-fields">
+              <label class="wide">
+                身份证号（线下收集后代录，选填）
+                <input
+                  v-model="recruitEdit.idCardNo"
+                  maxlength="18"
+                  placeholder="18 位身份证号"
+                />
+              </label>
+              <label class="wide">
+                运营备注（面试评价等，选填）
+                <input
+                  v-model="recruitEdit.note"
+                  maxlength="200"
+                  placeholder="面试评价、跟进记录"
+                />
+              </label>
             </div>
+            <div class="recruit-idcards">
+              <span class="proof-label">身份证照片（人像面 / 国徽面）</span>
+              <IdCardImagesField
+                v-model="recruitEdit.idCardImages"
+                folder="recruit"
+              />
+            </div>
+            <div class="recruit-save-row">
+              <button
+                class="btn primary"
+                type="button"
+                @click="saveRecruitDocs"
+              >
+                保存资料
+              </button>
+            </div>
+          </template>
+          <!-- 只读态（终态或查看视角）：仅展示已录内容 -->
+          <template v-else>
+            <div class="drawer-fields">
+              <div class="wide">
+                <span>身份证号</span
+                ><strong>{{ recruitApp?.idCardNo || "未录入" }}</strong>
+              </div>
+            </div>
+            <div v-if="recruitSavedImages.length" class="proof-block">
+              <span class="proof-label">身份证照片（人像面 / 国徽面）</span>
+              <div class="proof-grid">
+                <img
+                  v-for="(src, i) in recruitSavedImages"
+                  :key="`${i}-${src}`"
+                  :src="resolveImageUrl(src)"
+                  :alt="`身份证照片 ${i + 1}`"
+                  loading="lazy"
+                  @click="previewImage = resolveImageUrl(src)"
+                />
+              </div>
+            </div>
+            <p v-else class="recruit-empty">尚未录入身份证资料</p>
+          </template>
+          <p class="drawer-sec">审核操作</p>
+          <!-- 可写且未终态：主操作通栏（两击确认防误创建账号），次要操作白底描边 -->
+          <div v-if="recruitDocsEditable" class="recruit-actions">
             <button
-              class="btn ghost"
+              class="btn primary recruit-actions__primary"
+              :class="{ 'recruit-actions__primary--armed': recruitApproveArmed }"
               type="button"
-              @click="saveRecruitDocs"
+              @click="recruitDoApprove"
             >
-              保存资料
+              {{
+                recruitApproveArmed
+                  ? "确认创建实习楼长账号？"
+                  : "通过并创建实习楼长"
+              }}
             </button>
+            <div class="recruit-actions__row">
+              <button
+                v-if="recruitApp?.status === 'pending'"
+                class="btn ghost"
+                type="button"
+                @click="recruitDoTransition"
+              >
+                标记面试中
+              </button>
+              <button
+                class="btn danger"
+                type="button"
+                @click="openRecruitRejectForm"
+              >
+                拒绝
+              </button>
+            </div>
           </div>
-          <!-- 面试/审批操作（按状态出；两击确认防误创建账号） -->
+          <!-- 终态/查看视角：只读状态条 -->
           <div
-            v-if="
-              canWriteSection &&
-              ['pending', 'interviewing'].includes(
-                (selected as unknown as RecruitingApplication).status,
-              )
-            "
-            class="drawer-actions wrap"
+            v-else-if="recruitApp?.status === 'approved'"
+            class="recruit-readonly-bar is-ok"
           >
-            <button
-              v-if="(selected as unknown as RecruitingApplication).status === 'pending'"
-              class="btn primary"
-              type="button"
-              @click="recruitDoTransition"
-            >
-              标记面试中
-            </button>
-            <button class="btn primary" type="button" @click="recruitDoApprove">
-              {{ recruitApproveArmed ? "确认创建实习楼长账号？" : "通过并创建实习楼长" }}
-            </button>
-            <button class="btn danger" type="button" @click="openRecruitRejectForm">
-              拒绝
-            </button>
+            已通过 · 实习楼长工号 {{ recruitApp?.staffNo || "—" }}（骑手小程序工号 +
+            姓名登录）
+          </div>
+          <div
+            v-else-if="recruitApp?.status === 'rejected'"
+            class="recruit-readonly-bar is-bad"
+          >
+            已拒绝：{{ recruitApp?.rejectReason || "—" }}（候选人可重新报名）
+          </div>
+          <div v-else class="recruit-readonly-bar">
+            {{
+              recruitApp?.status === "interviewing"
+                ? "面试中，审核操作需运营权限"
+                : "待联系，审核操作需运营权限"
+            }}
           </div>
         </template>
         <!-- 群码详情（IKAJSY）：大图预览 + 替换/删除 -->
@@ -6594,7 +6645,9 @@ async function cancelInviteRow(row: AdminRow) {
             </div>
           </div>
         </div>
-        <div class="drawer-actions wrap">
+        <!-- IKEAGE 招募详情不用底部按钮条：操作已按层级入「审核操作」分区，
+             关闭走右上角 ×（道哥反馈：关闭详情宽条与三按钮无主次） -->
+        <div v-if="section !== 'recruit'" class="drawer-actions wrap">
           <template v-if="isProductsSection && canWriteSection">
             <button class="btn primary" @click="act('save')">
               {{ isHqView ? "保存官方库资料" : "保存商品调整" }}</button

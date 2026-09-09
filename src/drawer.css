@@ -951,3 +951,90 @@
   color: var(--muted);
   cursor: default;
 }
+
+/* ---------- IKEAGE：楼长招募详情抽屉三分区（报名信息/审核资料/审核操作） ---------- */
+/* 分区小标题：eyebrow 风格 + 尾随细分割线（道哥反馈：三块内容混排分不清） */
+.drawer-sec {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--brand);
+}
+.drawer-sec::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+/* 分区标题下紧邻的字段网格收紧行距（22px 是无标题时的节奏） */
+.drawer-sec + .drawer-fields {
+  margin-top: 12px;
+}
+/* 审核资料：身份证照片区（编辑态） */
+.recruit-idcards {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.recruit-idcards .proof-label {
+  margin-bottom: 0;
+}
+/* 保存资料：右对齐主按钮（原 ghost 小按钮位置突兀） */
+.recruit-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+/* 只读态：尚未录入占位 */
+.recruit-empty {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* 审核操作：主操作通栏 + 次要操作一行两个（白底描边），层级立现 */
+.recruit-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.recruit-actions .btn {
+  width: 100%;
+  cursor: pointer;
+}
+/* 两击确认态：橙色警示（复用 danger-btn 色系），提示再次点击即创建账号 */
+.recruit-actions__primary--armed {
+  background: #b65322;
+  border-color: #b65322;
+  box-shadow: 0 8px 20px #b6532233;
+}
+/* .btn.danger：白底描边红字——招募「拒绝」专用；群码详情「删除」同款
+   类名此前无样式（裸 .btn 观感），顺带归位 */
+.btn.danger {
+  background: #fff;
+  border-color: #eecac6;
+  color: #b33a3a;
+  cursor: pointer;
+}
+/* 终态/查看视角只读状态条：已通过绿 / 已拒绝红 / 其余中性浅绿 */
+.recruit-readonly-bar {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f4f8f5;
+  color: #37423c;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.recruit-readonly-bar.is-ok {
+  background: #e5f6eb;
+  color: #087641;
+  font-weight: 700;
+}
+.recruit-readonly-bar.is-bad {
+  background: #fdeeee;
+  color: #b33a3a;
+}
