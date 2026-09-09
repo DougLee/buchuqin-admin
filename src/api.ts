@@ -1,4 +1,5 @@
 import { clearSession, type SessionUser } from "./session";
+import { compressToWebp } from "./utils/image";
 import type {
   AdminAccount,
   AdminUser,
@@ -152,10 +153,11 @@ export async function login(
  * （其写死 JSON Content-Type，会破坏 FormData 边界），单独走 fetch，
  * 鉴权与 401 清会话行为保持一致。返回公网 URL 直接落业务字段。
  */
-/** folder=app：小程序静态素材（Banner 背景图）落 COS app/ 目录（IK9VBI）；缺省 uploads/。 */
+/** folder=app：小程序静态素材（Banner 背景图）落 COS app/ 目录（IK9VBI）；缺省 uploads/。
+ *  IKE9Q5：上传前统一压缩转 webp（gif/webp 原样、异常降级），全线展示图瘦身。 */
 export async function uploadImage(file: File, folder?: string): Promise<string> {
   const form = new FormData();
-  form.append("file", file);
+  form.append("file", await compressToWebp(file));
   const response = await fetch(
     `/api/v1/files/images${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`, {
     method: "POST",
