@@ -428,11 +428,19 @@ async function onRoomsImportFile(event: Event) {
 }
 
 /* ---------- 员工账号 ---------- */
+// IKEAGE：实习楼长（招募审批自动创建，与楼长同权），排序跟在「楼长」后。
+// 仅进筛选与编辑口径——新增表单不给手建：后端 createStaff/updateStaff 的
+// roleText 三元只认 楼长/全职/兼职，手建实习楼长会落成「兼职配送员」脏数据
 const ROLE_OPTIONS = [
   { value: "building-manager", label: "楼长" },
+  { value: "intern-building-manager", label: "实习楼长" },
   { value: "fulltime-rider", label: "全职配送员" },
   { value: "parttime-rider", label: "兼职配送员" },
 ];
+/** 新增员工可选角色：实习楼长只能经招募审批产出（IKEAGE），不开放手建 */
+const STAFF_CREATE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
+  (r) => r.value !== "intern-building-manager",
+);
 function staffPayload(d: Record<string, FormValue>) {
   // IKBW0E：payload 需容纳显式 null（清空楼栋绑定），故放宽为 FormValue | null
   const payload: Record<string, FormValue | null> = {
@@ -470,7 +478,8 @@ function openStaffCreate() {
       fields: [
         { key: "name", label: "姓名", placeholder: "真实姓名" },
         { key: "staffNo", label: "工号", placeholder: "例如：BM-006" },
-        { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
+        // 实习楼长不进新增表单（见 STAFF_CREATE_ROLE_OPTIONS 注释）
+        { key: "role", label: "角色", type: "select", options: () => STAFF_CREATE_ROLE_OPTIONS },
         // IKD7TL：状态紧跟角色同行（绑定楼栋 wide 字段随后独占一行）
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
