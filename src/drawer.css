@@ -84,6 +84,10 @@
   gap: 12px;
   margin-top: 22px;
 }
+/* IKEAGE：招募报名信息前六项两行三列（.wide 自我介绍仍通栏） */
+.drawer-fields--three {
+  grid-template-columns: repeat(3, 1fr);
+}
 .drawer-fields > div,
 .drawer-fields label {
   /* IKD7TL 扩展：白底弹框上字段卡反转为浅绿色块（去边框）——比白卡+描边

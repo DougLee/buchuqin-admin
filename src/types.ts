@@ -209,6 +209,8 @@ export interface RecruitingApplication {
   phone: string;
   /** 报名备注（候选人自我介绍） */
   note: string;
+  /** 运营备注（面试评价等，admin 补录；与候选人自我介绍 note 相互独立） */
+  staffRemark: string;
   /** pending 待联系 | interviewing 面试中 | approved 已通过 | rejected 已拒绝 */
   status: "pending" | "interviewing" | "approved" | "rejected";
   /** 拒绝原因（C 端进度页可见） */

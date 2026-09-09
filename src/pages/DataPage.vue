@@ -2063,7 +2063,7 @@ async function removeBannerRow() {
 const recruitEdit = ref({
   idCardNo: "",
   idCardImages: [] as string[],
-  note: "",
+  staffRemark: "",
 });
 /** 审批两击确认（同 confirmDelete 惯例：第一击亮确认文案，第二击执行） */
 const recruitApproveArmed = ref(false);
@@ -2092,7 +2092,7 @@ async function saveRecruitDocs() {
     const updated = await api.updateRecruitApplication(app.id, {
       idCardNo: recruitEdit.value.idCardNo.trim(),
       idCardImages: recruitEdit.value.idCardImages,
-      note: recruitEdit.value.note.trim(),
+      staffRemark: recruitEdit.value.staffRemark.trim(),
     });
     selected.value = updated as unknown as AdminRow;
     notify("资料已保存");
@@ -4240,7 +4240,7 @@ function openDetail(row: AdminRow) {
     recruitEdit.value = {
       idCardNo: app.idCardNo ?? "",
       idCardImages: Array.isArray(app.idCardImages) ? [...app.idCardImages] : [],
-      note: app.note ?? "",
+      staffRemark: app.staffRemark ?? "",
     };
     recruitApproveArmed.value = false;
   }
@@ -6243,7 +6243,7 @@ async function cancelInviteRow(row: AdminRow) {
         <!-- 楼长招募详情（IKEAGE）：报名信息 / 审核资料 / 审核操作 三段分区 -->
         <template v-else-if="section === 'recruit'">
           <p class="drawer-sec">报名信息</p>
-          <div class="drawer-fields">
+          <div class="drawer-fields drawer-fields--three">
             <div>
               <span>姓名</span><strong>{{ recruitApp?.name }}</strong>
             </div>
@@ -6296,7 +6296,7 @@ async function cancelInviteRow(row: AdminRow) {
               <label class="wide">
                 运营备注（面试评价等，选填）
                 <input
-                  v-model="recruitEdit.note"
+                  v-model="recruitEdit.staffRemark"
                   maxlength="200"
                   placeholder="面试评价、跟进记录"
                 />

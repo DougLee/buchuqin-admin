@@ -773,7 +773,7 @@ export const api = {
   /** 身份证等资料补录（IKEAGE：运营线下收集后代录，C 端不采集）。 */
   updateRecruitApplication: (
     id: string,
-    data: { idCardNo?: string; idCardImages?: string[]; note?: string },
+    data: { idCardNo?: string; idCardImages?: string[]; staffRemark?: string },
   ) =>
     request<RecruitingApplication>(`/admin/recruit-applications/${id}`, {
       method: "PATCH",
