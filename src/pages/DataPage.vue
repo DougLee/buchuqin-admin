@@ -35,6 +35,7 @@ import type {
   Product,
   Promotion,
   PurchaseRequest,
+  RecruitingApplication,
   Room,
   RuleRow,
   Settlement,
@@ -2056,6 +2057,95 @@ async function removeBannerRow() {
     notify(error instanceof Error ? error.message : "删除失败", true);
   }
 }
+/* ---------- 楼长招募操作（IKEAGE）：补录 / 面试 / 审批 ---------- */
+/** 抽屉补录编辑区（openDetail 回填；保存走 PATCH） */
+const recruitEdit = ref({
+  idCardNo: "",
+  idCardImages: [] as string[],
+  note: "",
+});
+/** 审批两击确认（同 confirmDelete 惯例：第一击亮确认文案，第二击执行） */
+const recruitApproveArmed = ref(false);
+function recruitRow(): RecruitingApplication | undefined {
+  return selected.value as unknown as RecruitingApplication | undefined;
+}
+/** 身份证等资料补录（运营线下收集后台代录，C 端不采集） */
+async function saveRecruitDocs() {
+  const app = recruitRow();
+  if (!app) return;
+  try {
+    const updated = await api.updateRecruitApplication(app.id, {
+      idCardNo: recruitEdit.value.idCardNo.trim(),
+      idCardImages: recruitEdit.value.idCardImages,
+      note: recruitEdit.value.note.trim(),
+    });
+    selected.value = updated as unknown as AdminRow;
+    notify("资料已保存");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  }
+}
+/** pending → interviewing：运营已联系、进入面试 */
+async function recruitDoTransition() {
+  const app = recruitRow();
+  if (!app) return;
+  try {
+    const updated = await api.recruitTransition(app.id);
+    selected.value = updated as unknown as AdminRow;
+    notify("已标记面试中");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+/** 一键审批通过：自动创建实习楼长（工号 IBM-xxx），两击确认防误触 */
+async function recruitDoApprove() {
+  const app = recruitRow();
+  if (!app) return;
+  if (!recruitApproveArmed.value) {
+    recruitApproveArmed.value = true;
+    return;
+  }
+  try {
+    const result = await api.approveRecruit(app.id);
+    selected.value = result.application as unknown as AdminRow;
+    recruitApproveArmed.value = false;
+    notify(`已创建实习楼长：${result.staff.staffNo}（骑手小程序工号+姓名登录）`);
+    await load();
+  } catch (error) {
+    recruitApproveArmed.value = false;
+    notify(error instanceof Error ? error.message : "操作失败", true);
+  }
+}
+/** 拒绝报名：原因必填（C 端进度页展示，候选人可重新报名） */
+function openRecruitRejectForm() {
+  const app = recruitRow();
+  if (!app) return;
+  openForm(
+    {
+      eyebrow: "REJECT",
+      title: "拒绝报名",
+      submit: "确认拒绝",
+      done: "已拒绝，候选人可重新报名",
+      fields: [
+        {
+          key: "reason",
+          label: "拒绝原因（候选人可见）",
+          placeholder: "例如：该楼栋暂无空缺，感谢关注",
+        },
+      ],
+      save: async (d) => {
+        const reason = String(d.reason ?? "").trim();
+        if (!reason) throw new Error("请填写拒绝原因");
+        const updated = await api.rejectRecruit(app.id, reason);
+        selected.value = updated as unknown as AdminRow;
+        await load();
+      },
+    },
+    { reason: "" },
+  );
+}
 /* ---------- 促销活动管理（ADR-0006 / IKAHFF）：营销板块第三个 tab ---------- */
 const PROMO_TYPE_TEXT: Record<string, string> = {
   seckill: "秒杀",
@@ -2840,6 +2930,27 @@ const BILL_STATUS_TABS: StatusTab[] = [
   { key: "confirmed", label: "已确认", statuses: ["confirmed"] },
   { key: "paid", label: "已打款", statuses: ["paid"] },
 ];
+/* IKEAGE 楼长招募：报名状态 Tab（待联系→面试中→已通过/已拒绝） */
+const RECRUIT_STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "全部", statuses: [] },
+  { key: "pending", label: "待联系", statuses: ["pending"] },
+  { key: "interviewing", label: "面试中", statuses: ["interviewing"] },
+  { key: "approved", label: "已通过", statuses: ["approved"] },
+  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
+];
+const RECRUIT_STATUS_LABEL: Record<string, string> = {
+  pending: "待联系",
+  interviewing: "面试中",
+  approved: "已通过",
+  rejected: "已拒绝",
+};
+/** 徽章配色：待联系橙 / 面试中蓝 / 已通过绿 / 已拒绝红（.status.info/.danger 新增于 style.css） */
+const RECRUIT_STATUS_CLASS: Record<string, string> = {
+  pending: "warning",
+  interviewing: "info",
+  approved: "success",
+  rejected: "danger",
+};
 
 const configs: Record<string, SectionConfig> = {
   orders: {
@@ -3075,6 +3186,37 @@ const configs: Record<string, SectionConfig> = {
       ["completedToday", "今日完成"],
       ["onTimeRate", "准时率"],
       ["statusText", "状态"],
+    ],
+  },
+  /* IKEAGE 楼长招募：C 端报名 → 联系面试 → 补录身份证 → 一键审批创建实习楼长。
+   * 数据范围随 campusQuery（admin 平台视角可按校区筛，运营固定本校区）。 */
+  recruit: {
+    title: "楼长招募",
+    eyebrow: "RECRUITING",
+    desc: "小程序报名的楼长候选人：联系面试、补录资料、审批入职（通过即创建实习楼长账号）。",
+    loader: (query) =>
+      api
+        .recruitApplications(campusQuery(query), tabStatusOf(RECRUIT_STATUS_TABS))
+        .then((res) => ({
+          rows: res.items.map((x) => ({
+            ...x,
+            statusText: RECRUIT_STATUS_LABEL[x.status] ?? x.status,
+            // 身份证列：号或照片任一已录即「已录」
+            idCardText:
+              x.idCardNo || (x.idCardImages?.length ?? 0) > 0 ? "已录" : "—",
+          })),
+          total: res.total,
+        })),
+    statusTabs: RECRUIT_STATUS_TABS,
+    countsLoader: () => api.recruitStatusCounts(campusScope()),
+    columns: [
+      ["name", "姓名"],
+      ["phone", "手机号"],
+      ["campusName", "校区"],
+      ["buildingName", "报名楼栋"],
+      ["statusText", "状态"],
+      ["idCardText", "身份证"],
+      ["createdAt", "报名时间"],
     ],
   },
   "after-sales": {
@@ -3533,7 +3675,8 @@ const section = computed(() => String(route.params.section)),
  *  切换运营校区）——下拉渲染在那儿是选了也不生效的死控件。 */
 const campusFilterVisible = computed(() => {
   if (!isPlatformAdmin.value) return false;
-  if (["orders", "users", "audit"].includes(section.value)) return true;
+  if (["orders", "users", "audit", "recruit"].includes(section.value))
+    return true;
   if (section.value === "inventory") return invTab.value === "requests";
   if (section.value === "marketing") return mktTab.value === "map";
   return false;
@@ -4076,6 +4219,16 @@ function openDetail(row: AdminRow) {
   confirmDelete.value = false;
   inviteConfirmCancel.value = "";
   selected.value = { ...row };
+  // IKEAGE：招募抽屉打开即回填补录编辑区（身份证号/照片/备注）
+  if (section.value === "recruit") {
+    const app = row as unknown as RecruitingApplication;
+    recruitEdit.value = {
+      idCardNo: app.idCardNo ?? "",
+      idCardImages: Array.isArray(app.idCardImages) ? [...app.idCardImages] : [],
+      note: app.note ?? "",
+    };
+    recruitApproveArmed.value = false;
+  }
   // IKAJSW：用户抽屉打开即拉该用户订单流水（失败静默，抽屉显示暂无）
   if (section.value === "users") {
     userOrderRows.value = [];
@@ -4785,6 +4938,8 @@ const DETAIL_SECTIONS: readonly string[] = [
   "inventory-txns",
   "wechat-groups",
   "dispatch",
+  // IKEAGE：报名详情抽屉（资料补录 + 面试/审批操作）
+  "recruit",
 ];
 function rowConfirmFirst(id: string): boolean {
   if (confirmRowId.value !== id) {
@@ -6068,6 +6223,127 @@ async function cancelInviteRow(row: AdminRow) {
                 </tr>
               </tbody>
             </table>
+          </div>
+        </template>
+        <!-- 楼长招募详情（IKEAGE）：候选人信息 + 身份证补录 + 面试/审批操作 -->
+        <template v-else-if="section === 'recruit'">
+          <div class="drawer-fields">
+            <div>
+              <span>姓名</span
+              ><strong>{{ (selected as unknown as RecruitingApplication).name }}</strong>
+            </div>
+            <div>
+              <span>手机号</span
+              ><strong
+                ><a
+                  :href="`tel:${(selected as unknown as RecruitingApplication).phone}`"
+                  >{{ (selected as unknown as RecruitingApplication).phone }}</a
+                ></strong
+              >
+            </div>
+            <div>
+              <span>校区</span
+              ><strong>{{
+                (selected as unknown as RecruitingApplication).campusName || "—"
+              }}</strong>
+            </div>
+            <div>
+              <span>报名楼栋</span
+              ><strong>{{ (selected as unknown as RecruitingApplication).buildingName }}</strong>
+            </div>
+            <div>
+              <span>状态</span
+              ><strong
+                ><span
+                  class="status"
+                  :class="
+                    RECRUIT_STATUS_CLASS[(selected as unknown as RecruitingApplication).status]
+                  "
+                  >{{
+                    RECRUIT_STATUS_LABEL[(selected as unknown as RecruitingApplication).status]
+                  }}</span
+                ></strong
+              >
+            </div>
+            <div>
+              <span>报名时间</span
+              ><strong>{{ display(selected, "createdAt") }}</strong>
+            </div>
+            <div v-if="(selected as unknown as RecruitingApplication).staffNo">
+              <span>实习楼长工号</span
+              ><strong>{{
+                (selected as unknown as RecruitingApplication).staffNo
+              }}</strong>
+            </div>
+            <div
+              v-if="(selected as unknown as RecruitingApplication).status === 'rejected'"
+              class="wide"
+            >
+              <span>拒绝原因</span
+              ><strong class="desc-full">{{
+                (selected as unknown as RecruitingApplication).rejectReason || "—"
+              }}</strong>
+            </div>
+            <div class="wide">
+              <span>自我介绍 / 备注</span
+              ><strong class="desc-full">{{
+                (selected as unknown as RecruitingApplication).note || "—"
+              }}</strong>
+            </div>
+          </div>
+          <!-- 身份证补录（IKEAGE：线下收集后代录，C 端不采集；终态只读不隐——可继续补档） -->
+          <div v-if="canWriteSection" class="recruit-docs">
+            <p class="proof-label">身份证资料补录（线下收集后代录）</p>
+            <label
+              >身份证号
+              <input
+                v-model="recruitEdit.idCardNo"
+                maxlength="18"
+                placeholder="身份证号（选填）"
+            /></label>
+            <label
+              >运营备注
+              <input
+                v-model="recruitEdit.note"
+                maxlength="200"
+                placeholder="面试评价等（选填）"
+            /></label>
+            <div class="recruit-docs__images">
+              <span class="field-label">身份证照片</span>
+              <ProductImagesField v-model="recruitEdit.idCardImages" folder="recruit" />
+            </div>
+            <button
+              class="btn ghost"
+              type="button"
+              @click="saveRecruitDocs"
+            >
+              保存资料
+            </button>
+          </div>
+          <!-- 面试/审批操作（按状态出；两击确认防误创建账号） -->
+          <div
+            v-if="
+              canWriteSection &&
+              ['pending', 'interviewing'].includes(
+                (selected as unknown as RecruitingApplication).status,
+              )
+            "
+            class="drawer-actions wrap"
+          >
+            <button
+              v-if="(selected as unknown as RecruitingApplication).status === 'pending'"
+              class="btn primary"
+              type="button"
+              @click="recruitDoTransition"
+            >
+              标记面试中
+            </button>
+            <button class="btn primary" type="button" @click="recruitDoApprove">
+              {{ recruitApproveArmed ? "确认创建实习楼长账号？" : "通过并创建实习楼长" }}
+            </button>
+            <button class="btn danger" type="button" @click="openRecruitRejectForm">
+              拒绝
+            </button>
           </div>
         </template>
         <!-- 群码详情（IKAJSY）：大图预览 + 替换/删除 -->

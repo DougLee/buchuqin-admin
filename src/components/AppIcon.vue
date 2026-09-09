@@ -7,6 +7,9 @@ const paths: Record<string, string> = {
   inventory: "M3 6h18v14H3zM7 6V3h10v3M8 11h8M8 15h5",
   staff:
     "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  // IKEAGE 楼长招募：人员 + 添加（招募进来）
+  recruit:
+    "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M19 8v6M22 11h-6",
   after:
     "M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h7M16 2h6v6M10 14L22 2",
   finance: "M3 6h18M5 6l1-3h12l1 3M5 10v8M10 10v8M15 10v8M20 10v8M3 21h18",

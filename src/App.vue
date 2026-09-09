@@ -151,6 +151,8 @@ const campusGroups = [
     label: "组织管理",
     items: [
       ["/staff", "staff", "履约人员"],
+      // IKEAGE：楼长招募（报名→面试→审批→实习楼长）
+      ["/recruit", "recruit", "楼长招募"],
       ["/buildings", "buildings", "楼栋管理"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
@@ -196,6 +198,7 @@ const groups = computed(() => {
           ...group,
           items: [
             ["/staff", "staff", "履约人员"],
+            ["/recruit", "recruit", "楼长招募"],
             ["/campuses", "campus", "校区管理"],
             ["/buildings", "buildings", "楼栋管理"],
             ["/users", "staff", "C端用户"],

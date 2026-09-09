@@ -29,6 +29,7 @@ import type {
   PageQuery,
   Product,
   Promotion,
+  RecruitingApplication,
   Room,
   RoomImportResult,
   Settlement,
@@ -753,6 +754,49 @@ export const api = {
     }),
   deleteBanner: (id: string) =>
     request<Banner>(`/admin/banners/${id}`, { method: "DELETE" }),
+  /* ---------- 楼长招募（IKEAGE）：报名审批全流程 ---------- */
+  /** 报名列表（status 过滤即状态 Tab；keyword 搜姓名/手机号；campus 跨校区筛选）。 */
+  recruitApplications: (query?: ListQuery, status?: string) =>
+    request<PagedResponse<RecruitingApplication>>(
+      `/admin/recruit-applications${withQuery(
+        status ? `status=${encodeURIComponent(status)}` : "",
+        listQuery(query),
+      )}`,
+    ),
+  /** 状态 Tab 角标：原始状态→数量。 */
+  recruitStatusCounts: (campusId?: string) =>
+    request<Record<string, number>>(
+      `/admin/recruit-applications/status-counts${withQuery(
+        campusId ? `campus=${encodeURIComponent(campusId)}` : "",
+      )}`,
+    ),
+  /** 身份证等资料补录（IKEAGE：运营线下收集后代录，C 端不采集）。 */
+  updateRecruitApplication: (
+    id: string,
+    data: { idCardNo?: string; idCardImages?: string[]; note?: string },
+  ) =>
+    request<RecruitingApplication>(`/admin/recruit-applications/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  /** pending → interviewing（标记面试中）。 */
+  recruitTransition: (id: string) =>
+    request<RecruitingApplication>(
+      `/admin/recruit-applications/${id}/transition`,
+      { method: "POST" },
+    ),
+  /** 拒绝报名：原因必填（C 端进度页展示）。 */
+  rejectRecruit: (id: string, reason: string) =>
+    request<RecruitingApplication>(
+      `/admin/recruit-applications/${id}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    ),
+  /** 通过并自动创建实习楼长（工号 IBM-xxx，骑手小程序工号+姓名登录）。 */
+  approveRecruit: (id: string) =>
+    request<{
+      application: RecruitingApplication;
+      staff: { id: string; staffNo: string; name: string };
+    }>(`/admin/recruit-applications/${id}/approve`, { method: "POST" }),
   /** 促销活动（ADR-0006 / IKAHFF）：price 为促销价（分），无删除（留审计）。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗判定）。 */
   promotions: (query?: ListQuery, state?: string) =>

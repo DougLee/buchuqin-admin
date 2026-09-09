@@ -1028,6 +1028,15 @@ td {
   background: #fff0dc;
   color: #a95c20;
 }
+/* IKEAGE 招募状态：面试中（进行态蓝）/ 已拒绝（终止态红） */
+.status.info {
+  background: #e8f1fd;
+  color: #1d5fbf;
+}
+.status.danger {
+  background: #fdeeee;
+  color: #b33a3a;
+}
 .live {
   color: #158950;
   font-size: 9px;

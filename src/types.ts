@@ -197,6 +197,32 @@ export interface Banner {
   status: string;
 }
 
+/** 楼长招募报名（IKEAGE）：C 端报名 → 后台联系面试/补录身份证 → 审批通过创建实习楼长 */
+export interface RecruitingApplication {
+  id: string;
+  campusId: string;
+  /** 后端列表附带（跨校区视角辨识） */
+  campusName?: string;
+  buildingId: string;
+  buildingName: string;
+  name: string;
+  phone: string;
+  /** 报名备注（候选人自我介绍） */
+  note: string;
+  /** pending 待联系 | interviewing 面试中 | approved 已通过 | rejected 已拒绝 */
+  status: "pending" | "interviewing" | "approved" | "rejected";
+  /** 拒绝原因（C 端进度页可见） */
+  rejectReason: string;
+  /** 身份证号（运营线下收集后台代录，C 端不采集） */
+  idCardNo: string;
+  /** 身份证照片 URL 数组（后台代录） */
+  idCardImages: string[] | null;
+  /** approved 时附带：创建的实习楼长工号（骑手小程序登录凭证） */
+  staffNo?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 /** 校区打印机（IKBW0Q）：一校区一台小票机（芯烨云终端）。 */
 export interface Printer {
   id: string;
@@ -606,6 +632,8 @@ export type AdminRow =
   | AfterSale
   | Campus
   | WechatGroup
+  /* IKEAGE：楼长招募报名行 */
+  | RecruitingApplication
   /* 扁平化视图行 */
   | LeaveRow
   | DispatchRow

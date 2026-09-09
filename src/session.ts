@@ -41,6 +41,8 @@ const ALL_SECTIONS = [
   "marketing",
   "finance",
   "audit",
+  // IKEAGE：楼长招募（运营域，与后端 recruit 板块同口径——admin/operations 可见可写）
+  "recruit",
 ];
 
 /** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
