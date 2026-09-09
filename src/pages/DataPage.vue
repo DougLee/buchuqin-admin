@@ -1852,6 +1852,14 @@ function bannerPayload(d: Record<string, FormValue>) {
     detailImage: String(d.detailImage ?? "").trim(),
     content: "",
     placement: String(d.placement || "home"),
+    // IKE9YC：自定义路径优先于常用页下拉；none 统一提交空串（编辑保存即清空）
+    ...(String(d.linkType) === "page"
+      ? {
+          linkType: "page",
+          linkUrl:
+            String(d.linkUrl ?? "").trim() || String(d.linkPage ?? "").trim(),
+        }
+      : { linkType: "none", linkUrl: "" }),
     sort: Number(d.sort ?? 0),
   };
 }
@@ -1880,6 +1888,39 @@ const BANNER_PLACEMENT_FIELD: FieldDef = {
     { value: "home", label: "首页轮播" },
     { value: "pay-success", label: "支付成功页" },
   ],
+};
+/** IKE9YC 站内跳转常用页（运营零门槛；tab 页 C 端自动 switchTab）。 */
+const BANNER_LINK_PAGES = [
+  { value: "pages/coupons/index", label: "优惠券中心（领券）" },
+  { value: "pages/orders/index", label: "我的订单" },
+  { value: "pages/address/index", label: "寝室地址" },
+  { value: "pages/category/index", label: "全部商品（分类）" },
+  { value: "pages/cart/index", label: "购物车" },
+  { value: "pages/profile/index", label: "我的" },
+  { value: "pages/campus/index", label: "楼栋选择" },
+];
+/** IKE9YC 点击跳转：配置后 C 端点击优先跳转，不再走图文详情。 */
+const BANNER_LINK_TYPE_FIELD: FieldDef = {
+  key: "linkType",
+  label: "点击跳转",
+  type: "select",
+  options: () => [
+    { value: "none", label: "不跳转（默认，点击走图文详情）" },
+    { value: "page", label: "跳转站内页面" },
+  ],
+};
+const BANNER_LINK_PAGE_FIELD: FieldDef = {
+  key: "linkPage",
+  label: "常用页面",
+  type: "select",
+  options: () => BANNER_LINK_PAGES,
+  visible: (d) => d.linkType === "page",
+};
+const BANNER_LINK_URL_FIELD: FieldDef = {
+  key: "linkUrl",
+  label: "自定义路径（选填，填了优先于常用页面）",
+  placeholder: "支持带参，如 pages/product/detail?id=xxx",
+  visible: (d) => d.linkType === "page",
 };
 /** IKB5PB：placement 默认值——支付广告位菜单新建默认 pay-success，其余默认 home。
  *  IKBW0A：投放范围选择已从表单移除，归属校区由后端按操作者本校区落库。 */
@@ -1920,12 +1961,15 @@ function openBannerCreate(defaultPlacement = "home") {
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_DETAIL_IMAGE_FIELD,
+        BANNER_LINK_TYPE_FIELD,
+        BANNER_LINK_PAGE_FIELD,
+        BANNER_LINK_URL_FIELD,
       ],
       save: async (d) => {
         void (await api.createBanner(bannerPayload(d)));
       },
     },
-    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, sort: 0, image: "", detailImage: "" },
+    { title: "", subtitle: "", badge: "", color: "green", placement: defaultPlacement, sort: 0, image: "", detailImage: "", linkType: "none", linkPage: "", linkUrl: "" },
   );
 }
 function openBannerEdit(row: AdminRow) {
@@ -1955,6 +1999,9 @@ function openBannerEdit(row: AdminRow) {
         { key: "sort", label: "排序（越小越靠前）", type: "number" },
         BANNER_IMAGE_FIELD,
         BANNER_DETAIL_IMAGE_FIELD,
+        BANNER_LINK_TYPE_FIELD,
+        BANNER_LINK_PAGE_FIELD,
+        BANNER_LINK_URL_FIELD,
         {
           key: "status",
           label: "状态",
@@ -1981,6 +2028,14 @@ function openBannerEdit(row: AdminRow) {
       sort: Number(record.sort ?? 0),
       image: record.image ?? "",
       detailImage: record.detailImage ?? "",
+      // IKE9YC：linkUrl 恰为常用页之一 → 下拉预选；否则进自定义框
+      linkType: record.linkType ?? "none",
+      linkPage: BANNER_LINK_PAGES.some((p) => p.value === record.linkUrl)
+        ? (record.linkUrl as string)
+        : "",
+      linkUrl: BANNER_LINK_PAGES.some((p) => p.value === record.linkUrl)
+        ? ""
+        : (record.linkUrl ?? ""),
       status: record.status,
     },
   );
@@ -3249,6 +3304,12 @@ const bannerConfig: SectionConfig = {
         ...b,
         // IKC1AD：详情改长图口径，列表显示配置状态
         detailText: b.detailImage ? "已配置" : "—",
+        // IKE9YC：跳转目标（常用页显示中文名，自定义路径原样）
+        linkText:
+          b.linkType === "page" && b.linkUrl
+            ? BANNER_LINK_PAGES.find((p) => p.value === b.linkUrl)?.label ??
+              b.linkUrl
+            : "—",
         placementText: BANNER_PLACEMENT_TEXT[b.placement ?? "home"] ?? b.placement,
       })),
       total: res.total,
@@ -3266,6 +3327,7 @@ const bannerConfig: SectionConfig = {
     ["badge", "角标"],
     ["color", "主题色"],
     ["detailText", "详情长图"],
+    ["linkText", "点击跳转"],
     ["sort", "排序"],
     ["status", "状态"],
   ],

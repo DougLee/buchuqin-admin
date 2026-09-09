@@ -189,6 +189,10 @@ export interface Banner {
   content?: string | null;
   /** 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位。 */
   placement?: "home" | "pay-success";
+  /** 点击跳转（IKE9YC）：none 无 / page 站内页面；配置后优先于图文详情。 */
+  linkType?: "none" | "page";
+  /** 站内页面路径（支持带参，如 pages/product/detail?id=xxx）。 */
+  linkUrl?: string;
   sort: number;
   status: string;
 }
