@@ -4527,6 +4527,13 @@ async function submitImport() {
     };
     importSelected.value = [];
     notify(`已导入 ${res.importedCount} 个商品（初始下架零库存，备货后上架）`);
+    // 道哥 2026-09-10：导入成功即刷新弹窗列表——后端已过滤本校区已导入商品，
+    // 刷新后刚导入的自动消失，无需关弹窗重开。当前页被清空时回退一页。
+    await loadImportRows();
+    if (!importRows.value.length && importPage.value > 1) {
+      importPage.value -= 1;
+      await loadImportRows();
+    }
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "导入失败", true);
