@@ -4089,6 +4089,9 @@ const STATUS_TEXT: Record<string, string> = {
   confirmed: "已确认",
   paid: "已打款",
   active: "启用",
+  // inactive：校区停用值（UpdateCampusDto active|inactive）——此前表里漏了，
+  // 校区管理列表停用行原样显示英文（道哥 2026-09-14 截图反馈）
+  inactive: "已停用",
   paused: "已暂停",
   disabled: "已停用",
   hidden: "已隐藏",
