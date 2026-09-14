@@ -933,7 +933,13 @@ export const api = {
   printers: () => request<Printer[]>("/admin/printers"),
   /** 绑定/换绑（upsert 本校区记录；后端先把终端加进芯烨云账号）。
    *  IKC3FF：芯烨云无按台密钥，只凭 SN。 */
-  bindPrinter: (data: { name: string; sn: string; copies?: number }) =>
+  bindPrinter: (data: {
+    name: string;
+    sn: string;
+    copies?: number;
+    /** 联间发送间隔秒数（IKFFHO）：0=连续；1-5 逐联推送。 */
+    copiesGapSeconds?: number;
+  }) =>
     request<Printer>("/admin/printers", {
       method: "POST",
       body: JSON.stringify(data),

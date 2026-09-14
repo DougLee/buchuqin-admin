@@ -4865,6 +4865,23 @@ function openPrinterBind(row?: Printer) {
             { value: "3", label: "3 联（商家联 + 客户联 + 骑手联）" },
           ],
         },
+        // IKFFHO：多联时两联之间的发送间隔——0=连续出纸（单次推送拼联，
+        // 现状）；1-5 秒逐联推送（上一联受理后等 N 秒，留手撕/取联时间）
+        {
+          key: "copiesGapSeconds",
+          label: "联间间隔",
+          type: "select",
+          wide: true,
+          optional: true,
+          options: () => [
+            { value: "0", label: "0 秒（连续出纸）" },
+            { value: "1", label: "间隔 1 秒" },
+            { value: "2", label: "间隔 2 秒" },
+            { value: "3", label: "间隔 3 秒" },
+            { value: "4", label: "间隔 4 秒" },
+            { value: "5", label: "间隔 5 秒" },
+          ],
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写名称");
@@ -4873,10 +4890,16 @@ function openPrinterBind(row?: Printer) {
           name: String(d.name).trim(),
           sn: String(d.sn).trim(),
           copies: Number(d.copies || 1),
+          copiesGapSeconds: Number(d.copiesGapSeconds || 0),
         });
       },
     },
-    { name: row?.name ?? "", sn: row?.sn ?? "", copies: String(row?.copies ?? 1) },
+    {
+      name: row?.name ?? "",
+      sn: row?.sn ?? "",
+      copies: String(row?.copies ?? 1),
+      copiesGapSeconds: String(row?.copiesGapSeconds ?? 0),
+    },
   );
 }
 /** 联数展示文案（IKD6H4）：1/2/3 联含义与绑定表单一致。 */
@@ -5516,6 +5539,15 @@ async function cancelInviteRow(row: AdminRow) {
             <div>
               <span>打印联数</span
               ><strong>{{ printerCopiesLabel(filtered[0] as Printer) }}</strong>
+            </div>
+            <!-- IKFFHO：联间发送间隔（仅多联时有意义，单联显示 0 秒亦无妨） -->
+            <div>
+              <span>联间间隔</span
+              ><strong>{{
+                (filtered[0] as Printer).copiesGapSeconds
+                  ? `${(filtered[0] as Printer).copiesGapSeconds} 秒`
+                  : "连续出纸"
+              }}</strong>
             </div>
             <div>
               <span>绑定时间</span
