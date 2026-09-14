@@ -237,7 +237,7 @@ export interface Printer {
   key: string;
   /** 小票联数（IKCZOX）：1=单联无联名；2=商家联+骑手联；3=再加用户联。 */
   copies: number;
-  /** 联间发送间隔秒数（IKFFHO）：0=连续出纸（单次 POST 拼联）；1-5 逐联推送。 */
+  /** 联间发送间隔秒数（IKFFHO）：0=连续出纸（单次 POST 拼联）；1-10 逐联推送。 */
   copiesGapSeconds: number;
   status: string;
   createdAt: string;

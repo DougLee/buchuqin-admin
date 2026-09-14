@@ -4866,7 +4866,7 @@ function openPrinterBind(row?: Printer) {
           ],
         },
         // IKFFHO：多联时两联之间的发送间隔——0=连续出纸（单次推送拼联，
-        // 现状）；1-5 秒逐联推送（上一联受理后等 N 秒，留手撕/取联时间）。
+        // 现状）；1-10 秒逐联推送（上一联受理后等 N 秒，留手撕/取联时间）。
         // 仅 2/3 联显示（道哥 2026-09-14）：单联无联间概念
         {
           key: "copiesGapSeconds",
@@ -4882,6 +4882,11 @@ function openPrinterBind(row?: Printer) {
             { value: "3", label: "间隔 3 秒" },
             { value: "4", label: "间隔 4 秒" },
             { value: "5", label: "间隔 5 秒" },
+            { value: "6", label: "间隔 6 秒" },
+            { value: "7", label: "间隔 7 秒" },
+            { value: "8", label: "间隔 8 秒" },
+            { value: "9", label: "间隔 9 秒" },
+            { value: "10", label: "间隔 10 秒" },
           ],
         },
       ],

@@ -937,7 +937,7 @@ export const api = {
     name: string;
     sn: string;
     copies?: number;
-    /** 联间发送间隔秒数（IKFFHO）：0=连续；1-5 逐联推送。 */
+    /** 联间发送间隔秒数（IKFFHO）：0=连续；1-10 逐联推送。 */
     copiesGapSeconds?: number;
   }) =>
     request<Printer>("/admin/printers", {
