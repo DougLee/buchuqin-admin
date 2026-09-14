@@ -4718,10 +4718,18 @@ async function saveProduct() {
     scanError.value = "请填写商品名称";
     return;
   }
+  // 条码选填（IKFQQ0）：填了才校验 8-14 位数字，空值以 undefined 提交
+  // （axios 序列化丢弃该字段 → 后端落 null，同校区可多个无码商品）
+  const barcode = productForm.value.barcode.trim();
+  if (barcode && !/^\d{8,14}$/.test(barcode)) {
+    scanError.value = "条码必须是 8-14 位数字，或留空";
+    return;
+  }
   try {
     // 价格表单输元，提交前统一转分（IKC1AC：三层价格一并转分）
     await api.createProduct({
       ...productForm.value,
+      barcode: barcode || undefined,
       price: yuanToFen(productForm.value.price),
       originalPrice: yuanToFen(productForm.value.originalPrice),
       costPrice: yuanToFen(productForm.value.costPrice),
@@ -7302,7 +7310,7 @@ async function cancelInviteRow(row: AdminRow) {
             v-model.trim="productForm.barcode"
             inputmode="numeric"
             maxlength="14"
-            placeholder="也可以使用扫码枪或手工输入条码"
+            placeholder="条码选填；扫码枪/手工输入 8-14 位数字"
             @keyup.enter="lookup"
           /><button class="btn ghost" @click="lookup">查询</button>
         </div>
