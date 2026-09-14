@@ -429,18 +429,14 @@ async function onRoomsImportFile(event: Event) {
 
 /* ---------- 员工账号 ---------- */
 // IKEAGE：实习楼长（招募审批自动创建，与楼长同权），排序跟在「楼长」后。
-// 仅进筛选与编辑口径——新增表单不给手建：后端 createStaff/updateStaff 的
-// roleText 三元只认 楼长/全职/兼职，手建实习楼长会落成「兼职配送员」脏数据
+// 2026-09-14 道哥放开手建：新增表单与编辑同口径用 ROLE_OPTIONS，
+// 后端 createStaff/updateStaff 已兼容 roleText 与楼栋绑定校验
 const ROLE_OPTIONS = [
   { value: "building-manager", label: "楼长" },
   { value: "intern-building-manager", label: "实习楼长" },
   { value: "fulltime-rider", label: "全职配送员" },
   { value: "parttime-rider", label: "兼职配送员" },
 ];
-/** 新增员工可选角色：实习楼长只能经招募审批产出（IKEAGE），不开放手建 */
-const STAFF_CREATE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
-  (r) => r.value !== "intern-building-manager",
-);
 function staffPayload(d: Record<string, FormValue>) {
   // IKBW0E：payload 需容纳显式 null（清空楼栋绑定），故放宽为 FormValue | null
   const payload: Record<string, FormValue | null> = {
@@ -449,23 +445,24 @@ function staffPayload(d: Record<string, FormValue>) {
     staffNo: String(d.staffNo || "").trim(),
     status: String(d.status || "online"),
   };
-  // IK9U3Y：楼栋仅楼长角色携带；骑手不绑楼栋（后端同样校验）。
+  // IK9U3Y：楼栋仅楼长系角色（楼长/实习楼长）携带；骑手不绑楼栋（后端同样校验）。
   // IKBW0E：清空绑定必须显式传 null——省略字段会被后端视为「未修改」，
   // 造成保存假成功、原绑定实际未解除
-  if (d.role === "building-manager")
+  if (d.role === "building-manager" || d.role === "intern-building-manager")
     payload.buildingId = d.buildingId ? d.buildingId : null;
   return payload;
 }
-/** IK9U3Y：绑定楼栋仅楼长可见——配送员系统派单、不绑特定楼栋。
- *  IKBW0E：楼长可清空绑定解绑（后端置「待分配」，一楼一在职楼长校验不变）。 */
+/** IK9U3Y：绑定楼栋仅楼长系（楼长/实习楼长）可见——配送员系统派单、不绑特定楼栋。
+ *  IKBW0E：楼长可清空绑定解绑（后端置「待分配」；一楼一在职楼长仅约束正式楼长）。 */
 const STAFF_BUILDING_FIELD: FieldDef = {
   key: "buildingId",
-  label: "绑定楼栋（一楼一在职楼长；清空保存=解绑为待分配）",
+  label: "绑定楼栋（一楼一在职楼长、实习楼长可共存；清空保存=解绑为待分配）",
   type: "select",
   wide: true,
   optional: true,
   options: buildingOptions,
-  visible: (d) => d.role === "building-manager",
+  visible: (d) =>
+    d.role === "building-manager" || d.role === "intern-building-manager",
 };
 function openStaffCreate() {
   void ensureBuildings();
@@ -478,8 +475,7 @@ function openStaffCreate() {
       fields: [
         { key: "name", label: "姓名", placeholder: "真实姓名" },
         { key: "staffNo", label: "工号", placeholder: "例如：BM-006" },
-        // 实习楼长不进新增表单（见 STAFF_CREATE_ROLE_OPTIONS 注释）
-        { key: "role", label: "角色", type: "select", options: () => STAFF_CREATE_ROLE_OPTIONS },
+        { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
         // IKD7TL：状态紧跟角色同行（绑定楼栋 wide 字段随后独占一行）
         { key: "status", label: "状态", type: "select", options: () => [
           { value: "online", label: "在职" },
