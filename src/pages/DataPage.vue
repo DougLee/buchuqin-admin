@@ -6564,7 +6564,11 @@ async function cancelInviteRow(row: AdminRow) {
             </button>
           </div>
         </template>
-        <div v-else class="drawer-fields">
+        <div
+          v-else
+          class="drawer-fields"
+          :class="{ 'drawer-fields--three': section === 'orders' || section === 'warehouse-orders' }"
+        >
           <template v-if="isProductsSection && canWriteSection"
             ><!-- IKDEP0：商品图区——主图+详情多图，点击看大图；未配图给占位 -->
             <div class="product-hero">
