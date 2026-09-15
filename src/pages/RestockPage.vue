@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
   api,
 } from "../api";
-import { canWrite, role } from "../session";
+import { canSee, canWrite, role } from "../session";
 import type {
   RestockBatch,
   RestockOrder,
+  RestockOrderLine,
+  RestockShipmentDetail,
 } from "../types";
 import { fenToYuan } from "../utils/money";
 import { fmtDateTime } from "../utils/datetime";
@@ -45,13 +48,18 @@ const ORDER_STATUS_TEXT: Record<RestockOrder["status"], string> = {
   submitted: "待审核",
   confirmed: "已确认",
   rejected: "已驳回",
+  shipped: "已发货",
+  received: "已到货",
 };
 const ORDER_STATUS_CLASS: Record<RestockOrder["status"], string> = {
   draft: "",
   submitted: "warning",
   confirmed: "success",
   rejected: "danger",
+  shipped: "info",
+  received: "success",
 };
+const router = useRouter();
 
 async function loadBatches() {
   loading.value = true;
@@ -294,6 +302,83 @@ async function withdrawMyOrder() {
     alert(e instanceof Error ? e.message : "操作失败");
   }
 }
+
+/* ---------- 分拨发货（IKFOQ2 grilling 定版）：总部发货+发货单查看+校区确认到货 ---------- */
+const shipDrawer = ref(false);
+const shipSaving = ref(false);
+const shipTarget = ref<RestockOrder | null>(null);
+/** 发货核对行明细（整单发不拆包；数量不可改） */
+const shipLines = ref<RestockOrderLine[]>([]);
+async function openShip(order: RestockOrder) {
+  shipTarget.value = order;
+  shipLines.value = [];
+  shipDrawer.value = true;
+  try {
+    const detail = await api.restockOrderDetail(order.id);
+    shipLines.value = detail.items ?? [];
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "加载订货单明细失败");
+  }
+}
+async function submitShip() {
+  if (!shipTarget.value) return;
+  shipSaving.value = true;
+  try {
+    await api.shipRestockOrder(shipTarget.value.id);
+    shipDrawer.value = false;
+    refresh();
+    if (detail.value) detail.value = await api.restockBatchDetail(detail.value.id);
+  } catch (e) {
+    // 库存不足拦截（含缺货数量）原样透出
+    alert(e instanceof Error ? e.message : "发货失败");
+  } finally {
+    shipSaving.value = false;
+  }
+}
+const shipmentDrawer = ref(false);
+const shipment = ref<RestockShipmentDetail | null>(null);
+async function openShipment(orderId: string) {
+  shipmentDrawer.value = true;
+  shipment.value = null;
+  try {
+    shipment.value = await api.restockShipmentDetail(orderId);
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "加载发货单失败");
+  }
+}
+/** 追溯：发货单 → 本批次详情 */
+function gotoBatch() {
+  if (!shipment.value) return;
+  shipmentDrawer.value = false;
+  tab.value = "batches";
+  openBatchDetail({ id: shipment.value.batchId } as RestockBatch);
+}
+/** 追溯：发货单 → 采购管理（批次同源；无采购菜单角色不显示） */
+function gotoPurchase() {
+  shipmentDrawer.value = false;
+  router.push("/purchase");
+}
+/** 校区确认到货：按发货数全额入账（grilling #3 不登记差异） */
+const receiptBusy = ref(false);
+async function confirmReceipt() {
+  if (!myOrder.value) return;
+  if (
+    !window.confirm(
+      "确认到货后库存按发货数全额入账（差异请线下核对登记），订货单随即完结。确认到货？",
+    )
+  )
+    return;
+  receiptBusy.value = true;
+  try {
+    await api.confirmRestockReceipt(myOrder.value.id);
+    orderDrawer.value = false;
+    refresh();
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "操作失败");
+  } finally {
+    receiptBusy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -369,9 +454,17 @@ async function withdrawMyOrder() {
                   <span
                     v-if="b.orderTotal"
                     class="status"
-                    :class="b.orderConfirmed ? 'success' : 'warning'"
+                    :class="b.orderShipped ? 'info' : b.orderConfirmed ? 'success' : 'warning'"
                   >
-                    {{ b.orderConfirmed ? "已确认" : "已提交" }}
+                    {{
+                      b.orderReceived
+                        ? "已到货"
+                        : b.orderShipped
+                          ? "已发货"
+                          : b.orderConfirmed
+                            ? "已确认"
+                            : "已提交"
+                    }}
                   </span>
                   <span v-else class="status">未填单</span>
                 </td>
@@ -491,6 +584,12 @@ async function withdrawMyOrder() {
                   <span class="status" :class="ORDER_STATUS_CLASS[o.status]">
                     {{ ORDER_STATUS_TEXT[o.status] }}
                   </span>
+                  <em v-if="o.shippedAt" class="ship-note">
+                    发 {{ fmtDateTime(o.shippedAt) }}
+                  </em>
+                  <em v-if="o.receivedAt" class="ship-note">
+                    收 {{ fmtDateTime(o.receivedAt) }}
+                  </em>
                 </td>
                 <td>
                   {{ o.totalCases ?? 0 }} 件<br />折算 {{ o.totalUnits ?? 0 }}
@@ -513,12 +612,18 @@ async function withdrawMyOrder() {
                   >
                     审核
                   </button>
+                  <template v-else-if="o.status === 'confirmed'">
+                    <button class="btn mini primary" @click="openShip(o)">发货</button>
+                    <button class="btn mini ghost danger-btn" @click="openAudit(o)">
+                      撤销确认
+                    </button>
+                  </template>
                   <button
-                    v-else-if="o.status === 'confirmed'"
-                    class="btn mini ghost danger-btn"
-                    @click="openAudit(o)"
+                    v-else-if="o.status === 'shipped' || o.status === 'received'"
+                    class="btn mini ghost"
+                    @click="openShipment(o.id)"
                   >
-                    撤销确认
+                    发货单
                   </button>
                   <span v-else>—</span>
                 </td>
@@ -639,12 +744,18 @@ async function withdrawMyOrder() {
                 >
                   审核
                 </button>
+                <template v-else-if="o.status === 'confirmed'">
+                  <button class="btn mini primary" @click="openShip(o)">发货</button>
+                  <button class="btn mini ghost danger-btn" @click="openAudit(o)">
+                    撤销确认
+                  </button>
+                </template>
                 <button
-                  v-else-if="o.status === 'confirmed'"
-                  class="btn mini ghost danger-btn"
-                  @click="openAudit(o)"
+                  v-else-if="o.status === 'shipped' || o.status === 'received'"
+                  class="btn mini ghost"
+                  @click="openShipment(o.id)"
                 >
-                  撤销确认
+                  发货单
                 </button>
               </div>
             </div>
@@ -736,7 +847,16 @@ async function withdrawMyOrder() {
             总部驳回：{{ myOrder?.auditNote }}（可修改后重新提交）
           </p>
           <p v-if="myOrder?.status === 'confirmed'" class="confirm-banner">
-            订货单已确认，等待总部发货（IKFOQ2 发货验收将在此页进行）。
+            订货单已确认，等待总部发货。
+          </p>
+          <!-- IKFOQ2：已发货横幅+确认到货入口；到货后按发货数全额入账 -->
+          <p v-if="myOrder?.status === 'shipped'" class="confirm-banner">
+            总部已发货{{ myOrder?.shippedAt ? `（${fmtDateTime(myOrder.shippedAt)}）` : "" }}，
+            货到核对后请点右下角「确认到货入账」。
+          </p>
+          <p v-if="myOrder?.status === 'received'" class="confirm-banner">
+            已确认到货{{ myOrder?.receivedAt ? `（${fmtDateTime(myOrder.receivedAt)}）` : "" }}，
+            库存已按发货数入账。
           </p>
           <div class="order-lines">
             <div v-for="i in orderDetail.items" :key="i.productId" class="order-line">
@@ -777,6 +897,12 @@ async function withdrawMyOrder() {
         <div v-else-if="myOrder?.status === 'submitted'" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
           <button class="btn danger-btn" @click="withdrawMyOrder">撤回订货单</button>
+        </div>
+        <div v-else-if="myOrder?.status === 'shipped'" class="drawer-actions">
+          <button class="btn ghost" @click="orderDrawer = false">关闭</button>
+          <button class="btn primary" :disabled="receiptBusy" @click="confirmReceipt">
+            {{ receiptBusy ? "入账中…" : "确认到货入账" }}
+          </button>
         </div>
         <div v-else class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
@@ -822,6 +948,93 @@ async function withdrawMyOrder() {
         </div>
       </div>
     </div>
+
+    <!-- 发货核对（IKFOQ2：整单发不拆包，数量不可改；库存不足后端拦截） -->
+    <div v-if="shipDrawer" class="drawer-mask" @click.self="shipDrawer = false">
+      <div class="drawer ship-drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">SHIPMENT</p>
+            <h2>确认发货</h2>
+            <p v-if="shipTarget" class="detail-window">
+              {{ shipTarget.campusShortName || shipTarget.campusName }} ·
+              {{ shipTarget.batchName }} · 共 {{ shipTarget.totalCases ?? 0 }} 件
+              (折算 {{ shipTarget.totalUnits ?? 0 }})
+            </p>
+          </div>
+          <button @click="shipDrawer = false">✕</button>
+        </div>
+        <p class="ship-tip">
+          整单一次发出（不拆包分批）：确认后总部仓库存由锁定转实扣，发货后订货单不可撤销；
+          校区确认到货后库存才入账。
+        </p>
+        <div class="ship-line ship-line-head">
+          <span>商品</span><span>件数</span><span>折算</span>
+        </div>
+        <div v-for="l in shipLines" :key="l.productId" class="ship-line">
+          <span class="ship-name">{{ l.product?.name }}</span>
+          <span>{{ caseText(l.cases, l.unitsPerCase) }}</span>
+          <span>{{ l.cases * l.unitsPerCase }} {{ l.product?.retailUnit || "个" }}</span>
+        </div>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="shipDrawer = false">取消</button>
+          <button class="btn primary" :disabled="shipSaving" @click="submitShip">
+            {{ shipSaving ? "发货中…" : "确认发货" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发货单详情（IKFOQ2：行快照价+发货/收货信息+全链路跳转） -->
+    <div v-if="shipmentDrawer" class="drawer-mask" @click.self="shipmentDrawer = false">
+      <div class="drawer ship-drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">SHIPMENT DETAIL</p>
+            <h2>发货单</h2>
+            <p v-if="shipment" class="detail-window">
+              {{ shipment.campusShortName || shipment.campusName }} · {{ shipment.batchName }}
+              <span
+                class="status"
+                :class="shipment.receivedAt ? 'success' : 'info'"
+                style="margin-left: 8px"
+              >
+                {{ shipment.receivedAt ? "已到货" : "已发货" }}
+              </span>
+            </p>
+          </div>
+          <button @click="shipmentDrawer = false">✕</button>
+        </div>
+        <template v-if="shipment">
+          <p class="ship-meta">
+            发货：{{ shipment.shippedByName || "—" }} ·
+            {{ fmtDateTime(shipment.shippedAt) }}<br />
+            到货：{{ shipment.receivedAt ? `${shipment.receivedByName || "—"} · ${fmtDateTime(shipment.receivedAt)}` : "待校区确认" }}
+            <template v-if="shipment.note"><br />备注：{{ shipment.note }}</template>
+          </p>
+          <div class="ship-line ship-line-head">
+            <span>商品</span><span>件数</span><span>进货价快照</span><span>批发价快照</span>
+          </div>
+          <div v-for="l in shipment.items" :key="l.productId" class="ship-line ship-line-4col">
+            <span class="ship-name">{{ l.name }}</span>
+            <span>{{ caseText(l.cases, l.unitsPerCase) }}</span>
+            <span>¥{{ fenToYuan(l.costPerCase) }}/件</span>
+            <span>¥{{ fenToYuan(l.wholesalePerCase) }}/件</span>
+          </div>
+          <p class="ship-tip">
+            快照价为总部账毛利（毛利②）数据源：进货价取本批次采购实际成交价（无采购单回退商品档案进货价），
+            批发价为发货时实时价。
+          </p>
+        </template>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="shipmentDrawer = false">关闭</button>
+          <button v-if="shipment" class="btn ghost" @click="gotoBatch">查看本批次</button>
+          <button v-if="shipment && canSee('purchase')" class="btn ghost" @click="gotoPurchase">
+            去采购管理
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -831,6 +1044,59 @@ async function withdrawMyOrder() {
 .audit-note {
   font-style: normal;
   color: #a95c20;
+}
+/* IKFOQ2：状态列发货/到货时间小字 */
+.ship-note {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: #7b8981;
+  margin-top: 2px;
+}
+/* 发货核对/发货单弹框行表 */
+.ship-drawer {
+  width: min(620px, 94vw);
+}
+.ship-tip {
+  margin: 12px 0;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #a95c20;
+  background: #fff0dc;
+  border-radius: 10px;
+}
+.ship-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 12px;
+  color: #37423c;
+}
+.ship-line-head {
+  border-bottom: 1px solid var(--line);
+  color: #7b8981;
+  font-weight: 600;
+  margin-top: 10px;
+  padding-bottom: 8px;
+}
+.ship-line-4col {
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) 100px 100px;
+}
+.ship-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #153628;
+  font-weight: 700;
+}
+.ship-meta {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #647169;
+  line-height: 1.7;
 }
 .empty-block {
   padding: 28px 0;

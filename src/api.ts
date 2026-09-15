@@ -32,6 +32,7 @@ import type {
   RestockBatch,
   RestockBatchProduct,
   RestockOrder,
+  RestockShipmentDetail,
   PurchaseOrderRow,
   PurchaseOrderDetail,
   BatchMarginSummary,
@@ -476,6 +477,21 @@ export const api = {
         body: JSON.stringify({ action, ...(note ? { note } : {}) }),
       },
     ),
+  /** 分拨发货（IKFOQ2）：整单发，锁定转实扣，库存不足后端拦截报缺货数量。 */
+  shipRestockOrder: (id: string, note?: string) =>
+    request<{ id: string; status: string }>(
+      `/admin/restock/orders/${id}/ship`,
+      { method: "POST", body: JSON.stringify(note ? { note } : {}) },
+    ),
+  /** 校区确认到货：按发货数全额入账（收货校区本人操作）。 */
+  confirmRestockReceipt: (id: string) =>
+    request<{ id: string; status: string }>(
+      `/admin/restock/orders/${id}/receipt`,
+      { method: "POST", body: "{}" },
+    ),
+  /** 发货单详情：行快照价+发货/收货信息。 */
+  restockShipmentDetail: (id: string) =>
+    request<RestockShipmentDetail>(`/admin/restock/orders/${id}/shipment`),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
   orderStatusCounts: (campusId?: string) =>
     request<Record<string, number>>(

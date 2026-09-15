@@ -805,6 +805,9 @@ export interface RestockBatch {
   phase: "upcoming" | "open" | "ended" | "closed";
   orderTotal?: number;
   orderConfirmed?: number;
+  /** IKFOQ2：最远进度统计（shipped 含 received） */
+  orderShipped?: number;
+  orderReceived?: number;
 }
 
 /** 批次可订商品（官方库行，含换算口径）。 */
@@ -837,7 +840,7 @@ export interface RestockOrderLine {
   >;
 }
 
-/** 订货单：一批次一校区一张；草稿→已提交→已确认/已驳回（可撤回/重提/撤销）。 */
+/** 订货单：一批次一校区一张；draft→submitted→confirmed→shipped→received（终态）。 */
 export interface RestockOrder {
   id: string;
   batchId: string;
@@ -846,7 +849,13 @@ export interface RestockOrder {
   campusId: string;
   campusName?: string;
   campusShortName?: string;
-  status: "draft" | "submitted" | "confirmed" | "rejected";
+  status:
+    | "draft"
+    | "submitted"
+    | "confirmed"
+    | "rejected"
+    | "shipped"
+    | "received";
   totalCases?: number;
   totalUnits?: number;
   itemCount?: number;
@@ -855,8 +864,43 @@ export interface RestockOrder {
   auditByName?: string;
   auditNote?: string;
   auditAt: string | null;
+  /** IKFOQ2：发货/到货时间摘要（未发货为 null） */
+  shippedAt?: string | null;
+  receivedAt?: string | null;
   updatedAt?: string;
   items?: RestockOrderLine[];
+}
+
+/* ---------- 发货单（IKFOQ2，2026-09-15 grilling 定版） ---------- */
+export interface RestockShipmentLine {
+  productId: string;
+  name: string;
+  image: string;
+  retailUnit?: string;
+  wholesaleUnit?: string;
+  cases: number;
+  unitsPerCase: number;
+  /** 进货价快照（分/件）：批次采购实际价优先，回退 costPrice */
+  costPerCase: number;
+  /** 批发价快照（分/件）：发货时实时价（毛利②数据源） */
+  wholesalePerCase: number;
+}
+export interface RestockShipmentDetail {
+  id: string;
+  orderId: string;
+  orderStatus: RestockOrder["status"];
+  batchId: string;
+  batchName: string;
+  campusName: string;
+  campusShortName: string;
+  note: string;
+  shippedByName: string;
+  shippedAt: string;
+  receivedByName: string;
+  receivedAt: string | null;
+  totalCases: number;
+  totalUnits: number;
+  items: RestockShipmentLine[];
 }
 
 /* ---------- 采购单（IKFOQ1，2026-09-15 grilling 定版） ---------- */
