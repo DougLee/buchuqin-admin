@@ -4879,7 +4879,10 @@ const orderMarginItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "orders" || !order?.items) return [];
   return order.items.map((line) => {
-    const wholesale = line.product?.unitWholesaleCost;
+    // IKFTK7：快照优先（精确）；快照前历史单回落当前批发价（标注「估算」）
+    const snapshot = line.product?.unitWholesaleCost;
+    const wholesale = snapshot ?? line.product?.currentUnitWholesaleCost;
+    const estimated = snapshot == null && wholesale != null;
     const price = line.product?.price ?? 0;
     return {
       name: line.product?.name ?? "未知商品",
@@ -4888,8 +4891,11 @@ const orderMarginItems = computed(() => {
       marginText:
         wholesale == null
           ? "—"
-          : `¥${fenToYuan((price - wholesale) * line.quantity)}`,
+          : `¥${fenToYuan((price - wholesale) * line.quantity)}${
+              estimated ? "（估算）" : ""
+            }`,
       hasMargin: wholesale != null,
+      estimated,
     };
   });
 });
@@ -6831,14 +6837,17 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（售价 − 支付时批发价快照，快照前历史单显示 —）</span
+              >订单明细毛利（售价 − 支付时批发价快照；快照前历史单按当前批发价估算）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
                 <span class="margin-name"
                   >{{ line.name }} × {{ line.quantity }}</span
                 >
-                <span class="margin-amount" :class="{ muted: !line.hasMargin }">
+                <span
+                  class="margin-amount"
+                  :class="{ muted: !line.hasMargin || line.estimated }"
+                >
                   售价 {{ line.priceText }} · 毛利
                   <strong>{{ line.marginText }}</strong></span
                 >
