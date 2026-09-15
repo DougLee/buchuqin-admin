@@ -1548,6 +1548,8 @@ interface SectionConfig {
   desc: string;
   loader: (query: ListQuery) => Promise<PageRows>;
   columns: [string, string][];
+  /** 详情抽屉字段卡顺序（IKFSZJ：三列网格按运营优先级重排）；缺省沿用 columns，列表列序不受影响。 */
+  detailOrder?: string[];
   /** 配置后工具栏下拉换成 Tab 行，过滤走服务端（逗号状态，页内不再二次筛）。 */
   statusTabs?: StatusTab[];
   /** Tab 角标计数来源（原始状态→数量，随 load() 刷新）。 */
@@ -1705,6 +1707,15 @@ const warehouseOrdersConfig: SectionConfig = {
     ["statusText", "状态"],
     ["payableAmount", "实付金额"],
     ["createdAt", "下单时间"],
+  ],
+  // IKFSZJ：详情三列——行1 编号/状态/件数，行2 库位/实付/时间；商品通栏
+  detailOrder: [
+    "orderNo",
+    "statusText",
+    "totalQuantity",
+    "locationText",
+    "payableAmount",
+    "createdAt",
   ],
 };
 
@@ -3039,6 +3050,15 @@ const configs: Record<string, SectionConfig> = {
       // IKC9M2：补下单时间列（格式化走 display 的 createdAt 统一分支）
       ["createdAt", "下单时间"],
     ],
+    // IKFSZJ 第二轮：详情三列按道哥指定顺序——行1 编号/状态/时效，行2 用户/实付/时间；商品通栏
+    detailOrder: [
+      "orderNo",
+      "statusText",
+      "slaText",
+      "userText",
+      "payableAmount",
+      "createdAt",
+    ],
   },
   users: usersConfig,
   "wechat-groups": wechatGroupsConfig,
@@ -4137,6 +4157,17 @@ function detailImages(p: Product): string[] {
   const list = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   const main = p.image || "";
   return list.filter((src) => src !== main);
+}
+/** IKFSZJ：详情字段卡按 detailOrder 重排（列表列序/CSV 导出不受影响）；
+     order 未覆盖的字段（如通栏的 itemsText）保持原序垫在最后 */
+function detailCols(cols: [string, string][], order?: string[]) {
+  if (!order) return cols;
+  const map = new Map(cols.map((c) => [c[0], c] as const));
+  const head = order
+    .map((k) => map.get(k))
+    .filter((c): c is [string, string] => Boolean(c));
+  const rest = cols.filter((c) => !order.includes(c[0]));
+  return [...head, ...rest];
 }
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
@@ -6779,9 +6810,13 @@ async function cancelInviteRow(row: AdminRow) {
                其余板块（orders/库存流水等无表单板块）保持只读卡详情 -->
           <template v-else
             ><div
-              v-for="col in config.columns"
+              v-for="col in detailCols(config.columns, config.detailOrder)"
               :key="col[0]"
-              :class="{ wide: section === 'orders' && col[0] === 'itemsText' }"
+              :class="{
+                wide:
+                  (section === 'orders' || section === 'warehouse-orders') &&
+                  col[0] === 'itemsText',
+              }"
             >
               <span>{{ col[1] }}</span
               ><strong
