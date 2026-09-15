@@ -1340,14 +1340,21 @@ async function toggleRule() {
 /* ---------- 库存：出入库操作 + 流水 ---------- */
 const productsCache = ref<Product[]>([]);
 async function ensureProducts() {
-  if (!productsCache.value.length)
+  // IKFOPY：选品上下文跟随库存板块选中的校区（hq 聚焦总部仓时即总部仓商品）；
+  // 校区角色 campusScope 恒本校区，行为不变。按校区分别缓存，切换不串列
+  const campus = campusScope() ?? "";
+  if (!productsCache.value.length || productsCacheCampus.value !== campus) {
     // IKCHEW 追修：促销选品/库存入库/盘点都是校区上下文操作，固定本校区口径——
     // admin 裸调 /admin/products 现默认官方库，选品错位会导致后端按本校区校验必败
-    productsCache.value = await fetchAllPages(
-      (query) => api.products(query, "campus"),
+    productsCache.value = await fetchAllPages((query) =>
+      api.products({ ...query, campusId: campus || undefined }, "campus"),
     );
+    productsCacheCampus.value = campus;
+  }
   return productsCache.value;
 }
+/** 选品缓存所属校区（IKFOPY）：切换校区筛选后强制重拉 */
+const productsCacheCampus = ref("");
 /** 促销选品专用（IKCJVS 续）：仅本校区在售商品——已下架不可建促销，
  *  与后端 createPromotion 的 status 校验同口径。库存入库/盘点仍用全量 ensureProducts。 */
 const onSaleProductsCache = ref<Product[]>([]);
@@ -1416,13 +1423,19 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
             isStockIn ? "入库数量必须大于 0" : "清点数量不能为负数",
           );
         if (isStockIn)
-          await api.stockIn({ productId: String(d.productId), quantity: qty, reason });
+          await api.stockIn(
+            { productId: String(d.productId), quantity: qty, reason },
+            campusScope(),
+          );
         else {
-          const res = await api.stocktake({
-            productId: String(d.productId),
-            countedQty: qty,
-            ...(reason ? { reason } : {}),
-          });
+          const res = await api.stocktake(
+            {
+              productId: String(d.productId),
+              countedQty: qty,
+              ...(reason ? { reason } : {}),
+            },
+            campusScope(),
+          );
           // 完成文案带回「账面→实际（差额）」结果（submitForm 持 meta 引用读 done）
           if (formMeta.value)
             formMeta.value.done = `账面 ${res.before} → 实际 ${
@@ -1561,7 +1574,10 @@ const inventoryTxnsConfig: SectionConfig = {
   eyebrow: "INVENTORY LEDGER",
   desc: "采购入库、盘点调整与订单出库的全部流水记录。",
   loader: (query) =>
-    api.inventoryTxns(undefined, query).then((res) => ({
+    // IKFOPY：hq 视角按校区筛选聚焦（含总部仓）
+    api
+      .inventoryTxns(undefined, { ...query, campusId: campusScope() })
+      .then((res) => ({
       rows: res.items.map(toTxnRow),
       total: res.total,
     })),
@@ -2591,15 +2607,21 @@ const hqCampusesConfig: SectionConfig = {
   // 非分页端点：全量拉取后前端切片分页（与群码同模式）
   loader: async (query) => {
     const all = await api.campuses();
+    // IKFOPY：标注校区类型——总部仓（type=hq）在列表可见可辨
+    const rows = all.map((x) => ({
+      ...x,
+      typeText: (x as Campus & { type?: string }).type === "hq" ? "总部仓" : "校区",
+    }));
     const start = (query.page - 1) * query.pageSize;
     return {
-      rows: all.slice(start, start + query.pageSize) as unknown as AdminRow[],
-      total: all.length,
+      rows: rows.slice(start, start + query.pageSize) as unknown as AdminRow[],
+      total: rows.length,
     };
   },
   columns: [
     ["name", "校区"],
     ["shortName", "简称"],
+    ["typeText", "类型"],
     ["warehouseName", "仓库"],
     ["status", "状态"],
     ["buildings", "楼栋数"],
@@ -3158,6 +3180,8 @@ const configs: Record<string, SectionConfig> = {
           ...query,
           // IKD6FG：分类筛选
           categoryId: categoryFilter.value || undefined,
+          // IKFOPY：hq 视角按校区筛选聚焦（含总部仓）
+          campusId: campusScope(),
         })
         .then((res) => ({
         rows: res.items.map((p) => ({
@@ -3727,7 +3751,8 @@ const campusFilterVisible = computed(() => {
   if (!isPlatformAdmin.value) return false;
   if (["orders", "users", "audit", "recruit"].includes(section.value))
     return true;
-  if (section.value === "inventory") return invTab.value === "requests";
+  // IKFOPY：库存板块全视图（总览/流水/采购申请）校区可筛选——聚焦总部仓复用仓储页
+  if (section.value === "inventory") return true;
   if (section.value === "marketing") return mktTab.value === "map";
   return false;
 });

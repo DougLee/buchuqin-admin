@@ -41,6 +41,8 @@ export interface PagedResponse<T> {
 
 export interface Campus {
   id: string;
+  /** IKFOPY：campus=普通校区；hq=总部仓（中转仓储，用户端屏蔽） */
+  type?: string;
   name: string;
   shortName: string;
   warehouseName: string;

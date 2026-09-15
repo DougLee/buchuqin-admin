@@ -327,26 +327,40 @@ export const api = {
     request<PagedResponse<InventoryTxn>>(
       `/admin/inventory/txns${withQuery(productId ? `productId=${productId}` : "", listQuery(query))}`,
     ),
-  stockIn: (data: { productId: string; quantity: number; reason: string }) =>
-    request<InventoryTxn>("/admin/inventory/stock-in", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  stockIn: (
+    data: { productId: string; quantity: number; reason: string },
+    // IKFOPY：平台视角入库须指定仓库（校区/总部仓），走 campusScope 序列化
+    campus?: string,
+  ) =>
+    request<InventoryTxn>(
+      `/admin/inventory/stock-in${withQuery(campus ? `campus=${encodeURIComponent(campus)}` : "")}`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
   adjustInventory: (data: { productId: string; delta: number; reason: string }) =>
     request<InventoryTxn>("/admin/inventory/adjust", {
       method: "POST",
       body: JSON.stringify(data),
     }),
   /** 盘点（IKD6FJ，原「盘点校准」）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。 */
-  stocktake: (data: {
-    productId: string;
-    countedQty: number;
-    reason?: string;
-  }) =>
-    request<StocktakeResult>("/admin/inventory/stocktake", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  stocktake: (
+    data: {
+      productId: string;
+      countedQty: number;
+      reason?: string;
+    },
+    // IKFOPY：平台视角盘点须指定仓库（校区/总部仓）
+    campus?: string,
+  ) =>
+    request<StocktakeResult>(
+      `/admin/inventory/stocktake${withQuery(campus ? `campus=${encodeURIComponent(campus)}` : "")}`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
   /** 采购申请列表（IKD6FJ）：全量数组（take 200 倒序，非分页信封）；hq 可带校区。 */
   purchaseRequests: (status?: string, campusId?: string) =>
     request<PurchaseRequest[]>(
