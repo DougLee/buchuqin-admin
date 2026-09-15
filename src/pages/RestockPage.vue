@@ -251,12 +251,11 @@ async function withdrawMyOrder() {
 </script>
 
 <template>
-  <div class="restock-page">
+  <div class="workspace">
     <header class="page-head">
       <div>
-        <p class="eyebrow">RESTOCK</p>
         <h1>订货管理</h1>
-        <p class="page-desc">
+        <p>
           {{
             isHqScope
               ? "开放订货批次，审核校区订货单；确认即锁定总部仓库存，发货转扣。"
@@ -265,164 +264,221 @@ async function withdrawMyOrder() {
         </p>
       </div>
       <div class="head-actions">
-        <div v-if="canManage" class="segmented">
-          <button :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
-            订货批次
-          </button>
-          <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">
-            全部订货单
-          </button>
-        </div>
         <button v-if="canManage && tab === 'batches'" class="btn primary" @click="openBatchForm()">
           <span>＋</span>新建批次
         </button>
       </div>
     </header>
 
-    <p v-if="error" class="load-error">{{ error }}</p>
-    <p v-if="loading" class="load-hint">加载中…</p>
+    <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar（DataPage 同款 segmented） -->
+    <div v-if="canManage" class="toolbar">
+      <div class="segmented inv-tabs">
+        <button :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
+          订货批次
+        </button>
+        <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">
+          全部订货单
+        </button>
+      </div>
+    </div>
 
-    <!-- 校区视角：批次卡片（窗口 + 我的单状态 + 填单入口） -->
-    <template v-if="!canManage">
-      <div v-if="!loading && !batches.length" class="empty-block">
-        <p>暂无订货批次，总部开放后这里会出现批次卡片。</p>
+    <p v-if="error" class="load-error">{{ error }}</p>
+
+    <!-- 校区视角：批次列表（窗口 + 我的单状态 + 填单入口），表格形态与全站一致 -->
+    <div v-if="!canManage" class="data-panel">
+      <div class="data-summary">
+        <div>
+          <strong>{{ batches.length }}</strong><span> 个批次</span>
+        </div>
+        <p><span class="live-dot"></span>数据已同步</p>
       </div>
-      <div class="batch-grid">
-        <article v-for="b in batches" :key="b.id" class="batch-card">
-          <div class="batch-card-head">
-            <h3>{{ b.name }}</h3>
-            <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
-          </div>
-          <p class="batch-window">
-            {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
-          </p>
-          <div class="batch-card-foot">
-            <span
-              v-if="b.orderTotal"
-              class="status"
-              :class="b.orderConfirmed ? 'success' : 'warning'"
-            >
-              我的订货单：{{ b.orderTotal ? (b.orderConfirmed ? "已确认" : "已提交") : "" }}
-            </span>
-            <span v-else class="status">未填单</span>
-            <button
-              class="btn ghost"
-              :disabled="b.phase !== 'open' && !b.orderTotal"
-              @click="openMyOrder(b)"
-            >
-              {{ b.orderTotal ? "查看订货单" : "填写订货单" }}
-            </button>
-          </div>
-        </article>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>批次名称</th>
+              <th>阶段</th>
+              <th>订货窗口</th>
+              <th>我的订货单</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading" v-for="i in 4" :key="i">
+              <td :colspan="5"><div class="row-skeleton"></div></td>
+            </tr>
+            <template v-else>
+              <tr v-if="!batches.length">
+                <td :colspan="5" class="empty-cell">暂无订货批次，总部开放后这里会出现批次。</td>
+              </tr>
+              <tr v-for="b in batches" :key="b.id">
+                <td><strong>{{ b.name }}</strong></td>
+                <td>
+                  <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
+                </td>
+                <td>{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</td>
+                <td>
+                  <span
+                    v-if="b.orderTotal"
+                    class="status"
+                    :class="b.orderConfirmed ? 'success' : 'warning'"
+                  >
+                    {{ b.orderConfirmed ? "已确认" : "已提交" }}
+                  </span>
+                  <span v-else class="status">未填单</span>
+                </td>
+                <td class="row-actions">
+                  <button
+                    class="btn mini primary"
+                    :disabled="b.phase !== 'open' && !b.orderTotal"
+                    @click="openMyOrder(b)"
+                  >
+                    {{ b.orderTotal ? "查看订货单" : "填写订货单" }}
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
       </div>
-    </template>
+    </div>
 
     <!-- 总部：批次表 -->
-    <div v-if="canManage && tab === 'batches'" class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>批次名称</th>
-            <th>阶段</th>
-            <th>订货窗口</th>
-            <th>订货单</th>
-            <th>创建人</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="b in batches" :key="b.id">
-            <td class="strong-cell">{{ b.name }}</td>
-            <td>
-              <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
-            </td>
-            <td class="muted-cell">
-              {{ fmtDateTime(b.startAt) }}<br />{{ fmtDateTime(b.endAt) }}
-            </td>
-            <td>
-              {{ b.orderTotal ?? 0 }} 单 / {{ b.orderConfirmed ?? 0 }} 已确认
-            </td>
-            <td>{{ b.createdByName || "—" }}</td>
-            <td class="op-cell">
-              <button class="btn ghost sm" @click="openBatchDetail(b)">详情</button>
-              <button
-                v-if="b.phase === 'upcoming' || b.phase === 'open'"
-                class="btn ghost sm"
-                @click="openBatchForm(b)"
-              >
-                编辑
-              </button>
-              <button
-                v-if="!b.closedAt"
-                class="btn ghost sm danger-btn"
-                @click="closeBatch(b)"
-              >
-                关闭
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="!loading && !batches.length" class="empty-block">还没有订货批次，点右上角「新建批次」开始。</p>
+    <div v-if="canManage && tab === 'batches'" class="data-panel">
+      <div class="data-summary">
+        <div>
+          <strong>{{ batches.length }}</strong><span> 个批次</span>
+        </div>
+        <p><span class="live-dot"></span>数据已同步</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>批次名称</th>
+              <th>阶段</th>
+              <th>订货窗口</th>
+              <th>订货单</th>
+              <th>创建人</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading" v-for="i in 4" :key="i">
+              <td :colspan="6"><div class="row-skeleton"></div></td>
+            </tr>
+            <template v-else>
+              <tr v-if="!batches.length">
+                <td :colspan="6" class="empty-cell">还没有订货批次，点右上角「新建批次」开始。</td>
+              </tr>
+              <tr v-for="b in batches" :key="b.id">
+                <td><strong>{{ b.name }}</strong></td>
+                <td>
+                  <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
+                </td>
+                <td>
+                  {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
+                </td>
+                <td>
+                  {{ b.orderTotal ?? 0 }} 单 / {{ b.orderConfirmed ?? 0 }} 已确认
+                </td>
+                <td>{{ b.createdByName || "—" }}</td>
+                <td class="row-actions">
+                  <button class="btn mini ghost" @click="openBatchDetail(b)">详情</button>
+                  <button
+                    v-if="b.phase === 'upcoming' || b.phase === 'open'"
+                    class="btn mini ghost"
+                    @click="openBatchForm(b)"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    v-if="!b.closedAt"
+                    class="btn mini ghost danger-btn"
+                    @click="closeBatch(b)"
+                  >
+                    关闭
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 总部：全部订货单 -->
-    <div v-if="canManage && tab === 'orders'" class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>批次</th>
-            <th>校区</th>
-            <th>状态</th>
-            <th>合计</th>
-            <th>提交人 / 时间</th>
-            <th>审核</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="o in hqOrders" :key="o.id">
-            <td class="strong-cell">{{ o.batchName }}</td>
-            <td>{{ o.campusShortName || o.campusName }}</td>
-            <td>
-              <span class="status" :class="ORDER_STATUS_CLASS[o.status]">
-                {{ ORDER_STATUS_TEXT[o.status] }}
-              </span>
-            </td>
-            <td class="muted-cell">
-              {{ o.totalCases ?? 0 }} 件<br />折算 {{ o.totalUnits ?? 0 }}
-            </td>
-            <td class="muted-cell">
-              {{ o.submitByName || "—" }}<br />{{ o.submittedAt ? fmtDateTime(o.submittedAt) : "—" }}
-            </td>
-            <td class="muted-cell">
-              <template v-if="o.auditAt">
-                {{ o.auditByName }}<br />{{ fmtDateTime(o.auditAt) }}
-                <em v-if="o.auditNote" class="audit-note">「{{ o.auditNote }}」</em>
-              </template>
-              <template v-else>—</template>
-            </td>
-            <td class="op-cell">
-              <button
-                v-if="o.status === 'submitted'"
-                class="btn ghost sm"
-                @click="openAudit(o)"
-              >
-                审核
-              </button>
-              <button
-                v-else-if="o.status === 'confirmed'"
-                class="btn ghost sm danger-btn"
-                @click="openAudit(o)"
-              >
-                撤销确认
-              </button>
-              <span v-else>—</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="!hqOrders.length" class="empty-block">还没有校区提交订货单。</p>
+    <div v-if="canManage && tab === 'orders'" class="data-panel">
+      <div class="data-summary">
+        <div>
+          <strong>{{ hqOrders.length }}</strong><span> 张订货单</span>
+        </div>
+        <p><span class="live-dot"></span>数据已同步</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>批次</th>
+              <th>校区</th>
+              <th>状态</th>
+              <th>合计</th>
+              <th>提交人 / 时间</th>
+              <th>审核</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading" v-for="i in 4" :key="i">
+              <td :colspan="7"><div class="row-skeleton"></div></td>
+            </tr>
+            <template v-else>
+              <tr v-if="!hqOrders.length">
+                <td :colspan="7" class="empty-cell">还没有校区提交订货单。</td>
+              </tr>
+              <tr v-for="o in hqOrders" :key="o.id">
+                <td><strong>{{ o.batchName }}</strong></td>
+                <td>{{ o.campusShortName || o.campusName }}</td>
+                <td>
+                  <span class="status" :class="ORDER_STATUS_CLASS[o.status]">
+                    {{ ORDER_STATUS_TEXT[o.status] }}
+                  </span>
+                </td>
+                <td>
+                  {{ o.totalCases ?? 0 }} 件<br />折算 {{ o.totalUnits ?? 0 }}
+                </td>
+                <td>
+                  {{ o.submitByName || "—" }}<br />{{ o.submittedAt ? fmtDateTime(o.submittedAt) : "—" }}
+                </td>
+                <td>
+                  <template v-if="o.auditAt">
+                    {{ o.auditByName }}<br />{{ fmtDateTime(o.auditAt) }}
+                    <em v-if="o.auditNote" class="audit-note">「{{ o.auditNote }}」</em>
+                  </template>
+                  <template v-else>—</template>
+                </td>
+                <td class="row-actions">
+                  <button
+                    v-if="o.status === 'submitted'"
+                    class="btn mini primary"
+                    @click="openAudit(o)"
+                  >
+                    审核
+                  </button>
+                  <button
+                    v-else-if="o.status === 'confirmed'"
+                    class="btn mini ghost danger-btn"
+                    @click="openAudit(o)"
+                  >
+                    撤销确认
+                  </button>
+                  <span v-else>—</span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 新建/编辑批次 -->
@@ -508,14 +564,14 @@ async function withdrawMyOrder() {
               <div class="order-brief-ops">
                 <button
                   v-if="o.status === 'submitted'"
-                  class="btn ghost sm"
+                  class="btn mini ghost"
                   @click="openAudit(o)"
                 >
                   审核
                 </button>
                 <button
                   v-else-if="o.status === 'confirmed'"
-                  class="btn ghost sm danger-btn"
+                  class="btn mini ghost danger-btn"
                   @click="openAudit(o)"
                 >
                   撤销确认
@@ -661,92 +717,16 @@ async function withdrawMyOrder() {
 </template>
 
 <style scoped>
-.restock-page {
-  padding: 26px 30px 40px;
-}
-.page-desc {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #647169;
-}
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.load-hint,
-.load-error,
-.empty-block {
-  padding: 28px 0;
-  font-size: 13px;
-  color: #647169;
-}
-.load-error {
-  color: #b33a3a;
-}
-.btn.sm {
-  height: 30px;
-  padding: 0 10px;
-  font-size: 11px;
-}
-.op-cell {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.strong-cell {
-  font-weight: 700;
-  color: #153628;
-}
-.muted-cell {
-  color: #647169;
-  font-size: 12px;
-  line-height: 1.5;
-}
+/* 页面壳/表格/统计条/骨架全走全局（style.css + drawer.css），与商品管理同源；
+   scoped 只留 drawer 内部排版。IKFOQ0 样式对齐（道哥 2026-09-15） */
 .audit-note {
   font-style: normal;
   color: #a95c20;
 }
-/* 批次卡片（校区视角） */
-.batch-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-}
-.batch-card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.batch-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-.batch-card-head h3 {
-  font-size: 15px;
-  color: #153628;
-}
-.batch-window {
-  font-size: 12px;
+.empty-block {
+  padding: 28px 0;
+  font-size: 13px;
   color: #647169;
-}
-.batch-meta {
-  font-size: 12px;
-  color: #37423c;
-}
-.batch-card-foot {
-  margin-top: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
 }
 /* 弹框内容 */
 .batch-form-drawer,
