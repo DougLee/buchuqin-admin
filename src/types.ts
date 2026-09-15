@@ -93,6 +93,9 @@ export interface Product {
   retailUnit?: string;
   wholesaleUnit?: string;
   unitsPerCase?: number;
+  /** 双成本快照（IKFOPQ）：支付时写入订单行（每零售单位，分）；仅订单 items 内出现。 */
+  unitWholesaleCost?: number;
+  unitPurchaseCost?: number;
   weight: number;
   /** 商品介绍（IKAHAU）：纯文本 ≤2000 字，空串/null = 详情页不渲染。 */
   description?: string | null;

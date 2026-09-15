@@ -4346,13 +4346,18 @@ async function act(action: string) {
         price: yuanToFen(productEdit.value.price),
         // IKC1AB：上下架（hq 官方库放行/回收、校区自管本地上架）
         status: productEdit.value.status,
-        // IKC1AC：进货价/批发价格仅官方库行提交（后端对校区行二次剔除）
+        // IKC1AC：进货价仅官方库行提交（后端对校区行二次剔除）
+        // IKFOPQ：批发价格官方行 + 校区自建行提交（同步行后端仍剔除）
         ...(isHqView.value
           ? {
               costPrice: yuanToFen(productEdit.value.costPrice),
               wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
             }
-          : {}),
+          : !(selected.value as Product)?.sourceProductId
+            ? {
+                wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
+              }
+            : {}),
         // IKC1AB 修缺陷：官方库回填的 stock 是恒 0 的 availableStock，
         // 无条件提交会把官方行库存静默写 0——与库位同口径按视角排除
         ...(isHqView.value ? {} : { stock: Number(productEdit.value.stock) }),
@@ -4836,6 +4841,26 @@ const pickingItems = computed(() => {
         .filter(Boolean)
         .join("-"),
   }));
+});
+/** 订单明细毛利（IKFOPQ）：校区账 = 售价 − 支付时批发价快照（行合计口径）。
+ *  快照上线前的历史单无快照字段，显示「—」不估算。 */
+const orderMarginItems = computed(() => {
+  const order = selected.value as unknown as Order | undefined;
+  if (section.value !== "orders" || !order?.items) return [];
+  return order.items.map((line) => {
+    const wholesale = line.product?.unitWholesaleCost;
+    const price = line.product?.price ?? 0;
+    return {
+      name: line.product?.name ?? "未知商品",
+      quantity: line.quantity,
+      priceText: `¥${fenToYuan(price)}`,
+      marginText:
+        wholesale == null
+          ? "—"
+          : `¥${fenToYuan((price - wholesale) * line.quantity)}`,
+      hasMargin: wholesale != null,
+    };
+  });
 });
 /** 确认出库（IKA0UQ）：paid/picking → waiting-first-mile 一步到位 + 出库流水。 */
 async function outbound() {
@@ -6629,16 +6654,23 @@ async function cancelInviteRow(row: AdminRow) {
                 min="0"
                 :disabled="!isHqView && Boolean((selected as Product).sourceProductId)"
                 title="官方库同步行的建议零售价由总部维护" /></label
-            ><!-- IKC1AC：进货价/批发价格仅官方库行可编辑（校区不可见） --><label v-if="isHqView"
+            ><!-- IKC1AC：进货价仅官方库行可编辑（校区不可见） --><label v-if="isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
                 min="0" /></label
-            ><label v-if="isHqView"
+            ><!-- IKFOPQ：批发价格官方行可编辑；校区自建行（无来源）放开自报，
+                 行内毛利=售价−自报批发价；同步行仍只读 --><label
+              v-if="isHqView || !(selected as Product)?.sourceProductId"
               >批发价格（元）<input
                 v-model.number="productEdit.wholesalePrice"
                 type="number"
-                min="0" /></label
+                min="0"
+                :title="
+                  isHqView
+                    ? undefined
+                    : '自建商品自报批发价，用于订单毛利计算'
+                " /></label
             ><label
               >标签<input
                 v-model.trim="productEdit.tag"
@@ -6743,6 +6775,25 @@ async function cancelInviteRow(row: AdminRow) {
               ><strong v-else>{{ display(selected, col[0]) }}</strong>
             </div></template
           >
+          <!-- 订单明细毛利（IKFOPQ）：校区账=售价−批发快照；快照前历史单显示 — -->
+          <div
+            v-if="section === 'orders' && orderMarginItems.length"
+            class="wide pick-list-wrap"
+          >
+            <span class="field-label"
+              >订单明细毛利（售价 − 支付时批发价快照，快照前历史单显示 —）</span
+            >
+            <ul class="pick-list">
+              <li v-for="(line, i) in orderMarginItems" :key="i">
+                <span>{{ line.name }} × {{ line.quantity }}</span>
+                <span v-if="line.hasMargin"
+                  >售价 {{ line.priceText }} · 毛利
+                  <strong>{{ line.marginText }}</strong></span
+                >
+                <span v-else>售价 {{ line.priceText }} · 毛利 —</span>
+              </li>
+            </ul>
+          </div>
           <!-- 拣货清单（IK9U40）：库位指引找货；IKB5P5 起订单接口回查实时库位，历史单同样有指引 -->
           <div
             v-if="section === 'warehouse-orders' && pickingItems.length"
