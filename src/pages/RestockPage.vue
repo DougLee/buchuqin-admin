@@ -452,9 +452,6 @@ async function withdrawMyOrder() {
               <input v-model="batchForm.endAt" type="datetime-local" />
             </div>
           </div>
-          <p class="picker-none-hint">
-            可订商品 = 官方商品库全部在售商品，无需勾选；开放期间新上架的商品自动可订。
-          </p>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="batchDrawer = false">取消</button>
@@ -482,10 +479,6 @@ async function withdrawMyOrder() {
           <button @click="detailDrawer = false">✕</button>
         </div>
         <template v-if="detail">
-          <div class="detail-section">
-            <h4>可订商品范围</h4>
-            <p class="scope-hint">官方商品库全部在售商品，不区分批次（开放期间新上架自动可订）。</p>
-          </div>
           <div class="detail-section">
             <h4>校区订货单（{{ detail.orders.length }}）</h4>
             <div v-if="!detail.orders.length" class="empty-block">暂无校区订货。</div>
@@ -774,15 +767,6 @@ async function withdrawMyOrder() {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-/* 可订商品 = 官方库在售全集（IKFOQ0 第二轮），仅一句说明文字 */
-.picker-none-hint {
-  margin-top: 10px;
-  font-size: 11px;
-  color: #647169;
-  background: #f2f6f3;
-  border-radius: 8px;
-  padding: 8px 10px;
-}
 /* 详情 */
 .detail-window {
   margin-top: 4px;
@@ -798,13 +782,6 @@ async function withdrawMyOrder() {
   font-size: 13px;
   color: #153628;
   margin-bottom: 8px;
-}
-.scope-hint {
-  font-size: 11px;
-  color: #647169;
-  background: #f2f6f3;
-  border-radius: 8px;
-  padding: 8px 10px;
 }
 .order-brief {
   border: 1px solid var(--line);
