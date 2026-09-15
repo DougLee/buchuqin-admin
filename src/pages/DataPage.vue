@@ -4878,26 +4878,43 @@ const pickingItems = computed(() => {
 const orderMarginItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "orders" || !order?.items) return [];
+  // IKFTK7 第二轮（道哥口径）：毛利 = 用户实付 − 成本。优惠券按行金额比例
+  // 分摊到行（运费不计入商品收入）；无优惠时系数为 1，退化为售价口径
+  const orderRec = order as unknown as Record<string, unknown>;
+  const productAmount = Number(orderRec.productAmount ?? 0);
+  const payable = Number(orderRec.payableAmount ?? 0);
+  const deliveryFee = Number(orderRec.deliveryFee ?? 0);
+  const factor =
+    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   return order.items.map((line) => {
-    // IKFTK7：快照优先（精确）；快照前历史单回落当前批发价（标注「估算」）
+    // 快照优先（精确）；快照前历史单回落当前批发价（标注「估算」）
     const snapshot = line.product?.unitWholesaleCost;
     const wholesale = snapshot ?? line.product?.currentUnitWholesaleCost;
     const estimated = snapshot == null && wholesale != null;
     const price = line.product?.price ?? 0;
+    // 行实收（分，四舍五入）＝售价×数量×实收系数
+    const netFen = Math.round(price * line.quantity * factor);
+    const marginFen = wholesale == null ? null : netFen - wholesale * line.quantity;
     return {
       name: line.product?.name ?? "未知商品",
       quantity: line.quantity,
       priceText: `¥${fenToYuan(price)}`,
+      marginFen,
       marginText:
-        wholesale == null
+        marginFen == null
           ? "—"
-          : `¥${fenToYuan((price - wholesale) * line.quantity)}${
-              estimated ? "（估算）" : ""
-            }`,
+          : `¥${fenToYuan(marginFen)}${estimated ? "（估算）" : ""}`,
       hasMargin: wholesale != null,
       estimated,
     };
   });
+});
+/** 订单毛利合计（IKFTK7）：全部行都有成本才算得出，缺成本行时不显示合计 */
+const orderMarginTotal = computed(() => {
+  const items = orderMarginItems.value;
+  if (!items.length || items.some((l) => !l.hasMargin || l.marginFen == null))
+    return null;
+  return items.reduce((sum, l) => sum + (l.marginFen ?? 0), 0);
 });
 /** 确认出库（IKA0UQ）：paid/picking → waiting-first-mile 一步到位 + 出库流水。 */
 async function outbound() {
@@ -6837,7 +6854,7 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（售价 − 支付时批发价快照；快照前历史单按当前批发价估算）</span
+              >订单明细毛利（实付按行分摊 − 支付时批发价快照；快照前历史单按当前批发价估算）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
@@ -6850,6 +6867,12 @@ async function cancelInviteRow(row: AdminRow) {
                 >
                   售价 {{ line.priceText }} · 毛利
                   <strong>{{ line.marginText }}</strong></span
+                >
+              </li>
+              <li v-if="orderMarginTotal != null" class="margin-total-row">
+                <span class="margin-name">订单毛利合计</span>
+                <span class="margin-amount">
+                  <strong>¥{{ fenToYuan(orderMarginTotal) }}</strong></span
                 >
               </li>
             </ul>
