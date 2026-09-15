@@ -96,8 +96,8 @@ export interface Product {
   /** 双成本快照（IKFOPQ）：支付时写入订单行（每零售单位，分）；仅订单 items 内出现。 */
   unitWholesaleCost?: number;
   unitPurchaseCost?: number;
-  /** 历史单毛利估算（IKFTK7）：无快照行由 admin 接口补的当前每单位批发成本；有快照行不出现。 */
-  currentUnitWholesaleCost?: number;
+  /** 历史单毛利估算（IKFTK7 第三轮）：无快照行由 admin 接口补的当前每单位进货成本；有快照行不出现。 */
+  currentUnitPurchaseCost?: number;
   weight: number;
   /** 商品介绍（IKAHAU）：纯文本 ≤2000 字，空串/null = 详情页不渲染。 */
   description?: string | null;

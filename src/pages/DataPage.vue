@@ -4880,9 +4880,7 @@ const pickingItems = computed(() => {
         .join("-"),
   }));
 });
-/** 订单明细毛利（IKFOPQ）：校区账 = 售价 − 支付时批发价快照（行合计口径）。
- *  快照上线前的历史单无快照字段，显示「—」不估算。 */
-/** 订单毛利合计（IKFTZ9）：实付分摊 − 成本；任一行缺成本返回 null（列表显示 —）。
+/** 订单毛利合计（IKFTZ9）：实付分摊 − 进货成本；任一行缺成本返回 null（列表显示 —）。
  *  详情合计与列表毛利列共用同一口径。 */
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
   const items = order?.items;
@@ -4895,22 +4893,22 @@ function orderMarginTotalOf(order: MarginSource | undefined | null): number | nu
     productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   let total = 0;
   for (const line of items) {
-    const snapshot = line.product?.unitWholesaleCost;
-    const wholesale = snapshot ?? line.product?.currentUnitWholesaleCost;
-    if (wholesale == null) return null;
+    const cost = line.product?.unitPurchaseCost ?? line.product?.currentUnitPurchaseCost;
+    if (cost == null) return null;
     const price = line.product?.price ?? 0;
-    total += Math.round(price * line.quantity * factor) - wholesale * line.quantity;
+    total += Math.round(price * line.quantity * factor) - cost * line.quantity;
   }
   return total;
 }
-/** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转） */
+/** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转）。
+ *  IKFTK7 第三轮：成本口径 = 进货价（快照 unitPurchaseCost 优先，历史单估算兜底） */
 interface MarginSource {
   items?: Array<{
     quantity: number;
     product?: {
       price?: number;
-      unitWholesaleCost?: number;
-      currentUnitWholesaleCost?: number;
+      unitPurchaseCost?: number;
+      currentUnitPurchaseCost?: number;
     };
   }> | null;
   productAmount?: unknown;
@@ -4929,14 +4927,14 @@ const orderMarginItems = computed(() => {
   const factor =
     productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   return order.items.map((line) => {
-    // 快照优先（精确）；快照前历史单回落当前批发价（标注「估算」）
-    const snapshot = line.product?.unitWholesaleCost;
-    const wholesale = snapshot ?? line.product?.currentUnitWholesaleCost;
-    const estimated = snapshot == null && wholesale != null;
+    // 快照优先（精确）；快照前历史单回落当前进货价（标注「估算」）
+    const snapshot = line.product?.unitPurchaseCost;
+    const cost = snapshot ?? line.product?.currentUnitPurchaseCost;
+    const estimated = snapshot == null && cost != null;
     const price = line.product?.price ?? 0;
     // 行实收（分，四舍五入）＝售价×数量×实收系数
     const netFen = Math.round(price * line.quantity * factor);
-    const marginFen = wholesale == null ? null : netFen - wholesale * line.quantity;
+    const marginFen = cost == null ? null : netFen - cost * line.quantity;
     return {
       name: line.product?.name ?? "未知商品",
       quantity: line.quantity,
@@ -4945,7 +4943,7 @@ const orderMarginItems = computed(() => {
         marginFen == null
           ? "—"
           : `¥${fenToYuan(marginFen)}${estimated ? "（估算）" : ""}`,
-      hasMargin: wholesale != null,
+      hasMargin: cost != null,
       estimated,
     };
   });
@@ -6910,7 +6908,7 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（实付按行分摊 − 支付时批发价快照；快照前历史单按当前批发价估算）</span
+              >订单明细毛利（实付按行分摊 − 支付时进货价快照；快照前历史单按当前进货价估算）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
