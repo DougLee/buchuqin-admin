@@ -3045,6 +3045,8 @@ const configs: Record<string, SectionConfig> = {
       ["userText", "用户"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
+      // IKFTZ9：毛利列（合计口径同详情，缺成本显示 —）
+      ["marginTotal", "毛利"],
       // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
       ["slaText", "时效"],
       // IKC9M2：补下单时间列（格式化走 display 的 createdAt 统一分支）
@@ -4172,6 +4174,11 @@ function detailCols(cols: [string, string][], order?: string[]) {
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
+  // 订单毛利列（IKFTZ9）：口径同详情合计（实付分摊 − 成本），缺成本显示 —
+  if (key === "marginTotal") {
+    const total = orderMarginTotalOf(row as unknown as Order);
+    return total == null ? "—" : `¥${fenToYuan(total)}`;
+  }
   if (
     key === "status" &&
     (section.value === "products" || section.value === "official-products")
@@ -4875,6 +4882,41 @@ const pickingItems = computed(() => {
 });
 /** 订单明细毛利（IKFOPQ）：校区账 = 售价 − 支付时批发价快照（行合计口径）。
  *  快照上线前的历史单无快照字段，显示「—」不估算。 */
+/** 订单毛利合计（IKFTZ9）：实付分摊 − 成本；任一行缺成本返回 null（列表显示 —）。
+ *  详情合计与列表毛利列共用同一口径。 */
+function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
+  const items = order?.items;
+  if (!order || !items?.length) return null;
+  const productAmount = Number(order.productAmount ?? 0);
+  const payable = Number(order.payableAmount ?? 0);
+  const deliveryFee = Number(order.deliveryFee ?? 0);
+  // 优惠券按行金额比例分摊（运费不计入商品收入）；无优惠时系数为 1
+  const factor =
+    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
+  let total = 0;
+  for (const line of items) {
+    const snapshot = line.product?.unitWholesaleCost;
+    const wholesale = snapshot ?? line.product?.currentUnitWholesaleCost;
+    if (wholesale == null) return null;
+    const price = line.product?.price ?? 0;
+    total += Math.round(price * line.quantity * factor) - wholesale * line.quantity;
+  }
+  return total;
+}
+/** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转） */
+interface MarginSource {
+  items?: Array<{
+    quantity: number;
+    product?: {
+      price?: number;
+      unitWholesaleCost?: number;
+      currentUnitWholesaleCost?: number;
+    };
+  }> | null;
+  productAmount?: unknown;
+  payableAmount?: unknown;
+  deliveryFee?: unknown;
+}
 const orderMarginItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "orders" || !order?.items) return [];
@@ -4899,7 +4941,6 @@ const orderMarginItems = computed(() => {
       name: line.product?.name ?? "未知商品",
       quantity: line.quantity,
       priceText: `¥${fenToYuan(price)}`,
-      marginFen,
       marginText:
         marginFen == null
           ? "—"
@@ -4910,12 +4951,9 @@ const orderMarginItems = computed(() => {
   });
 });
 /** 订单毛利合计（IKFTK7）：全部行都有成本才算得出，缺成本行时不显示合计 */
-const orderMarginTotal = computed(() => {
-  const items = orderMarginItems.value;
-  if (!items.length || items.some((l) => !l.hasMargin || l.marginFen == null))
-    return null;
-  return items.reduce((sum, l) => sum + (l.marginFen ?? 0), 0);
-});
+const orderMarginTotal = computed(() =>
+  orderMarginTotalOf(selected.value as unknown as Order | undefined),
+);
 /** 确认出库（IKA0UQ）：paid/picking → waiting-first-mile 一步到位 + 出库流水。 */
 async function outbound() {
   if (!selected.value) return;
@@ -5411,8 +5449,13 @@ async function cancelInviteRow(row: AdminRow) {
       <!-- IKCRS8：campusTab 双视角切换拆除——校区管理/楼栋管理已拆独立菜单 -->
       <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
-      <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力，订单先接入）；点 Tab 即服务端过滤 -->
-      <div v-if="config.statusTabs" class="status-tabs" role="tablist">
+      <!-- IKAJSP：状态 Tab+计数（SectionConfig 通用能力）；IKFTZ9：订单板块
+           状态改工具栏下拉（平铺 8 个 Tab 占位太宽），其余板块保持平铺 -->
+      <div
+        v-if="config.statusTabs && section !== 'orders'"
+        class="status-tabs"
+        role="tablist"
+      >
         <button
           v-for="tab in config.statusTabs"
           :key="tab.key"
@@ -5527,6 +5570,17 @@ async function cancelInviteRow(row: AdminRow) {
         <option value="">全部角色</option>
         <option v-for="r in ROLE_OPTIONS" :key="r.value" :value="r.value">
           {{ r.label }}
+        </option>
+      </select>
+      <!-- IKFTZ9：订单状态改下拉（原平铺 Tab 收纳），选项带角标计数 -->
+      <select
+        v-if="section === 'orders' && config.statusTabs"
+        v-model="statusFilter"
+        class="filter-btn"
+        aria-label="订单状态筛选"
+      >
+        <option v-for="tab in config.statusTabs" :key="tab.key" :value="tab.key">
+          {{ tab.label }}（{{ statusTabCount(tab) }}）
         </option>
       </select>
       <!-- IKD6FG：订单配送方式筛选 -->
@@ -6833,7 +6887,9 @@ async function cancelInviteRow(row: AdminRow) {
                其余板块（orders/库存流水等无表单板块）保持只读卡详情 -->
           <template v-else
             ><div
-              v-for="col in detailCols(config.columns, config.detailOrder)"
+              v-for="col in detailCols(config.columns, config.detailOrder).filter(
+                (c) => c[0] !== 'marginTotal',
+              )"
               :key="col[0]"
               :class="{
                 wide:
