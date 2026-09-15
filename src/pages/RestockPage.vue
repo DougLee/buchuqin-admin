@@ -96,10 +96,13 @@ function toLocalInput(iso: string | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+const onlyChecked = ref(false);
 const filteredProducts = computed(() => {
+  let list = officialProducts.value;
+  if (onlyChecked.value) list = list.filter((p) => checkedIds.value.has(p.id));
   const kw = productSearch.value.trim().toLowerCase();
-  if (!kw) return officialProducts.value;
-  return officialProducts.value.filter((p) => p.name.toLowerCase().includes(kw));
+  if (kw) list = list.filter((p) => p.name.toLowerCase().includes(kw));
+  return list;
 });
 const checkedCount = computed(() => checkedIds.value.size);
 
@@ -500,9 +503,16 @@ async function withdrawMyOrder() {
           </div>
           <div class="picker-head">
             <label class="field-label">
-              可订商品（勾选官方库在售商品，已选 {{ checkedCount }} 个）
+              可订商品（已选 <b class="picked-count">{{ checkedCount }}</b> 个）
             </label>
             <span class="picker-tools">
+              <button
+                class="link-btn"
+                :class="{ on: onlyChecked }"
+                @click="onlyChecked = !onlyChecked"
+              >
+                {{ onlyChecked ? "看全部" : "仅看已选" }}
+              </button>
               <button class="link-btn" @click="checkAllVisible(true)">全选</button>
               <button class="link-btn" @click="checkAllVisible(false)">清空</button>
             </span>
@@ -519,23 +529,35 @@ async function withdrawMyOrder() {
             <label
               v-for="p in filteredProducts"
               :key="p.id"
-              class="picker-row"
+              class="picker-row checkbox-row"
+              :class="{ checked: checkedIds.has(p.id), locked: rangeLocked && !checkedIds.has(p.id) }"
             >
               <input
                 type="checkbox"
+                class="raw-checkbox"
                 :checked="checkedIds.has(p.id)"
                 :disabled="rangeLocked"
                 @change="toggleProduct(p.id, ($event.target as HTMLInputElement).checked)"
               />
-              <span class="picker-name">{{ p.name }}</span>
+              <img v-if="p.image" :src="p.image" class="picker-img" alt="" />
+              <span v-else class="picker-img picker-img--empty" aria-hidden="true"></span>
+              <span class="picker-main">
+                <span class="picker-name">{{ p.name }}</span>
+                <span class="picker-sub">
+                  <template v-if="(p.unitsPerCase ?? 1) > 1">
+                    1 件={{ p.unitsPerCase }}{{ p.retailUnit || "个" }}
+                  </template>
+                  <template v-else>按{{ p.wholesaleUnit || "件" }}订</template>
+                </span>
+              </span>
               <span class="picker-price">
-                批发价 {{ fenToYuan(p.price) }}
-                <template v-if="(p.unitsPerCase ?? 1) > 1">
-                  · 1 件={{ p.unitsPerCase }}{{ p.retailUnit || "个" }}
-                </template>
+                {{ fenToYuan(p.price) }}
+                <em>/{{ p.wholesaleUnit || "件" }}</em>
               </span>
             </label>
-            <p v-if="!filteredProducts.length" class="empty-block">没有匹配的在售商品。</p>
+            <p v-if="!filteredProducts.length" class="picker-empty">
+              {{ onlyChecked ? "已选商品里没有匹配项。" : "没有匹配的在售商品。" }}
+            </p>
           </div>
         </div>
         <div class="drawer-actions">
@@ -870,6 +892,7 @@ async function withdrawMyOrder() {
 .picker-tools {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 .link-btn {
   border: 0;
@@ -880,6 +903,16 @@ async function withdrawMyOrder() {
   cursor: pointer;
   padding: 0;
 }
+.link-btn.on {
+  color: #fff;
+  background: var(--brand);
+  border-radius: 99px;
+  padding: 3px 10px;
+}
+.picked-count {
+  color: #0b7a45;
+  font-size: 13px;
+}
 .lock-hint {
   font-size: 11px;
   color: #a95c20;
@@ -888,36 +921,96 @@ async function withdrawMyOrder() {
   padding: 8px 10px;
 }
 .picker-search {
-  height: 34px;
+  height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 10px;
   outline: 0;
 }
 .picker-list {
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c2d4c9 transparent;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding-right: 2px;
 }
+/* 整行即点击目标（≥44px 触控高）；checkbox 走全局 .checkbox-row 自绘方案，
+   防 .product-form input 通栏规则把原生框拉成大方块挤压文字（IKD7TL 同款事故） */
 .picker-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #153628;
-  padding: 6px 4px;
-  border-bottom: 1px dashed var(--line);
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.picker-row:hover {
+  background: #f4f8f5;
+  border-color: #cfe0d6;
+}
+.picker-row.checked {
+  background: #ebf7f0;
+  border-color: var(--brand);
+}
+.picker-row.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.picker-img {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eef1ef;
+}
+.picker-img--empty {
+  display: inline-block;
+}
+/* 名字区 min-width:0 是防竖排关键：压缩时省略号而非逐字换行 */
+.picker-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .picker-name {
-  flex: 1;
+  font-size: 13px;
   font-weight: 700;
+  color: #153628;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-sub {
+  font-size: 11px;
+  color: #647169;
 }
 .picker-price {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b7a45;
+}
+.picker-price em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 400;
   color: #647169;
-  font-size: 11px;
+}
+.picker-empty {
+  padding: 20px 0;
+  font-size: 12px;
+  color: #647169;
+  text-align: center;
 }
 /* 详情 */
 .detail-window {
