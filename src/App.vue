@@ -108,14 +108,13 @@ const hqGroups = [
     ],
   },
   {
-    // IKFOQ0：订货管理独立一级菜单（道哥 2026-09-15 拍板，不塞仓储中心）
-    label: "订货管理",
-    items: [["/restock", "restock", "订货管理"]],
-  },
-  {
-    // IKFOQ1：采购管理独立一级菜单（道哥拍板与订货管理平级，仅总部）
+    // IKFOQ0→IKFOQ1 二轮调整（道哥 2026-09-15）：订货/采购两菜单合并为
+    // 「采购管理」一组，组下两个子菜单
     label: "采购管理",
-    items: [["/purchase", "purchase", "采购管理"]],
+    items: [
+      ["/restock", "restock", "订货管理"],
+      ["/purchase", "purchase", "采购管理"],
+    ],
   },
   // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放
   {
