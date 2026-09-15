@@ -5,6 +5,7 @@ import {
 } from "../api";
 import { canWrite, role } from "../session";
 import type {
+  Category,
   Product,
   RestockBatch,
   RestockBatchProduct,
@@ -87,6 +88,8 @@ const batchEditId = ref(""); // 空=新建
 const batchForm = ref({ name: "", startAt: "", endAt: "" });
 const officialProducts = ref<Product[]>([]);
 const productSearch = ref("");
+const categories = ref<Category[]>([]);
+const categoryFilterId = ref("");
 const checkedIds = ref<Set<string>>(new Set());
 const rangeLocked = ref(false); // 已有提交单：商品范围锁死（后端同步把关）
 
@@ -99,6 +102,8 @@ function toLocalInput(iso: string | null | undefined): string {
 const onlyChecked = ref(false);
 const filteredProducts = computed(() => {
   let list = officialProducts.value;
+  if (categoryFilterId.value)
+    list = list.filter((p) => p.categoryId === categoryFilterId.value);
   if (onlyChecked.value) list = list.filter((p) => checkedIds.value.has(p.id));
   const kw = productSearch.value.trim().toLowerCase();
   if (kw) list = list.filter((p) => p.name.toLowerCase().includes(kw));
@@ -110,6 +115,8 @@ async function openBatchForm(batch?: RestockBatch) {
   batchDrawer.value = true;
   batchSaving.value = false;
   productSearch.value = "";
+  categoryFilterId.value = "";
+  onlyChecked.value = false;
   if (batch) {
     batchEditId.value = batch.id;
     batchForm.value = {
@@ -128,10 +135,13 @@ async function openBatchForm(batch?: RestockBatch) {
     checkedIds.value = new Set();
     rangeLocked.value = false;
   }
-  // 商品勾选池 = 官方库在售行（hq/admin 默认视角即官方库）
+  // 商品勾选池 = 官方库在售行（hq/admin 默认视角即官方库）；类别字典随行加载
   if (!officialProducts.value.length) {
     const res = await api.products({ page: 1, pageSize: 500, status: "on-sale" });
     officialProducts.value = res.items;
+  }
+  if (!categories.value.length) {
+    categories.value = await api.adminCategories().catch(() => []);
   }
 }
 function toggleProduct(id: string, on: boolean) {
@@ -520,11 +530,19 @@ async function withdrawMyOrder() {
           <p v-if="rangeLocked" class="lock-hint">
             已有校区提交订货，本批次商品范围不可调整（仅可改名称与窗口）。
           </p>
-          <input
-            v-model="productSearch"
-            class="picker-search"
-            placeholder="搜商品名…"
-          />
+          <div class="picker-filter-row">
+            <select v-model="categoryFilterId" class="picker-cat" aria-label="按类别筛选">
+              <option value="">全部类别</option>
+              <option v-for="c in categories" :key="c.id" :value="c.id">
+                {{ c.name }}
+              </option>
+            </select>
+            <input
+              v-model="productSearch"
+              class="picker-search"
+              placeholder="搜商品名…"
+            />
+          </div>
           <div class="picker-list">
             <label
               v-for="p in filteredProducts"
@@ -920,7 +938,31 @@ async function withdrawMyOrder() {
   border-radius: 8px;
   padding: 8px 10px;
 }
+.picker-filter-row {
+  display: flex;
+  gap: 8px;
+}
+.picker-cat {
+  flex: none;
+  width: 136px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  outline: 0;
+  background: #fff;
+  color: #153628;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.picker-cat:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #159c5515;
+}
 .picker-search {
+  flex: 1;
+  min-width: 0;
   height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
