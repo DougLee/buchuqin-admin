@@ -6878,7 +6878,12 @@ async function cancelInviteRow(row: AdminRow) {
         </div>
         <!-- IKEAGE 招募详情不用底部按钮条：操作已按层级入「审核操作」分区，
              关闭走右上角 ×（道哥反馈：关闭详情宽条与三按钮无主次） -->
-        <div v-if="section !== 'recruit'" class="drawer-actions wrap">
+        <div
+          v-if="
+            section !== 'recruit' && !(section === 'orders' && orderInPicking)
+          "
+          class="drawer-actions wrap"
+        >
           <template v-if="isProductsSection && canWriteSection">
             <button class="btn primary" @click="act('save')">
               {{ isHqView ? "保存官方库资料" : "保存商品调整" }}</button
@@ -6890,13 +6895,12 @@ async function cancelInviteRow(row: AdminRow) {
             >
               拉取官方库更新</button
           ></template>
-          <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」 -->
-          <template v-else-if="section === 'orders' && canWriteSection && orderInPicking"
-            ><p class="form-hint plain processed-hint">
-              出库操作已归入「仓储中心 · 拣货任务」，本页仅跟踪订单状态。
-            </p></template
-          >
-          <template v-else-if="section === 'orders' && canWriteSection"
+          <!-- IK9U3Z：拣货中的订单出库动作移交「商品仓储 · 拣货出库」，
+               本页不显示操作按钮（IKFSZJ：提示文案去掉，静默即可） -->
+          <template
+            v-else-if="
+              section === 'orders' && canWriteSection && !orderInPicking
+            "
             ><button class="btn primary" @click="act('advance')">
               推进履约</button
             ><button class="btn danger-btn" @click="act('mark-exception')">

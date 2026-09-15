@@ -695,6 +695,8 @@
   white-space: nowrap;
 }
 .margin-list .margin-amount strong {
+  /* 容器在 .drawer-fields 内，其 strong 的 display:block 会把毛利值折到下一行 */
+  display: inline;
   color: #0c7a3e;
   font-weight: 800;
 }
