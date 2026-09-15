@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard.vue";
 import DataPage from "./pages/DataPage.vue";
 import Login from "./pages/Login.vue";
 import RestockPage from "./pages/RestockPage.vue";
+import PurchasePage from "./pages/PurchasePage.vue";
 import { canSee, role } from "./session";
 import "./style.css";
 import "./drawer.css";
@@ -14,6 +15,8 @@ const routes = [
   // IKFOQ0：订货管理独立页——批次卡片+订货单编辑器交互重于通用表格，
   // 不塞 DataPage 巨石；权限仍走 canSee("restock")
   { path: "/restock", component: RestockPage },
+  // IKFOQ1：采购管理独立页（验收闭环），权限走 canSee("purchase")
+  { path: "/purchase", component: PurchasePage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -26,6 +29,7 @@ router.beforeEach((to) => {
   if (to.path === "/products" && role.value === "hq") return "/official-products";
   // IKFOQ0：独立路由不走 :section 参数，单独过权限
   if (to.path === "/restock") return canSee("restock") ? true : "/";
+  if (to.path === "/purchase") return canSee("purchase") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });

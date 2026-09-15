@@ -35,7 +35,6 @@ import type {
   PagedResponse,
   Product,
   Promotion,
-  PurchaseRequest,
   RecruitingApplication,
   Room,
   RuleRow,
@@ -1381,11 +1380,8 @@ function onSaleProductOptions() {
 /** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
  *  stocktake=盘点（提交实际清点数量，替代原 delta 增量口径）。 */
 function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
-  // 采购申请制：非平台角色的「采购入库」改走申请通道，总部审核后自动入库
-  if (kind === "stock-in" && !isPlatformAdmin.value) {
-    openPurchaseRequestForm(productId);
-    return;
-  }
+  // IKFOQ1 采购申请退役（grilling #1）：补货统一走 订货批次→采购单→验收，
+  // 「采购入库」恢复全角色直入；采购单在独立「采购管理」菜单
   void ensureProducts();
   const isStockIn = kind === "stock-in";
   openForm(
@@ -1452,76 +1448,15 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
       : { productId: productId ?? "", countedQty: 0, reason: "" },
   );
 }
-/** 采购申请表单（IKD6FJ）：校区角色提交，hq 在「采购申请」视图审核。 */
-function openPurchaseRequestForm(productId?: string) {
-  void ensureProducts();
-  openForm(
-    {
-      eyebrow: "PURCHASE REQUEST",
-      title: "采购申请",
-      submit: "提交申请",
-      done: "已提交，等待总部审核",
-      fields: [
-        { key: "productId", label: "商品", type: "select", wide: true, options: productOptions },
-        {
-          key: "quantity",
-          label: "申请数量",
-          type: "number",
-          step: 1,
-          placeholder: "本次申请采购数量",
-        },
-        { key: "reason", label: "原因备注", placeholder: "例如：开学季备货", wide: true },
-      ],
-      save: async (d) => {
-        if (!d.productId) throw new Error("请选择商品");
-        const qty = Number(d.quantity);
-        if (!Number.isFinite(qty) || qty <= 0)
-          throw new Error("申请数量必须大于 0");
-        const reason = String(d.reason || "").trim();
-        await api.createPurchaseRequest({
-          productId: String(d.productId),
-          quantity: qty,
-          ...(reason ? { reason } : {}),
-        });
-      },
-    },
-    { productId: productId ?? "", quantity: 1, reason: "" },
-  );
+/** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
+const TXN_TYPE_TEXT: Record<string, string> = {
+  "stock-in": "采购入库",
+  adjust: "盘点调整",
+  out: "订单出库",
+};
+function toTxnRow(t: InventoryTxn): AdminRow {
+  return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
 }
-/** 采购审核（IKD6FJ）：通过后后端事务内自动入库，note 进审计。 */
-function openPurchaseAudit(row: AdminRow, action: "approved" | "rejected") {
-  const req = row as unknown as PurchaseRequest;
-  openForm(
-    {
-      eyebrow: "PURCHASE AUDIT",
-      title: `采购审核 · ${req.productName}`,
-      submit: action === "approved" ? "通过并入库" : "拒绝申请",
-      done: action === "approved" ? "已通过，库存已自动入库" : "已拒绝",
-      fields: [
-        {
-          key: "note",
-          label: "审核备注（选填）",
-          type: "textarea",
-          wide: true,
-          // 申请上下文随字段提示展示（IKB3K1 hint 通道）
-          hint: () =>
-            `申请数量 ${req.quantity} · 申请人 ${req.applyByName || "—"}${
-              req.reason ? ` · 原因：${req.reason}` : ""
-            }`,
-        },
-      ],
-      save: async (d) => {
-        await api.auditPurchaseRequest(
-          row.id,
-          action,
-          String(d.note || "").trim(),
-        );
-      },
-    },
-    { note: "" },
-  );
-}
-/** 状态筛选重置为 all；值有变化时由 statusFilter watcher 接管重载，避免重复请求。 */
 function resetStatusFilterAndLoad() {
   if (statusFilter.value === "all") resetAndLoad();
   else statusFilter.value = "all";
@@ -1588,71 +1523,6 @@ const inventoryTxnsConfig: SectionConfig = {
     ["quantity", "数量"],
     ["reason", "原因"],
     ["operatorName", "操作人"],
-  ],
-};
-/** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
-const TXN_TYPE_TEXT: Record<string, string> = {
-  "stock-in": "采购入库",
-  adjust: "盘点调整",
-  out: "订单出库",
-};
-function toTxnRow(t: InventoryTxn): AdminRow {
-  return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
-}
-/* ---------- 采购申请审核台（IKD6FJ）：库存板块第二视图 ---------- */
-/** 状态 Tab（首键 all 对齐现有 statusTabs 惯例）；后端全量返回非分页，前端切片。 */
-const PR_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending", label: "待审核", statuses: ["pending"] },
-  { key: "approved", label: "已通过", statuses: ["approved"] },
-  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
-];
-const purchaseRequestConfig: SectionConfig = {
-  title: "采购申请",
-  eyebrow: "PURCHASE REQUESTS",
-  desc: "校区提交采购申请，总部审核通过后自动入库。",
-  loader: async (query) => {
-    const all = await api.purchaseRequests(
-      tabStatusOf(PR_STATUS_TABS),
-      campusScope(),
-    );
-    // 全量断链审计（2026-09-05）：该端点为全量数组且不认 keyword，搜索框
-    // 此前是死控件——与类别字典/财务账单同模式，前端按关键词过滤后切片
-    const kw = (query.keyword ?? "").trim().toLowerCase();
-    const hit = kw
-      ? all.filter((x) =>
-          [x.productName, x.campusName, x.applyByName, x.reason, x.status]
-            .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(kw)),
-        )
-      : all;
-    const start = (query.page - 1) * query.pageSize;
-    return {
-      rows: hit.slice(start, start + query.pageSize).map((x) => ({
-        ...x,
-        // 原因常留空，表格空串统一展示 —
-        reasonText: x.reason || "—",
-      })) as unknown as AdminRow[],
-      total: hit.length,
-    };
-  },
-  statusTabs: PR_STATUS_TABS,
-  countsLoader: () =>
-    countByStatus(
-      (s) =>
-        api
-          .purchaseRequests(s, campusScope())
-          .then((xs) => ({ total: xs.length })),
-      ["pending", "approved", "rejected"],
-    ),
-  columns: [
-    ["campusName", "校区"],
-    ["productName", "商品"],
-    ["quantity", "数量"],
-    ["reasonText", "原因"],
-    ["applyByName", "申请人"],
-    ["createdAt", "申请时间"],
-    ["status", "状态"],
   ],
 };
 /* ---------- 营销地图（IKD6FI）：非表格视图，loader 置空防误拉列表 ---------- */
@@ -1773,13 +1643,6 @@ function switchDispTab(tab: "leaves" | "invites") {
   dispTab.value = tab;
   resetStatusFilterAndLoad();
 }
-/* ---------- 库存板块子视图（IKD6FJ）：库存总览 / 采购申请审核台 ---------- */
-const invTab = ref<"stock" | "requests">("stock");
-function switchInvTab(tab: "stock" | "requests") {
-  invTab.value = tab;
-  resetStatusFilterAndLoad();
-}
-
 /* ---------- Banner 管理（IK9RX2）：营销板块第二个 tab，校园维度 ---------- */
 /* IKD6FI：营销板块新增「营销地图」tab（楼栋×楼层×寝室下单热力） */
 /* IKDFIN：深链初值在声明处读取（原 immediate watcher 在 section 声明前
@@ -3673,9 +3536,6 @@ const section = computed(() => String(route.params.section)),
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
         : dispatchInvitesConfig;
-    // IKD6FJ：库存板块第二视图——采购申请审核台
-    if (section.value === "inventory" && invTab.value === "requests")
-      return purchaseRequestConfig;
     if (section.value === "marketing") {
       if (mktTab.value === "promotions") return promotionConfig;
       // IKD6FI：营销地图非表格视图，空 loader 防误拉券列表
@@ -3744,7 +3604,7 @@ const section = computed(() => String(route.params.section)),
   );
 /** 全量断链审计（2026-09-05）：校区下拉只在真正消费 campus 参数的视图渲染。
  *  orders/users/audit 全视图（loader 走 campusQuery）；inventory 仅采购申请
- *  tab（purchaseRequests 认 campus）；marketing 仅营销地图 tab。库存总览/
+ *  tab；marketing 仅营销地图 tab。库存总览/
  *  优惠券/秒杀按操作者本校区固定（hq 无这些板块权限，admin 跨校区走顶栏
  *  切换运营校区）——下拉渲染在那儿是选了也不生效的死控件。 */
 const campusFilterVisible = computed(() => {
@@ -4123,7 +3983,6 @@ watch(
     selected.value = undefined;
     selectedProductIds.value = [];
     dispTab.value = "leaves";
-    invTab.value = "stock";
     mktTab.value = "coupons";
     // IKB3KE：搜索词跨板块串扰——切板块清空，各板块条件相互独立
     if (keyword.value) {
@@ -5461,14 +5320,6 @@ async function cancelInviteRow(row: AdminRow) {
         </button>
       </div>
       <!-- IKD6FJ：库存板块子视图——库存总览 / 采购申请审核台 -->
-      <div v-if="section === 'inventory'" class="segmented inv-tabs">
-        <button :class="{ active: invTab === 'stock' }" @click="switchInvTab('stock')">
-          库存总览
-        </button>
-        <button :class="{ active: invTab === 'requests' }" @click="switchInvTab('requests')">
-          采购申请
-        </button>
-      </div>
       <!-- IKCRS8：campusTab 双视角切换拆除——校区管理/楼栋管理已拆独立菜单 -->
       <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
       <!-- IKAJSL：Banner 已归总部（/banners 独立板块） -->
@@ -5533,7 +5384,7 @@ async function cancelInviteRow(row: AdminRow) {
       <div
         v-if="
           ['products', 'official-products'].includes(section) ||
-          (section === 'inventory' && invTab === 'stock')
+          section === 'inventory'
         "
         class="category-combobox"
       >
@@ -5653,10 +5504,10 @@ async function cancelInviteRow(row: AdminRow) {
       <!-- IKA0V2：采购入库为日常主操作排前；IKD6FJ：盘点入口（原「校准」
            文案统一为「盘点」）、校区角色「采购入库」变「采购申请」（平台角色保留直接入库） -->
       <template
-        v-if="section === 'inventory' && invTab === 'stock' && canWrite('inventory')"
+        v-if="section === 'inventory' && canWrite('inventory')"
       >
         <button class="btn primary" @click="openStockForm('stock-in')">
-          {{ isPlatformAdmin ? "采购入库" : "采购申请" }}
+          采购入库
         </button>
         <button class="btn ghost" @click="openStockForm('stocktake')">
           盘点
@@ -6047,49 +5898,22 @@ async function cancelInviteRow(row: AdminRow) {
                       拉取更新
                     </button>
                   </template>
-                  <!-- IKD6FG → IKD6FJ：库存行内直达（预填本行商品）——
-                       入库/申请采购按角色分流，行内「校准」改「盘点」 -->
+                  <!-- IKD6FG → IKFOQ1：库存行内直达（预填本行商品）；
+                       采购申请退役，「申请」恢复「入库」，补货走采购管理 -->
                   <template
-                    v-else-if="
-                      section === 'inventory' &&
-                      invTab === 'stock' &&
-                      canWriteSection
-                    "
+                    v-else-if="section === 'inventory' && canWriteSection"
                   >
                     <button
                       class="btn mini primary"
                       @click="openStockForm('stock-in', (row as Product).id)"
                     >
-                      {{ isPlatformAdmin ? "入库" : "申请" }}
+                      入库
                     </button>
                     <button
                       class="btn mini ghost"
                       @click="openStockForm('stocktake', (row as Product).id)"
                     >
                       盘点
-                    </button>
-                  </template>
-                  <!-- IKD6FJ：采购申请审核台——平台角色对待审行通过/拒绝直达 -->
-                  <template
-                    v-else-if="
-                      section === 'inventory' &&
-                      invTab === 'requests' &&
-                      isPlatformAdmin &&
-                      canWriteSection &&
-                      (row as unknown as PurchaseRequest).status === 'pending'
-                    "
-                  >
-                    <button
-                      class="btn mini primary"
-                      @click="openPurchaseAudit(row, 'approved')"
-                    >
-                      通过
-                    </button>
-                    <button
-                      class="btn mini ghost"
-                      @click="openPurchaseAudit(row, 'rejected')"
-                    >
-                      拒绝
                     </button>
                   </template>
                   <!-- IKCJ3M：促销——编辑/停启行内直达（独立菜单 + marketing tab 双入口） -->

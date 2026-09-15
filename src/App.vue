@@ -112,6 +112,11 @@ const hqGroups = [
     label: "订货管理",
     items: [["/restock", "restock", "订货管理"]],
   },
+  {
+    // IKFOQ1：采购管理独立一级菜单（道哥拍板与订货管理平级，仅总部）
+    label: "采购管理",
+    items: [["/purchase", "purchase", "采购管理"]],
+  },
   // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放
   {
     label: "校区与账号",
@@ -148,6 +153,11 @@ const campusGroups = [
     // IKFOQ0：订货管理独立一级菜单（总部批次+审核，校区我的订货）
     label: "订货管理",
     items: [["/restock", "restock", "订货管理"]],
+  },
+  {
+    // IKFOQ1：采购管理独立一级菜单（仅总部可见，后端 purchase 键同口径）
+    label: "采购管理",
+    items: [["/purchase", "purchase", "采购管理"]],
   },
   // IKB5PB：营销拆出独立一级组（见 MARKETING_ITEMS）
   {

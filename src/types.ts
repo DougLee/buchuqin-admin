@@ -748,7 +748,7 @@ export interface RoomImportResult {
   errors: string[];
 }
 
-/* ---------- 盘点校准与采购申请（IKD6FJ） ---------- */
+/* ---------- 盘点校准（IKD6FJ） ---------- */
 
 /** 盘点校准结果：delta = 实际-账面差额；账实相符（delta=0）时 applied=false 不落流水。 */
 export interface StocktakeResult {
@@ -759,24 +759,6 @@ export interface StocktakeResult {
   applied: boolean;
 }
 
-/** 采购申请行：后端全量返回（take 200 倒序，非分页信封）。 */
-export interface PurchaseRequest {
-  id: string;
-  campusId: string;
-  /** hq 跨校区视角的校区名。 */
-  campusName: string;
-  productId: string;
-  productName: string;
-  productStock: number;
-  quantity: number;
-  reason: string;
-  status: "pending" | "approved" | "rejected";
-  applyByName: string;
-  auditByName: string;
-  auditNote: string;
-  createdAt: string;
-  auditedAt: string;
-}
 
 /* ---------- 营销地图（IKD6FI）：楼栋×楼层×寝室下单聚合 ---------- */
 
@@ -830,7 +812,15 @@ export interface RestockBatchProduct {
   productId: string;
   product: Pick<
     Product,
-    "id" | "name" | "price" | "image" | "retailUnit" | "wholesaleUnit" | "unitsPerCase" | "status"
+    | "id"
+    | "name"
+    | "price"
+    | "image"
+    | "retailUnit"
+    | "wholesaleUnit"
+    | "unitsPerCase"
+    | "costPrice"
+    | "status"
   >;
 }
 
@@ -867,4 +857,63 @@ export interface RestockOrder {
   auditAt: string | null;
   updatedAt?: string;
   items?: RestockOrderLine[];
+}
+
+/* ---------- 采购单（IKFOQ1，2026-09-15 grilling 定版） ---------- */
+/** 状态由 已收/应收 推导：closedAt→closed；已收 0→pending；≥应收→completed；否则 partial。 */
+export type PurchasePhase = "pending" | "partial" | "completed" | "closed";
+export interface PurchaseOrderRow {
+  id: string;
+  batchId: string;
+  batchName: string;
+  batchPhase?: RestockBatch["phase"];
+  supplierName: string;
+  phase: PurchasePhase;
+  lineCount: number;
+  requiredCases: number;
+  receivedCases: number;
+  badCases: number;
+  /** 采购总额（分）= Σ 应收×单价 */
+  totalCost: number;
+  /** 已收金额（分）= Σ 已收×单价 */
+  receivedCost: number;
+  closedAt: string | null;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface PurchaseOrderLine {
+  id: string;
+  productId: string;
+  name: string;
+  image: string;
+  retailUnit?: string;
+  wholesaleUnit?: string;
+  requiredCases: number;
+  receivedCases: number;
+  badCases: number;
+  /** 单价快照（分），生成时预填 costPrice 可改（IQ7） */
+  unitCost: number;
+  lastNote: string;
+  unitsPerCase: number;
+}
+export interface PurchaseOrderDetail {
+  id: string;
+  batchId: string;
+  batchName: string;
+  batchPhase?: RestockBatch["phase"];
+  supplierName: string;
+  phase: PurchasePhase;
+  closedAt: string | null;
+  closedNote: string;
+  closedByName: string;
+  createdByName: string;
+  createdAt: string;
+  items: PurchaseOrderLine[];
+}
+/** 批次详情毛利聚合（IQ8）：批发价合计−全部采购单已收金额 */
+export interface BatchMarginSummary {
+  wholesaleTotal: number;
+  purchaseReceivedTotal: number;
+  grossEstimate: number;
 }

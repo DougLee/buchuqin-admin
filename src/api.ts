@@ -21,7 +21,6 @@ import type {
   InventoryTxn,
   MarketingMapData,
   Printer,
-  PurchaseRequest,
   LeaveRequest,
   ListQuery,
   Order,
@@ -33,6 +32,9 @@ import type {
   RestockBatch,
   RestockBatchProduct,
   RestockOrder,
+  PurchaseOrderRow,
+  PurchaseOrderDetail,
+  BatchMarginSummary,
   Room,
   RoomImportResult,
   Settlement,
@@ -364,37 +366,6 @@ export const api = {
         body: JSON.stringify(data),
       },
     ),
-  /** 采购申请列表（IKD6FJ）：全量数组（take 200 倒序，非分页信封）；hq 可带校区。 */
-  purchaseRequests: (status?: string, campusId?: string) =>
-    request<PurchaseRequest[]>(
-      `/admin/inventory/purchase-requests${withQuery(
-        status ? `status=${encodeURIComponent(status)}` : "",
-        campusId ? `campus=${encodeURIComponent(campusId)}` : "",
-      )}`,
-    ),
-  /** 提交采购申请（IKD6FJ）：校区角色「采购入库」改走申请通道，总部审核后自动入库。 */
-  createPurchaseRequest: (data: {
-    productId: string;
-    quantity: number;
-    reason?: string;
-  }) =>
-    request<{ id: string }>("/admin/inventory/purchase-requests", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  /** 采购审核（IKD6FJ）：仅平台角色（hq/admin）；approved 由后端事务内自动入库。 */
-  auditPurchaseRequest: (
-    id: string,
-    action: "approved" | "rejected",
-    note?: string,
-  ) =>
-    request<{ id: string; status: string }>(
-      `/admin/inventory/purchase-requests/${id}/audit`,
-      {
-        method: "POST",
-        body: JSON.stringify({ action, ...(note ? { note } : {}) }),
-      },
-    ),
   orders: (status = "all", query?: ListQuery) =>
     request<PagedResponse<Order>>(
       `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
@@ -423,11 +394,14 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
-  /** 批次详情：可订商品 + 订货单（总部=全校区 / 校区=本校区）。 */
+  /** 批次详情：可订商品 + 订货单 + 毛利聚合（IKFOQ1 IQ8，总部=全校区 / 校区=本校区）。 */
   restockBatchDetail: (id: string) =>
-    request<RestockBatch & { items: RestockBatchProduct[]; orders: RestockOrder[] }>(
-      `/admin/restock/batches/${id}`,
-    ),
+    request<
+      RestockBatch & {
+        items: RestockBatchProduct[];
+        orders: RestockOrder[];
+      } & BatchMarginSummary
+    >(`/admin/restock/batches/${id}`),
   /** 校区保存本批次订货单（upsert，草稿/驳回态可改，items 全量替换）。 */
   saveRestockOrder: (
     batchId: string,
@@ -447,6 +421,39 @@ export const api = {
       `/admin/restock/batches/${batchId}/order/withdraw`,
       { method: "POST", body: "{}" },
     ),
+  /* ---------- 采购单（IKFOQ1） ---------- */
+  purchaseOrders: () =>
+    request<PurchaseOrderRow[]>("/admin/purchase/orders"),
+  purchaseOrderDetail: (id: string) =>
+    request<PurchaseOrderDetail>(`/admin/purchase/orders/${id}`),
+  /** 一键聚合生成（IQ2）：行单价预填 costPrice 可改；应收以后端聚合为准 */
+  createPurchaseOrder: (
+    batchId: string,
+    body: { supplierName: string; lines: { productId: string; unitCost: number }[] },
+  ) =>
+    request<{ id: string }>(
+      `/admin/restock/batches/${batchId}/purchase-order`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  /** 验收入库（IQ3/IQ4）：快捷全收+坏品出库；receiveCases=0 的行忽略 */
+  receivePurchaseOrder: (
+    id: string,
+    lines: { productId: string; receiveCases: number; badCases: number; note?: string }[],
+  ) =>
+    request<{ id: string; phase: string }>(
+      `/admin/purchase/orders/${id}/receive`,
+      { method: "POST", body: JSON.stringify({ lines }) },
+    ),
+  closePurchaseOrder: (id: string, note?: string) =>
+    request<{ id: string; phase: string }>(
+      `/admin/purchase/orders/${id}/close`,
+      { method: "POST", body: JSON.stringify(note ? { note } : {}) },
+    ),
+  reopenPurchaseOrder: (id: string) =>
+    request<{ id: string }>(`/admin/purchase/orders/${id}/reopen`, {
+      method: "POST",
+      body: "{}",
+    }),
   restockOrders: (query?: { batchId?: string; status?: string }) =>
     request<RestockOrder[]>(
       `/admin/restock/orders${withQuery(

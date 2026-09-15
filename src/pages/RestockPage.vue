@@ -6,7 +6,6 @@ import {
 import { canWrite, role } from "../session";
 import type {
   RestockBatch,
-  RestockBatchProduct,
   RestockOrder,
 } from "../types";
 import { fenToYuan } from "../utils/money";
@@ -150,13 +149,60 @@ async function closeBatch(batch: RestockBatch) {
 
 /* ---------- 批次详情（总部：商品范围+各校区订货单） ---------- */
 const detailDrawer = ref(false);
-const detail = ref<(RestockBatch & { items: RestockBatchProduct[]; orders: RestockOrder[] }) | null>(
-  null,
-);
+const detail = ref<Awaited<ReturnType<typeof api.restockBatchDetail>> | null>(null);
 async function openBatchDetail(batch: RestockBatch) {
   detailDrawer.value = true;
   detail.value = null;
   detail.value = await api.restockBatchDetail(batch.id);
+}
+
+/* ---------- 生成采购单（IKFOQ1 grilling #2：批次详情一键聚合） ---------- */
+const poDrawer = ref(false);
+const poSaving = ref(false);
+const poSupplier = ref("");
+/** 聚合行：productId → 件数（该批次 confirmed 订货单按商品求和） */
+type PoLine = { productId: string; name: string; cases: number; unitCost: number };
+const poLines = ref<PoLine[]>([]);
+function openPurchaseForm() {
+  const d = detail.value;
+  if (!d) return;
+  const agg = new Map<string, number>();
+  for (const o of d.orders.filter((x) => x.status === "confirmed"))
+    for (const l of o.items ?? [])
+      agg.set(l.productId, (agg.get(l.productId) ?? 0) + l.cases);
+  if (!agg.size) return alert("该批次还没有已确认的订货单，无法生成采购单");
+  // 名称/进货价从官方全集行取（下架行回退 —）
+  const info = new Map(d.items.map((i) => [i.productId, i.product]));
+  poLines.value = [...agg.entries()].map(([productId, cases]) => ({
+    productId,
+    cases,
+    name: info.get(productId)?.name ?? "（已下架商品）",
+    unitCost: info.get(productId)?.costPrice ?? 0,
+  }));
+  poSupplier.value = "";
+  poDrawer.value = true;
+}
+async function submitPurchaseOrder() {
+  const supplierName = poSupplier.value.trim();
+  if (!supplierName) return alert("请填写供应商名称");
+  poSaving.value = true;
+  try {
+    await api.createPurchaseOrder(detail.value!.id, {
+      supplierName,
+      lines: poLines.value.map((l) => ({
+        productId: l.productId,
+        unitCost: Math.max(0, Math.round(l.unitCost)),
+      })),
+    });
+    poDrawer.value = false;
+    alert("采购单已生成，请到「采购管理」菜单验收入库");
+    refresh();
+    detail.value = await api.restockBatchDetail(detail.value!.id);
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "生成失败");
+  } finally {
+    poSaving.value = false;
+  }
 }
 
 /* ---------- 审核（总部）：确认/驳回/撤销统一小弹框 ---------- */
@@ -537,6 +583,28 @@ async function withdrawMyOrder() {
           <button @click="detailDrawer = false">✕</button>
         </div>
         <template v-if="detail">
+          <!-- IKFOQ1 毛利预估（IQ8）：批发价合计 − 全部采购单已收金额 -->
+          <div class="detail-section margin-box">
+            <div class="margin-row">
+              <span>订货批发价合计</span>
+              <strong>¥{{ fenToYuan(detail.wholesaleTotal) }}</strong>
+            </div>
+            <div class="margin-row">
+              <span>采购已收金额</span>
+              <strong>¥{{ fenToYuan(detail.purchaseReceivedTotal) }}</strong>
+            </div>
+            <div class="margin-row">
+              <span>本批毛利预估</span>
+              <strong class="margin-value">¥{{ fenToYuan(detail.grossEstimate) }}</strong>
+            </div>
+            <button
+              v-if="canManage"
+              class="btn mini ghost po-btn"
+              @click="openPurchaseForm"
+            >
+              ＋ 生成采购单
+            </button>
+          </div>
           <div class="detail-section">
             <h4>校区订货单（{{ detail.orders.length }}）</h4>
             <div v-if="!detail.orders.length" class="empty-block">暂无校区订货。</div>
@@ -715,6 +783,45 @@ async function withdrawMyOrder() {
         </div>
       </div>
     </div>
+
+    <!-- 生成采购单（IKFOQ1：一键聚合，单价预填 costPrice 可改） -->
+    <div v-if="poDrawer" class="drawer-mask" @click.self="poDrawer = false">
+      <div class="drawer po-drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">PURCHASE ORDER</p>
+            <h2>生成采购单</h2>
+            <p class="detail-window">
+              {{ detail?.name }} · 已确认订货单按商品聚合；单价默认进货价，可逐行改
+            </p>
+          </div>
+          <button @click="poDrawer = false">✕</button>
+        </div>
+        <div class="product-form po-form-body">
+          <label class="field-label">供应商名称</label>
+          <input
+            v-model="poSupplier"
+            maxlength="60"
+            placeholder="如：XX 食品经销部（一期不建档案）"
+          />
+          <label class="field-label">采购行（聚合结果）</label>
+          <div class="po-line po-line-head">
+            <span>商品</span><span>应收（件）</span><span>单价（元）</span>
+          </div>
+          <div v-for="l in poLines" :key="l.productId" class="po-line">
+            <span class="po-line-name">{{ l.name }}</span>
+            <span class="po-line-cases">{{ l.cases }}</span>
+            <input v-model.number="l.unitCost" type="number" min="0" step="0.01" />
+          </div>
+        </div>
+        <div class="drawer-actions">
+          <button class="btn ghost" @click="poDrawer = false">取消</button>
+          <button class="btn primary" :disabled="poSaving" @click="submitPurchaseOrder">
+            {{ poSaving ? "生成中…" : "生成采购单" }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -800,6 +907,82 @@ async function withdrawMyOrder() {
 .order-brief-ops {
   display: flex;
   justify-content: flex-end;
+}
+/* 毛利预估区块（IQ8） */
+.margin-box {
+  background: #f2f8f3;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.margin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #647169;
+  padding: 3px 0;
+}
+.margin-row strong {
+  font-size: 13px;
+  color: #153628;
+}
+.margin-row .margin-value {
+  color: #0b7a45;
+  font-size: 16px;
+}
+.po-btn {
+  margin-top: 8px;
+}
+/* 生成采购单弹框 */
+.po-drawer {
+  width: min(560px, 94vw);
+}
+.po-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+}
+.po-line {
+  display: grid;
+  grid-template-columns: 1fr 90px 110px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 12px;
+  color: #37423c;
+}
+.po-line-head {
+  border-bottom: 1px solid var(--line);
+  color: #7b8981;
+  font-weight: 600;
+  padding-bottom: 8px;
+}
+.po-line-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #153628;
+  font-weight: 700;
+}
+.po-line-cases {
+  text-align: center;
+}
+.po-line input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  text-align: right;
+  outline: 0;
+}
+.po-line input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #159c5515;
 }
 .audit-tip {
   margin-top: 8px;

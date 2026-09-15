@@ -45,6 +45,8 @@ const ALL_SECTIONS = [
   "recruit",
   // IKFOQ0：订货批次（独立一级菜单，权限对齐后端 restock 键）
   "restock",
+  // IKFOQ1：采购单（独立一级菜单，仅总部——对齐后端 purchase 键）
+  "purchase",
 ];
 
 /** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
@@ -56,6 +58,7 @@ const HQ_SECTIONS = [
   "products",
   "categories",
   "restock",
+  "purchase",
   "campuses",
   "accounts",
   "users",
@@ -73,8 +76,8 @@ export const PERMISSIONS: Record<
   // IKBW0A：banners 移出 hq（总部不做投放，Banner/广告位校区自管）。
   hq: {
     sections: HQ_SECTIONS,
-    // IKFOQ0：restock 可写（批次管理+审单）
-    writable: ["products", "categories", "campuses", "accounts", "restock"],
+    // IKFOQ0：restock 可写（批次管理+审单）；IKFOQ1：purchase 可写（采购全链）
+    writable: ["products", "categories", "campuses", "accounts", "restock", "purchase"],
   },
   admin: {
     // 平台超管全菜单开放（2026-08-26 道哥决策）；IKBW0A 起 banners 归本校区自管
@@ -96,10 +99,13 @@ export const PERMISSIONS: Record<
     ],
   },
   // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。
+  // IKFOQ1：purchase 仅总部（hq/admin），operations 排除
   operations: {
-    sections: [...ALL_SECTIONS, "dispatch", "rules"],
+    sections: [...ALL_SECTIONS.filter((s) => s !== "purchase"), "dispatch", "rules"],
     writable: [
-      ...ALL_SECTIONS.filter((s) => s !== "finance" && s !== "after-sales"),
+      ...ALL_SECTIONS.filter(
+        (s) => s !== "finance" && s !== "after-sales" && s !== "purchase",
+      ),
       "dispatch",
     ],
   },
