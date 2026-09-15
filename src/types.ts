@@ -809,7 +809,8 @@ export interface MarketingMapData {
 
 /** ===== 订货批次（IKFOQ0，2026-09-15 grilling 定版）===== */
 
-/** 订货批次：阶段由时间窗推导，closedAt 非空=总部手动提前关闭。 */
+/** 订货批次：阶段由时间窗推导，closedAt 非空=总部手动提前关闭。
+ *  商品范围恒等官方库在售全集（IKFOQ0 第二轮），不落快照不区分。 */
 export interface RestockBatch {
   id: string;
   name: string;
@@ -820,8 +821,6 @@ export interface RestockBatch {
   createdByName: string;
   createdAt: string;
   phase: "upcoming" | "open" | "ended" | "closed";
-  /** 列表附带的统计（详情接口不含）。 */
-  itemCount?: number;
   orderTotal?: number;
   orderConfirmed?: number;
 }

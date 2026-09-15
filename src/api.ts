@@ -402,21 +402,16 @@ export const api = {
   /** ===== 订货批次（IKFOQ0）：独立「订货管理」板块 ===== */
   /** 批次列表：phase 由时间窗推导；校区角色附带本校区单况统计。 */
   restockBatches: () => request<RestockBatch[]>("/admin/restock/batches"),
-  /** 建批次（hq/admin）：商品范围只收官方库在售行。 */
-  createRestockBatch: (data: {
-    name: string;
-    startAt: string;
-    endAt: string;
-    productIds: string[];
-  }) =>
+  /** 建批次（hq/admin）：商品范围恒等官方库在售全集，不勾选（IKFOQ0 第二轮）。 */
+  createRestockBatch: (data: { name: string; startAt: string; endAt: string }) =>
     request<RestockBatch>("/admin/restock/batches", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  /** 改批次：有已提交单时后端拒改商品范围。 */
+  /** 改批次：只改名称与窗口。 */
   updateRestockBatch: (
     id: string,
-    data: { name?: string; startAt?: string; endAt?: string; productIds?: string[] },
+    data: { name?: string; startAt?: string; endAt?: string },
   ) =>
     request<RestockBatch>(`/admin/restock/batches/${id}`, {
       method: "PATCH",

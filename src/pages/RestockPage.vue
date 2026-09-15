@@ -5,8 +5,6 @@ import {
 } from "../api";
 import { canWrite, role } from "../session";
 import type {
-  Category,
-  Product,
   RestockBatch,
   RestockBatchProduct,
   RestockOrder,
@@ -86,12 +84,6 @@ const batchDrawer = ref(false);
 const batchSaving = ref(false);
 const batchEditId = ref(""); // 空=新建
 const batchForm = ref({ name: "", startAt: "", endAt: "" });
-const officialProducts = ref<Product[]>([]);
-const productSearch = ref("");
-const categories = ref<Category[]>([]);
-const categoryFilterId = ref("");
-const checkedIds = ref<Set<string>>(new Set());
-const rangeLocked = ref(false); // 已有提交单：商品范围锁死（后端同步把关）
 
 function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -99,24 +91,9 @@ function toLocalInput(iso: string | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-const onlyChecked = ref(false);
-const filteredProducts = computed(() => {
-  let list = officialProducts.value;
-  if (categoryFilterId.value)
-    list = list.filter((p) => p.categoryId === categoryFilterId.value);
-  if (onlyChecked.value) list = list.filter((p) => checkedIds.value.has(p.id));
-  const kw = productSearch.value.trim().toLowerCase();
-  if (kw) list = list.filter((p) => p.name.toLowerCase().includes(kw));
-  return list;
-});
-const checkedCount = computed(() => checkedIds.value.size);
-
 async function openBatchForm(batch?: RestockBatch) {
   batchDrawer.value = true;
   batchSaving.value = false;
-  productSearch.value = "";
-  categoryFilterId.value = "";
-  onlyChecked.value = false;
   if (batch) {
     batchEditId.value = batch.id;
     batchForm.value = {
@@ -124,44 +101,14 @@ async function openBatchForm(batch?: RestockBatch) {
       startAt: toLocalInput(batch.startAt),
       endAt: toLocalInput(batch.endAt),
     };
-    const detail = await api.restockBatchDetail(batch.id);
-    checkedIds.value = new Set(detail.items.map((i) => i.productId));
-    rangeLocked.value = detail.orders.some((o) =>
-      ["submitted", "confirmed"].includes(o.status),
-    );
   } else {
     batchEditId.value = "";
     batchForm.value = { name: "", startAt: "", endAt: "" };
-    checkedIds.value = new Set();
-    rangeLocked.value = false;
   }
-  // 商品勾选池 = 官方库在售行（hq/admin 默认视角即官方库）；类别字典随行加载
-  if (!officialProducts.value.length) {
-    const res = await api.products({ page: 1, pageSize: 500, status: "on-sale" });
-    officialProducts.value = res.items;
-  }
-  if (!categories.value.length) {
-    categories.value = await api.adminCategories().catch(() => []);
-  }
-}
-function toggleProduct(id: string, on: boolean) {
-  const next = new Set(checkedIds.value);
-  if (on) next.add(id);
-  else next.delete(id);
-  checkedIds.value = next;
-}
-function checkAllVisible(on: boolean) {
-  const next = new Set(checkedIds.value);
-  for (const p of filteredProducts.value) {
-    if (on) next.add(p.id);
-    else next.delete(p.id);
-  }
-  checkedIds.value = next;
 }
 async function submitBatch() {
   const name = batchForm.value.name.trim();
   if (!name) return alert("请填写批次名称");
-  if (!checkedIds.value.size) return alert("请至少勾选一个可订商品");
   const startAt = new Date(batchForm.value.startAt);
   const endAt = new Date(batchForm.value.endAt);
   if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()))
@@ -169,20 +116,17 @@ async function submitBatch() {
   if (endAt <= startAt) return alert("结束时间必须晚于开始时间");
   batchSaving.value = true;
   try {
-    const productIds = [...checkedIds.value];
     if (batchEditId.value) {
       await api.updateRestockBatch(batchEditId.value, {
         name,
         startAt: startAt.toISOString(),
         endAt: endAt.toISOString(),
-        ...(rangeLocked.value ? {} : { productIds }),
       });
     } else {
       await api.createRestockBatch({
         name,
         startAt: startAt.toISOString(),
         endAt: endAt.toISOString(),
-        productIds,
       });
     }
     batchDrawer.value = false;
@@ -352,7 +296,6 @@ async function withdrawMyOrder() {
           <p class="batch-window">
             {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
           </p>
-          <p class="batch-meta">{{ b.itemCount ?? 0 }} 个可订商品</p>
           <div class="batch-card-foot">
             <span
               v-if="b.orderTotal"
@@ -382,7 +325,6 @@ async function withdrawMyOrder() {
             <th>批次名称</th>
             <th>阶段</th>
             <th>订货窗口</th>
-            <th>可订商品</th>
             <th>订货单</th>
             <th>创建人</th>
             <th>操作</th>
@@ -397,7 +339,6 @@ async function withdrawMyOrder() {
             <td class="muted-cell">
               {{ fmtDateTime(b.startAt) }}<br />{{ fmtDateTime(b.endAt) }}
             </td>
-            <td>{{ b.itemCount ?? 0 }}</td>
             <td>
               {{ b.orderTotal ?? 0 }} 单 / {{ b.orderConfirmed ?? 0 }} 已确认
             </td>
@@ -511,72 +452,9 @@ async function withdrawMyOrder() {
               <input v-model="batchForm.endAt" type="datetime-local" />
             </div>
           </div>
-          <div class="picker-head">
-            <label class="field-label">
-              可订商品（已选 <b class="picked-count">{{ checkedCount }}</b> 个）
-            </label>
-            <span class="picker-tools">
-              <button
-                class="link-btn"
-                :class="{ on: onlyChecked }"
-                @click="onlyChecked = !onlyChecked"
-              >
-                {{ onlyChecked ? "看全部" : "仅看已选" }}
-              </button>
-              <button class="link-btn" @click="checkAllVisible(true)">全选</button>
-              <button class="link-btn" @click="checkAllVisible(false)">清空</button>
-            </span>
-          </div>
-          <p v-if="rangeLocked" class="lock-hint">
-            已有校区提交订货，本批次商品范围不可调整（仅可改名称与窗口）。
+          <p class="picker-none-hint">
+            可订商品 = 官方商品库全部在售商品，无需勾选；开放期间新上架的商品自动可订。
           </p>
-          <div class="picker-filter-row">
-            <select v-model="categoryFilterId" class="picker-cat" aria-label="按类别筛选">
-              <option value="">全部类别</option>
-              <option v-for="c in categories" :key="c.id" :value="c.id">
-                {{ c.name }}
-              </option>
-            </select>
-            <input
-              v-model="productSearch"
-              class="picker-search"
-              placeholder="搜商品名…"
-            />
-          </div>
-          <div class="picker-list">
-            <label
-              v-for="p in filteredProducts"
-              :key="p.id"
-              class="picker-row checkbox-row"
-              :class="{ checked: checkedIds.has(p.id), locked: rangeLocked && !checkedIds.has(p.id) }"
-            >
-              <input
-                type="checkbox"
-                class="raw-checkbox"
-                :checked="checkedIds.has(p.id)"
-                :disabled="rangeLocked"
-                @change="toggleProduct(p.id, ($event.target as HTMLInputElement).checked)"
-              />
-              <img v-if="p.image" :src="p.image" class="picker-img" alt="" />
-              <span v-else class="picker-img picker-img--empty" aria-hidden="true"></span>
-              <span class="picker-main">
-                <span class="picker-name">{{ p.name }}</span>
-                <span class="picker-sub">
-                  <template v-if="(p.unitsPerCase ?? 1) > 1">
-                    1 件={{ p.unitsPerCase }}{{ p.retailUnit || "个" }}
-                  </template>
-                  <template v-else>按{{ p.wholesaleUnit || "件" }}订</template>
-                </span>
-              </span>
-              <span class="picker-price">
-                {{ fenToYuan(p.price) }}
-                <em>/{{ p.wholesaleUnit || "件" }}</em>
-              </span>
-            </label>
-            <p v-if="!filteredProducts.length" class="picker-empty">
-              {{ onlyChecked ? "已选商品里没有匹配项。" : "没有匹配的在售商品。" }}
-            </p>
-          </div>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="batchDrawer = false">取消</button>
@@ -605,13 +483,8 @@ async function withdrawMyOrder() {
         </div>
         <template v-if="detail">
           <div class="detail-section">
-            <h4>可订商品（{{ detail.items.length }}）</h4>
-            <ul class="scope-list">
-              <li v-for="i in detail.items" :key="i.productId">
-                {{ i.product.name }}
-                <em v-if="(i.product.unitsPerCase ?? 1) > 1">1 件={{ i.product.unitsPerCase }}</em>
-              </li>
-            </ul>
+            <h4>可订商品范围</h4>
+            <p class="scope-hint">官方商品库全部在售商品，不区分批次（开放期间新上架自动可订）。</p>
           </div>
           <div class="detail-section">
             <h4>校区订货单（{{ detail.orders.length }}）</h4>
@@ -901,158 +774,14 @@ async function withdrawMyOrder() {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-.picker-head {
+/* 可订商品 = 官方库在售全集（IKFOQ0 第二轮），仅一句说明文字 */
+.picker-none-hint {
   margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.picker-tools {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.link-btn {
-  border: 0;
-  background: none;
-  color: #0b7a45;
   font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-}
-.link-btn.on {
-  color: #fff;
-  background: var(--brand);
-  border-radius: 99px;
-  padding: 3px 10px;
-}
-.picked-count {
-  color: #0b7a45;
-  font-size: 13px;
-}
-.lock-hint {
-  font-size: 11px;
-  color: #a95c20;
-  background: #fff0dc;
+  color: #647169;
+  background: #f2f6f3;
   border-radius: 8px;
   padding: 8px 10px;
-}
-.picker-filter-row {
-  display: flex;
-  gap: 8px;
-}
-.picker-cat {
-  flex: none;
-  width: 136px;
-  height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 8px;
-  outline: 0;
-  background: #fff;
-  color: #153628;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.picker-cat:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px #159c5515;
-}
-.picker-search {
-  flex: 1;
-  min-width: 0;
-  height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 10px;
-  outline: 0;
-}
-.picker-list {
-  max-height: 320px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c2d4c9 transparent;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-right: 2px;
-}
-/* 整行即点击目标（≥44px 触控高）；checkbox 走全局 .checkbox-row 自绘方案，
-   防 .product-form input 通栏规则把原生框拉成大方块挤压文字（IKD7TL 同款事故） */
-.picker-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.picker-row:hover {
-  background: #f4f8f5;
-  border-color: #cfe0d6;
-}
-.picker-row.checked {
-  background: #ebf7f0;
-  border-color: var(--brand);
-}
-.picker-row.locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.picker-img {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: #eef1ef;
-}
-.picker-img--empty {
-  display: inline-block;
-}
-/* 名字区 min-width:0 是防竖排关键：压缩时省略号而非逐字换行 */
-.picker-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.picker-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #153628;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.picker-sub {
-  font-size: 11px;
-  color: #647169;
-}
-.picker-price {
-  flex: none;
-  font-size: 13px;
-  font-weight: 700;
-  color: #0b7a45;
-}
-.picker-price em {
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 400;
-  color: #647169;
-}
-.picker-empty {
-  padding: 20px 0;
-  font-size: 12px;
-  color: #647169;
-  text-align: center;
 }
 /* 详情 */
 .detail-window {
@@ -1070,16 +799,12 @@ async function withdrawMyOrder() {
   color: #153628;
   margin-bottom: 8px;
 }
-.scope-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: 12px;
-  color: #37423c;
-}
-.scope-list em {
-  font-style: normal;
+.scope-hint {
+  font-size: 11px;
   color: #647169;
+  background: #f2f6f3;
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 .order-brief {
   border: 1px solid var(--line);
