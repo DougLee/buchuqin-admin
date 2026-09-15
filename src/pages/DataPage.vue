@@ -78,6 +78,10 @@ const route = useRoute(),
     location: "",
     locationCode: "",
     images: [] as string[],
+    // 单位属性（IKFOPU）：官方资料，校区同步行只读
+    retailUnit: "",
+    wholesaleUnit: "件",
+    unitsPerCase: 1,
     // 商品介绍（IKAHAU）：整段覆盖，空串清空
     description: "",
   }),
@@ -98,6 +102,10 @@ const route = useRoute(),
     locationCode: "",
     images: [] as string[],
     weight: 0,
+    // 单位属性（IKFOPU）：零售按听/瓶卖、订货按件批发；含量=件含零售数
+    retailUnit: "",
+    wholesaleUnit: "件",
+    unitsPerCase: 1,
     // 商品介绍（IKAHAU）：纯文本多行，空 = 小程序详情页不渲染
     description: "",
   });
@@ -4293,6 +4301,10 @@ function openDetail(row: AdminRow) {
       location: product.location ?? "",
       locationCode: (product as Product & { locationCode?: string }).locationCode ?? "",
       images: Array.isArray(product.images) ? [...product.images] : [],
+      // 单位属性（IKFOPU）回填；含量为 0/空的存量行按 1 展示
+      retailUnit: product.retailUnit ?? "",
+      wholesaleUnit: product.wholesaleUnit || "件",
+      unitsPerCase: Number(product.unitsPerCase ?? 1) || 1,
       description: product.description ?? "",
     };
   }
@@ -4318,6 +4330,15 @@ async function act(action: string) {
           : {}),
         ...(productEdit.value.weight > 0
           ? { weight: productEdit.value.weight }
+          : {}),
+        // 单位属性（IKFOPU）：校区同步行只读不提交（自建行/官方视角照常）
+        ...(isHqView.value ||
+        !(selected.value as Product)?.sourceProductId
+          ? {
+              retailUnit: productEdit.value.retailUnit.trim(),
+              wholesaleUnit: productEdit.value.wholesaleUnit.trim() || "件",
+              unitsPerCase: Number(productEdit.value.unitsPerCase) || 1,
+            }
           : {}),
         ...(productEdit.value.categoryId
           ? { categoryId: productEdit.value.categoryId }
@@ -4430,6 +4451,9 @@ function openProductCreate() {
     locationCode: "",
     images: [],
     weight: 0,
+    retailUnit: "",
+    wholesaleUnit: "件",
+    unitsPerCase: 1,
     description: "",
   };
 }
@@ -4725,11 +4749,20 @@ async function saveProduct() {
     scanError.value = "条码必须是 8-14 位数字，或留空";
     return;
   }
+  // 单位属性（IKFOPU）：官方库建档零售单位必填；含量空值兜底 1
+  const retailUnit = productForm.value.retailUnit.trim();
+  if (isHqView.value && !retailUnit) {
+    scanError.value = "请填写零售单位（如 听/瓶/包）";
+    return;
+  }
   try {
     // 价格表单输元，提交前统一转分（IKC1AC：三层价格一并转分）
     await api.createProduct({
       ...productForm.value,
       barcode: barcode || undefined,
+      retailUnit,
+      wholesaleUnit: productForm.value.wholesaleUnit.trim() || "件",
+      unitsPerCase: Number(productForm.value.unitsPerCase) || 1,
       price: yuanToFen(productForm.value.price),
       originalPrice: yuanToFen(productForm.value.originalPrice),
       costPrice: yuanToFen(productForm.value.costPrice),
@@ -6619,6 +6652,32 @@ async function cancelInviteRow(row: AdminRow) {
                 min="0"
                 step="0.001" /></label
             >
+            <!-- 单位属性（IKFOPU）：官方资料——校区同步行（有来源）灰显只读 -->
+            <label
+              >零售单位<input
+                v-model.trim="productEdit.retailUnit"
+                type="text"
+                maxlength="6"
+                placeholder="听/瓶/包"
+                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+            /></label
+            ><label
+              >批发单位<input
+                v-model.trim="productEdit.wholesaleUnit"
+                type="text"
+                maxlength="6"
+                placeholder="件"
+                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+            /></label
+            ><label
+              >每件含量<input
+                v-model.number="productEdit.unitsPerCase"
+                type="number"
+                min="1"
+                max="999"
+                step="1"
+                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+            /></label>
             <label
               >{{ isHqView ? "批发价格（元）" : "校园售价（元）" }}<input
                 v-model.number="productEdit.price"
@@ -7371,6 +7430,28 @@ async function cancelInviteRow(row: AdminRow) {
               min="0"
               step="0.001"
           /></label>
+          <!-- 单位属性（IKFOPU）：零售按听/瓶卖、订货按件批发，含量=件含零售数 -->
+          <label
+            >零售单位（必填）<input
+              v-model.trim="productForm.retailUnit"
+              maxlength="6"
+              placeholder="听/瓶/包"
+          /></label>
+          <label
+            >批发单位<input
+              v-model.trim="productForm.wholesaleUnit"
+              maxlength="6"
+              placeholder="件"
+          /></label>
+          <label
+            >每件含量<input
+              v-model.number="productForm.unitsPerCase"
+              type="number"
+              min="1"
+              max="999"
+              step="1"
+              placeholder="1 件 = 24 听"
+          /></label>
           <!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
           <label v-if="!isHqView"
             >库位（字典选择）<select v-model="productForm.location">
@@ -7467,7 +7548,13 @@ async function cancelInviteRow(row: AdminRow) {
                   categories.find((c) => c.id === item.categoryId)?.name ??
                   item.categoryId
                 }}
-                · ¥{{ fenToYuan(item.price) }}</small
+                · ¥{{ fenToYuan(item.price)
+                }}<!-- 单位（IKFOPU）：含量>1 时括注换算，导入前可核对 --><template
+                  v-if="(item.unitsPerCase ?? 1) > 1"
+                >
+                  · {{ item.unitsPerCase ?? 1
+                  }}{{ item.wholesaleUnit }}/{{ item.retailUnit || "个" }}</template
+                ></small
               >
             </div>
             <input

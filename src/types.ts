@@ -89,6 +89,10 @@ export interface Product {
   location?: string;
   /** 库位编号（IKA0VG）：与区域拼接展示（零食区-001）；订单回查实时库位用。 */
   locationCode?: string;
+  /** 单位属性（IKFOPU）：零售单位空 = 不显示单位文字；含量=件含零售数。 */
+  retailUnit?: string;
+  wholesaleUnit?: string;
+  unitsPerCase?: number;
   weight: number;
   /** 商品介绍（IKAHAU）：纯文本 ≤2000 字，空串/null = 详情页不渲染。 */
   description?: string | null;
