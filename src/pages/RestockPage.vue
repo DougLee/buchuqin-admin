@@ -252,7 +252,9 @@ async function withdrawMyOrder() {
 
 <template>
   <div class="workspace">
-    <header class="page-head">
+    <!-- 用 div 不用 header：.shell header 是顶栏专用元素选择器（白底 sticky 72px），
+         header 标签会误命中变白卡（IKFOQ0 样式不一致根因） -->
+    <div class="page-head">
       <div>
         <h1>订货管理</h1>
         <p>
@@ -268,7 +270,7 @@ async function withdrawMyOrder() {
           <span>＋</span>新建批次
         </button>
       </div>
-    </header>
+    </div>
 
     <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar（DataPage 同款 segmented） -->
     <div v-if="canManage" class="toolbar">
