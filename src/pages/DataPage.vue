@@ -6236,7 +6236,14 @@ async function cancelInviteRow(row: AdminRow) {
       </div>
     </div>
     <div v-if="selected" class="drawer-mask" @click.self="selected = undefined">
-      <aside class="drawer" :class="{ 'product-create': section === 'after-sales' }">
+      <!-- IKFOQ4（道哥反馈「订单详情弹框窄不大方」）：订单/仓储订单详情加宽至 640 -->
+      <aside
+        class="drawer"
+        :class="{
+          'product-create': section === 'after-sales',
+          'order-detail': section === 'orders' || section === 'warehouse-orders',
+        }"
+      >
         <div class="drawer-head">
           <div>
             <h2>记录详情与操作</h2>
@@ -6767,7 +6774,11 @@ async function cancelInviteRow(row: AdminRow) {
           <!-- IKCIAC：products 编辑形态已含完整表单，不再重复渲染 columns 只读卡；
                其余板块（orders/库存流水等无表单板块）保持只读卡详情 -->
           <template v-else
-            ><div v-for="col in config.columns" :key="col[0]">
+            ><div
+              v-for="col in config.columns"
+              :key="col[0]"
+              :class="{ wide: section === 'orders' && col[0] === 'itemsText' }"
+            >
               <span>{{ col[1] }}</span
               ><strong
                 v-if="col[0] === 'quantity' && section === 'inventory-txns'"
@@ -6783,14 +6794,15 @@ async function cancelInviteRow(row: AdminRow) {
             <span class="field-label"
               >订单明细毛利（售价 − 支付时批发价快照，快照前历史单显示 —）</span
             >
-            <ul class="pick-list">
+            <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
-                <span>{{ line.name }} × {{ line.quantity }}</span>
-                <span v-if="line.hasMargin"
-                  >售价 {{ line.priceText }} · 毛利
+                <span class="margin-name"
+                  >{{ line.name }} × {{ line.quantity }}</span
+                >
+                <span class="margin-amount" :class="{ muted: !line.hasMargin }">
+                  售价 {{ line.priceText }} · 毛利
                   <strong>{{ line.marginText }}</strong></span
                 >
-                <span v-else>售价 {{ line.priceText }} · 毛利 —</span>
               </li>
             </ul>
           </div>

@@ -655,6 +655,53 @@
   gap: 8px;
   margin-top: 6px;
 }
+/* IKFOQ4（道哥反馈「订单详情弹框窄、不大方」）：订单/仓储订单详情加宽——
+   460 默认宽下商品名/订单编号换行局促，两列字段卡每列仅 ~190px；
+   640 与商品新建（560）/转盘（680）形成「短表单 < 详情 < 复杂编辑」宽度阶梯 */
+.drawer.order-detail {
+  width: min(640px, 94vw);
+}
+/* 订单明细毛利行（IKFOPQ）：名称左对齐（超长省略）、售价/毛利右对齐（不换行），
+   避免 460 窄框时代的内容流式断行（「毛利 —」孤行） */
+.margin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.margin-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 12px;
+  background: #f6faf7;
+  border: 1px solid #e2eae5;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #37423c;
+}
+.margin-list .margin-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #153628;
+}
+.margin-list .margin-amount {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.margin-list .margin-amount strong {
+  color: #0c7a3e;
+  font-weight: 800;
+}
+.margin-list .margin-amount.muted strong {
+  color: var(--muted);
+  font-weight: 600;
+}
 .pick-list {
   list-style: none;
   margin: 0;
