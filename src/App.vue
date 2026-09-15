@@ -109,11 +109,12 @@ const hqGroups = [
   },
   {
     // IKFOQ0→IKFOQ1 二轮调整（道哥 2026-09-15）：订货/采购两菜单合并为
-    // 「采购管理」一组，组下两个子菜单
+    // 「采购管理」一组；IKFOPR：组下追加「经营日报」（总部账 T+1）
     label: "采购管理",
     items: [
       ["/restock", "restock", "订货管理"],
       ["/purchase", "purchase", "采购管理"],
+      ["/reports", "purchase", "经营日报"],
     ],
   },
   // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放

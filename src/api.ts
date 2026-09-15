@@ -33,6 +33,7 @@ import type {
   RestockBatchProduct,
   RestockOrder,
   RestockShipmentDetail,
+  HqDailyReport,
   PurchaseOrderRow,
   PurchaseOrderDetail,
   BatchMarginSummary,
@@ -492,6 +493,15 @@ export const api = {
   /** 发货单详情：行快照价+发货/收货信息。 */
   restockShipmentDetail: (id: string) =>
     request<RestockShipmentDetail>(`/admin/restock/orders/${id}/shipment`),
+  /** 总部经营日报（IKFOPR）：receivedAt 落日×校区聚合；start/end YYYY-MM-DD，缺省昨日。 */
+  hqDailyReport: (start?: string, end?: string, campusId?: string) =>
+    request<HqDailyReport>(
+      `/admin/reports/hq-daily${withQuery(
+        start ? `start=${start}` : undefined,
+        end ? `end=${end}` : undefined,
+        campusId ? `campusId=${encodeURIComponent(campusId)}` : undefined,
+      )}`,
+    ),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
   orderStatusCounts: (campusId?: string) =>
     request<Record<string, number>>(

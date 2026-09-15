@@ -1021,9 +1021,26 @@ async function confirmReceipt() {
             <span>¥{{ fenToYuan(l.costPerCase) }}/件</span>
             <span>¥{{ fenToYuan(l.wholesalePerCase) }}/件</span>
           </div>
+          <!-- IKFOPR 单据毛利（总部账）：整单金额差规避尾差 -->
+          <div class="margin-box ship-margin">
+            <div class="margin-row">
+              <span>批发金额</span>
+              <strong>¥{{ fenToYuan(shipment.wholesaleTotal) }}</strong>
+            </div>
+            <div class="margin-row">
+              <span>进货成本</span>
+              <strong>¥{{ fenToYuan(shipment.costTotal) }}</strong>
+            </div>
+            <div class="margin-row">
+              <span>本单毛利</span>
+              <strong class="margin-value">
+                ¥{{ fenToYuan(shipment.wholesaleTotal - shipment.costTotal) }}
+              </strong>
+            </div>
+          </div>
           <p class="ship-tip">
-            快照价为总部账毛利（毛利②）数据源：进货价取本批次采购实际成交价（无采购单回退商品档案进货价），
-            批发价为发货时实时价。
+            快照价为总部账毛利（毛利②）数据源：进货价取本批次采购实际成交价
+            （按听报价换算每件价，无采购单回退商品档案进货价），批发价为发货时实时价。
           </p>
         </template>
         <div class="drawer-actions">
@@ -1064,6 +1081,10 @@ async function confirmReceipt() {
   color: #a95c20;
   background: #fff0dc;
   border-radius: 10px;
+}
+/* IKFOPR 发货单毛利块：复用 margin-row 排版，收窄上边距 */
+.ship-margin {
+  margin-top: 14px;
 }
 .ship-line {
   display: grid;

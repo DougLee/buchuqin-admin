@@ -900,7 +900,36 @@ export interface RestockShipmentDetail {
   receivedAt: string | null;
   totalCases: number;
   totalUnits: number;
+  /** IKFOPR 单据毛利（每件价口径）：批发金额/进货金额，gross=差 */
+  wholesaleTotal: number;
+  costTotal: number;
   items: RestockShipmentLine[];
+}
+
+/* ---------- 总部经营日报（IKFOPR，2026-09-15 grilling 定版） ---------- */
+export interface HqDailyRow {
+  date: string;
+  campusId: string;
+  campusName: string;
+  campusShortName: string;
+  shipments: number;
+  /** 批发销售额（分）=Σ 件数×每件批发价快照 */
+  wholesaleTotal: number;
+  /** 进货成本（分）=Σ 件数×每件进货价快照 */
+  costTotal: number;
+  gross: number;
+  /** 毛利率万分比整数（/100=百分比） */
+  marginRate: number;
+}
+export interface HqDailyReport {
+  totals: {
+    shipments: number;
+    wholesaleTotal: number;
+    costTotal: number;
+    gross: number;
+    marginRate: number;
+  };
+  rows: HqDailyRow[];
 }
 
 /* ---------- 采购单（IKFOQ1，2026-09-15 grilling 定版） ---------- */

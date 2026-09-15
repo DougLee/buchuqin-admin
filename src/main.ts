@@ -6,6 +6,7 @@ import DataPage from "./pages/DataPage.vue";
 import Login from "./pages/Login.vue";
 import RestockPage from "./pages/RestockPage.vue";
 import PurchasePage from "./pages/PurchasePage.vue";
+import DailyReportPage from "./pages/DailyReportPage.vue";
 import { canSee, role } from "./session";
 import "./style.css";
 import "./drawer.css";
@@ -17,6 +18,8 @@ const routes = [
   { path: "/restock", component: RestockPage },
   // IKFOQ1：采购管理独立页（验收闭环），权限走 canSee("purchase")
   { path: "/purchase", component: PurchasePage },
+  // IKFOPR：总部经营日报（发货单实时聚合，T+1），权限同 purchase
+  { path: "/reports", component: DailyReportPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -30,6 +33,7 @@ router.beforeEach((to) => {
   // IKFOQ0：独立路由不走 :section 参数，单独过权限
   if (to.path === "/restock") return canSee("restock") ? true : "/";
   if (to.path === "/purchase") return canSee("purchase") ? true : "/";
+  if (to.path === "/reports") return canSee("purchase") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });
