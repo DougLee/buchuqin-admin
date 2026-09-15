@@ -30,6 +30,9 @@ import type {
   Product,
   Promotion,
   RecruitingApplication,
+  RestockBatch,
+  RestockBatchProduct,
+  RestockOrder,
   Room,
   RoomImportResult,
   Settlement,
@@ -395,6 +398,81 @@ export const api = {
   orders: (status = "all", query?: ListQuery) =>
     request<PagedResponse<Order>>(
       `/admin/orders${withQuery(`status=${status}`, listQuery(query))}`,
+    ),
+  /** ===== 订货批次（IKFOQ0）：独立「订货管理」板块 ===== */
+  /** 批次列表：phase 由时间窗推导；校区角色附带本校区单况统计。 */
+  restockBatches: () => request<RestockBatch[]>("/admin/restock/batches"),
+  /** 建批次（hq/admin）：商品范围只收官方库在售行。 */
+  createRestockBatch: (data: {
+    name: string;
+    startAt: string;
+    endAt: string;
+    productIds: string[];
+  }) =>
+    request<RestockBatch>("/admin/restock/batches", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 改批次：有已提交单时后端拒改商品范围。 */
+  updateRestockBatch: (
+    id: string,
+    data: { name?: string; startAt?: string; endAt?: string; productIds?: string[] },
+  ) =>
+    request<RestockBatch>(`/admin/restock/batches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  /** 手动提前关闭（幂等）。 */
+  closeRestockBatch: (id: string) =>
+    request<RestockBatch>(`/admin/restock/batches/${id}/close`, {
+      method: "POST",
+      body: "{}",
+    }),
+  /** 批次详情：可订商品 + 订货单（总部=全校区 / 校区=本校区）。 */
+  restockBatchDetail: (id: string) =>
+    request<RestockBatch & { items: RestockBatchProduct[]; orders: RestockOrder[] }>(
+      `/admin/restock/batches/${id}`,
+    ),
+  /** 校区保存本批次订货单（upsert，草稿/驳回态可改，items 全量替换）。 */
+  saveRestockOrder: (
+    batchId: string,
+    items: { productId: string; cases: number; remark?: string }[],
+  ) =>
+    request<RestockOrder>(`/admin/restock/batches/${batchId}/order`, {
+      method: "PUT",
+      body: JSON.stringify({ items }),
+    }),
+  submitRestockOrder: (batchId: string) =>
+    request<{ id: string; status: string }>(
+      `/admin/restock/batches/${batchId}/order/submit`,
+      { method: "POST", body: "{}" },
+    ),
+  withdrawRestockOrder: (batchId: string) =>
+    request<{ id: string; status: string }>(
+      `/admin/restock/batches/${batchId}/order/withdraw`,
+      { method: "POST", body: "{}" },
+    ),
+  restockOrders: (query?: { batchId?: string; status?: string }) =>
+    request<RestockOrder[]>(
+      `/admin/restock/orders${withQuery(
+        query?.batchId ? `batchId=${encodeURIComponent(query.batchId)}` : undefined,
+        query?.status ? `status=${encodeURIComponent(query.status)}` : undefined,
+      )}`,
+    ),
+  restockOrderDetail: (id: string) =>
+    request<RestockOrder>(`/admin/restock/orders/${id}`),
+  /** 总部审核：confirm 锁总部仓库存（不足阻断），reject 驳回，revoke 撤销放锁。 */
+  auditRestockOrder: (
+    id: string,
+    action: "confirm" | "reject" | "revoke",
+    note?: string,
+  ) =>
+    request<{ id: string; status: string }>(
+      `/admin/restock/orders/${id}/audit`,
+      {
+        method: "POST",
+        body: JSON.stringify({ action, ...(note ? { note } : {}) }),
+      },
     ),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
   orderStatusCounts: (campusId?: string) =>

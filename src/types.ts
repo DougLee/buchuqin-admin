@@ -806,3 +806,66 @@ export interface MarketingMapData {
   };
   floors: MarketingMapFloor[];
 }
+
+/** ===== 订货批次（IKFOQ0，2026-09-15 grilling 定版）===== */
+
+/** 订货批次：阶段由时间窗推导，closedAt 非空=总部手动提前关闭。 */
+export interface RestockBatch {
+  id: string;
+  name: string;
+  startAt: string;
+  endAt: string;
+  closedAt: string | null;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  phase: "upcoming" | "open" | "ended" | "closed";
+  /** 列表附带的统计（详情接口不含）。 */
+  itemCount?: number;
+  orderTotal?: number;
+  orderConfirmed?: number;
+}
+
+/** 批次可订商品（官方库行，含换算口径）。 */
+export interface RestockBatchProduct {
+  productId: string;
+  product: Pick<
+    Product,
+    "id" | "name" | "price" | "image" | "retailUnit" | "wholesaleUnit" | "unitsPerCase" | "status"
+  >;
+}
+
+/** 订货行：cases 件 × unitsPerCase 快照 = 零售单位数。 */
+export interface RestockOrderLine {
+  id?: string;
+  productId: string;
+  cases: number;
+  unitsPerCase: number;
+  remark?: string;
+  product?: Pick<
+    Product,
+    "id" | "name" | "image" | "retailUnit" | "wholesaleUnit" | "unitsPerCase"
+  >;
+}
+
+/** 订货单：一批次一校区一张；草稿→已提交→已确认/已驳回（可撤回/重提/撤销）。 */
+export interface RestockOrder {
+  id: string;
+  batchId: string;
+  batchName?: string;
+  batchPhase?: RestockBatch["phase"];
+  campusId: string;
+  campusName?: string;
+  campusShortName?: string;
+  status: "draft" | "submitted" | "confirmed" | "rejected";
+  totalCases?: number;
+  totalUnits?: number;
+  itemCount?: number;
+  submitByName?: string;
+  submittedAt: string | null;
+  auditByName?: string;
+  auditNote?: string;
+  auditAt: string | null;
+  updatedAt?: string;
+  items?: RestockOrderLine[];
+}

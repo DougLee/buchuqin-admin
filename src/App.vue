@@ -107,6 +107,11 @@ const hqGroups = [
       ["/categories", "categories", "商品类别"],
     ],
   },
+  {
+    // IKFOQ0：订货管理独立一级菜单（道哥 2026-09-15 拍板，不塞仓储中心）
+    label: "订货管理",
+    items: [["/restock", "restock", "订货管理"]],
+  },
   // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放
   {
     label: "校区与账号",
@@ -138,6 +143,11 @@ const campusGroups = [
       ["/inventory-txns", "inventory-txns", "出入库流水"],
       ["/locations", "locations", "库位管理"],
     ],
+  },
+  {
+    // IKFOQ0：订货管理独立一级菜单（总部批次+审核，校区我的订货）
+    label: "订货管理",
+    items: [["/restock", "restock", "订货管理"]],
   },
   // IKB5PB：营销拆出独立一级组（见 MARKETING_ITEMS）
   {

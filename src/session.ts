@@ -43,6 +43,8 @@ const ALL_SECTIONS = [
   "audit",
   // IKEAGE：楼长招募（运营域，与后端 recruit 板块同口径——admin/operations 可见可写）
   "recruit",
+  // IKFOQ0：订货批次（独立一级菜单，权限对齐后端 restock 键）
+  "restock",
 ];
 
 /** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
@@ -53,6 +55,7 @@ const HQ_SECTIONS = [
   "orders",
   "products",
   "categories",
+  "restock",
   "campuses",
   "accounts",
   "users",
@@ -70,7 +73,8 @@ export const PERMISSIONS: Record<
   // IKBW0A：banners 移出 hq（总部不做投放，Banner/广告位校区自管）。
   hq: {
     sections: HQ_SECTIONS,
-    writable: ["products", "categories", "campuses", "accounts"],
+    // IKFOQ0：restock 可写（批次管理+审单）
+    writable: ["products", "categories", "campuses", "accounts", "restock"],
   },
   admin: {
     // 平台超管全菜单开放（2026-08-26 道哥决策）；IKBW0A 起 banners 归本校区自管
@@ -100,6 +104,7 @@ export const PERMISSIONS: Record<
     ],
   },
   // 仓储：工作台 / 商品与类别（读写）/ 订单只读 / 出入库与仓库订单 / 库位。
+  // IKFOQ0：仓储角色可订货（对齐采购申请口径，operations 同）
   warehouse: {
     sections: [
       "dashboard",
@@ -110,6 +115,7 @@ export const PERMISSIONS: Record<
       "warehouse-orders",
       "inventory-txns",
       "locations",
+      "restock",
     ],
     writable: [
       "inventory",
@@ -117,6 +123,7 @@ export const PERMISSIONS: Record<
       "categories",
       "warehouse-orders",
       "locations",
+      "restock",
     ],
   },
   // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
