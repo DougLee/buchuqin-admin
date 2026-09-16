@@ -14,8 +14,11 @@ const data = ref<DashboardData>(),
   loading = ref(true),
   loadError = ref("");
 const router = useRouter();
-/* IKAJSL：hq 登录先看跨校区汇总，点校区行下钻单校区明细（复用本页模板） */
-const isHq = computed(() => role.value === "hq");
+/* IKAJSL：hq 登录先看跨校区汇总，点校区行下钻单校区明细（复用本页模板）。
+   追修（道哥 2026-09-16）：admin 与 hq 同为平台跨校区视角（campusScope 同口径，
+   后端本就落 hqDashboard）——原来只认 hq，admin 登录时出现三重错位：标题显示
+   校区文案、数据是跨校区合计、履约完成率卡渲染 undefined 只剩「%」。 */
+const isHq = computed(() => role.value === "hq" || role.value === "admin");
 const hqData = ref<HqDashboardData>();
 const drillCampus = ref("");
 const drillName = ref("");
@@ -351,12 +354,15 @@ function exportReport() {
         <article class="kpi">
           <!-- IK93GP 后端口径：fulfillmentRate=履约完成率（delivered+completed 占比），准时率独立字段 onTimeRate -->
           <p :title="data.caliber.fulfillmentRate">履约完成率</p>
+          <!-- 追修：跨校区视角无此口径（hqDashboard 不返回），显示「—」而非空「%」 -->
           <div
+            v-if="!isHqSummary"
             class="ring"
             :style="{ '--value': data.kpis.fulfillmentRate + '%' }"
           >
             <strong>{{ data.kpis.fulfillmentRate }}%</strong>
           </div>
+          <div v-else class="ring ring--na"><strong>—</strong></div>
         </article>
         <article class="kpi">
           <p :title="data.caliber.newUsers">今日新用户</p>

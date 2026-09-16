@@ -708,6 +708,10 @@ a {
   z-index: 1;
   font-size: 17px;
 }
+/* 跨校区视角无履约口径（hqDashboard 不返回 fulfillmentRate）：纯灰环显示「—」 */
+.ring--na {
+  background: #e8efe9;
+}
 .alert-kpi {
   background: #fffaf5;
   border-color: #f3ded0;
