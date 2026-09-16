@@ -801,17 +801,21 @@ async function confirmReceipt() {
           </div>
           <button @click="auditDrawer = false">✕</button>
         </div>
-        <div class="product-form">
-          <label class="field-label">
+        <div class="audit-form">
+          <label class="audit-form__label" for="audit-note">
             备注{{ auditTarget?.status === "confirmed" ? "（撤销时选填）" : "（驳回必填，确认选填）" }}
           </label>
           <textarea
+            id="audit-note"
             v-model="auditNote"
             rows="3"
             maxlength="200"
             placeholder="如：数量超出本月预算，请酌减"
           ></textarea>
-          <p class="audit-tip">确认后即锁定总部仓库存（发货时转扣，IKFOQ2）；撤销确认会释放锁定。</p>
+          <p class="audit-tip">
+            <span class="audit-tip__icon">i</span>
+            确认后即锁定总部仓库存，发货时转为实扣；撤销确认会自动释放锁定。
+          </p>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="auditDrawer = false">取消</button>
@@ -1305,10 +1309,66 @@ async function confirmReceipt() {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px #159c5515;
 }
+/* 审核弹窗表单：独立上下布局（不再蹭 .product-form 两列 grid，
+   修复备注 textarea 被挤右列的失衡） */
+.audit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 20px 0;
+}
+.audit-form__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4c5c53;
+}
+.audit-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #153628;
+  background: #fff;
+  resize: vertical;
+  min-height: 76px;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.audit-form textarea:focus {
+  border-color: var(--brand, #159c55);
+  box-shadow: 0 0 0 3px #159c5522;
+}
+.audit-form textarea::placeholder {
+  color: #a9b5ae;
+}
 .audit-tip {
-  margin-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #159c5510;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #2f6b4c;
+}
+.audit-tip__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--brand, #159c55);
+  color: #fff;
   font-size: 11px;
-  color: #647169;
+  font-style: normal;
+  font-weight: 700;
 }
 /* 订货单编辑器 */
 .reject-banner {
