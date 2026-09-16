@@ -137,6 +137,8 @@ const campusGroups = [
       ["/", "dashboard", "经营总览"],
       ["/orders", "orders", "订单配送"],
       ["/after-sales", "after", "售后退款"],
+      // IKFOQ3：营销作战地图（道哥 2026-09-17 移入运营中心；权限仍复用 buildings）
+      ["/battle-map", "buildings", "营销作战地图"],
     ],
   },
   {
@@ -176,8 +178,6 @@ const campusGroups = [
       // IKEAGE：楼长招募（报名→面试→审批→实习楼长）
       ["/recruit", "recruit", "楼长招募"],
       ["/buildings", "buildings", "楼栋管理"],
-      // IKFOQ3：营销作战地图（寝室三色格，复用 buildings 键）
-      ["/battle-map", "buildings", "营销作战地图"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
       ["/wechat-groups", "campus", "微信群码"],
@@ -227,8 +227,6 @@ const groups = computed(() => {
             ["/recruit", "recruit", "楼长招募"],
             ["/campuses", "campus", "校区管理"],
             ["/buildings", "buildings", "楼栋管理"],
-            // IKFOQ3：营销作战地图（复用 buildings 键）
-            ["/battle-map", "buildings", "营销作战地图"],
             ["/users", "staff", "C端用户"],
             ["/wechat-groups", "campus", "微信群码"],
             ["/dispatch", "dispatch", "调配与请假"],
