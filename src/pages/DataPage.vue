@@ -2904,17 +2904,19 @@ const configs: Record<string, SectionConfig> = {
               .map((line) => line.product?.name ?? "")
               .filter(Boolean);
             const user = (o as Order & { user?: { nickname?: string } }).user;
-            // IKB5P9：用户列带楼栋房间（张同学 / 3栋302）；地址缺失回落手机号
+            // 道哥 2026-09-16：用户列主显手机号——昵称清一色「微信用户」无辨识度，
+            // 打码手机号才是客服/运营肉眼对人的标识；楼栋房号降为次行辅助定位
+            // （\n 连接：列表拆两行主次展示，详情/CSV 内塌为分隔符，同 itemsText 口径）
             const address = o.address;
             const building = [address?.buildingName, address?.room]
               .filter(Boolean)
               .join("");
-            const userMain = user?.nickname?.trim() || o.userPhone || "";
+            const userMain = o.userPhone || user?.nickname?.trim() || "";
             return {
               ...o,
               // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
               itemsText: names.length ? names.join("\n") : "—",
-              userText: [userMain, building].filter(Boolean).join(" / ") || "—",
+              userText: [userMain, building].filter(Boolean).join("\n") || "—",
               // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
               slaText:
                 o.deliveryMode === "instant" ? "立即配送" : "2小时送达",
@@ -5807,6 +5809,17 @@ async function cancelInviteRow(row: AdminRow) {
                     v-else-if="col[0] === 'itemsText'"
                     class="cell-lines"
                     >{{ display(row, col[0]) }}</span
+                  ><!-- 订单用户列：主行手机号（tabular-nums 对读），次行楼栋房号 --><span
+                    v-else-if="col[0] === 'userText'"
+                    class="user-cell"
+                    ><strong class="user-cell__phone">{{
+                      String(display(row, "userText")).split("\n")[0]
+                    }}</strong
+                    ><span
+                      v-if="String(display(row, 'userText')).includes('\n')"
+                      class="user-cell__addr"
+                      >{{ String(display(row, "userText")).split("\n")[1] }}</span
+                    ></span
                   ><!-- 流水数量列（含 IKA0UQ 出库负数） --><span
                     v-else-if="col[0] === 'quantity' && section === 'inventory-txns'"
                     >{{ txnQuantity(row) }}</span
