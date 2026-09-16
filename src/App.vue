@@ -176,6 +176,8 @@ const campusGroups = [
       // IKEAGE：楼长招募（报名→面试→审批→实习楼长）
       ["/recruit", "recruit", "楼长招募"],
       ["/buildings", "buildings", "楼栋管理"],
+      // IKFOQ3：营销作战地图（寝室三色格，复用 buildings 键）
+      ["/battle-map", "buildings", "营销作战地图"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
       ["/wechat-groups", "campus", "微信群码"],
@@ -225,6 +227,8 @@ const groups = computed(() => {
             ["/recruit", "recruit", "楼长招募"],
             ["/campuses", "campus", "校区管理"],
             ["/buildings", "buildings", "楼栋管理"],
+            // IKFOQ3：营销作战地图（复用 buildings 键）
+            ["/battle-map", "buildings", "营销作战地图"],
             ["/users", "staff", "C端用户"],
             ["/wechat-groups", "campus", "微信群码"],
             ["/dispatch", "dispatch", "调配与请假"],

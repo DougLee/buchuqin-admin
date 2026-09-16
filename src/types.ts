@@ -958,6 +958,44 @@ export interface CampusDailyReport {
   rows: CampusDailyRow[];
 }
 
+/** 营销作战地图（IKFOQ3）：寝室格子三色=ordered 已下单/registered 注册未下单/fresh 未开发 */
+export interface BattleRoomCell {
+  roomId: string;
+  roomNo: string;
+  status: "ordered" | "registered" | "fresh";
+  userCount: number;
+  orderCount: number;
+}
+export interface BattleFloor {
+  floor: number;
+  total: number;
+  ordered: number;
+  registered: number;
+  fresh: number;
+  /** 覆盖率万分比（已下单÷总格子） */
+  coverageRate: number;
+  rooms: BattleRoomCell[];
+}
+export interface BattleMapBuilding {
+  building: { id: string; name: string };
+  floors: BattleFloor[];
+}
+export interface BattleRoomUser {
+  userId: string;
+  nickname: string;
+  phone: string;
+  registeredAt: string;
+  orderCount: number;
+  totalAmount: number;
+  recentCount: number;
+  highFrequency: boolean;
+}
+export interface BattleRoomDetail {
+  room: { id: string; roomNo: string; floor: number };
+  orderCount: number;
+  users: BattleRoomUser[];
+}
+
 /* ---------- 采购单（IKFOQ1，2026-09-15 grilling 定版） ---------- */
 /** 状态由 已收/应收 推导：closedAt→closed；已收 0→pending；≥应收→completed；否则 partial。 */
 export type PurchasePhase = "pending" | "partial" | "completed" | "closed";

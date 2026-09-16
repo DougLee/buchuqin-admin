@@ -35,6 +35,8 @@ import type {
   RestockShipmentDetail,
   HqDailyReport,
   CampusDailyReport,
+  BattleMapBuilding,
+  BattleRoomDetail,
   PurchaseOrderRow,
   PurchaseOrderDetail,
   BatchMarginSummary,
@@ -518,6 +520,12 @@ export const api = {
         buildingId ? `buildingId=${encodeURIComponent(buildingId)}` : undefined,
       )}`,
     ),
+  /** 营销作战地图（IKFOQ3）：整栋楼层格子（三色）+汇总 */
+  battleMapBuilding: (buildingId: string) =>
+    request<BattleMapBuilding>(`/admin/battle-map/buildings/${buildingId}`),
+  /** 营销作战地图：寝室详情（注册用户列表+统计） */
+  battleMapRoom: (roomId: string) =>
+    request<BattleRoomDetail>(`/admin/battle-map/rooms/${roomId}`),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
   orderStatusCounts: (campusId?: string) =>
     request<Record<string, number>>(
