@@ -245,9 +245,29 @@ async function audit(action: "confirm" | "reject" | "revoke") {
 const orderDrawer = ref(false);
 const orderBatch = ref<RestockBatch | null>(null);
 const orderDetail = ref<{
-  items: { productId: string; product: { id: string; name: string; image: string; price: number; retailUnit?: string; wholesaleUnit?: string; unitsPerCase: number } }[];
+  items: { productId: string; product: { id: string; name: string; image: string; price: number; retailUnit?: string; wholesaleUnit?: string; unitsPerCase: number; categoryId?: string; category?: { name: string } } }[];
   orders: RestockOrder[];
 } | null>(null);
+/* ---------- 订货单商品筛选（IKG7B9）：类别下拉+名称模糊匹配 ---------- */
+const orderCategory = ref("");
+const orderKeyword = ref("");
+/** 类别选项：从订货单商品集聚合去重 */
+const orderCategories = computed(() => {
+  const seen = new Map<string, string>();
+  for (const i of orderDetail.value?.items ?? [])
+    if (i.product.categoryId)
+      seen.set(i.product.categoryId, i.product.category?.name ?? "未分类");
+  return [...seen.entries()];
+});
+/** 过滤只影响列表展示；已填件数与合计条保持全量 */
+const filteredOrderItems = computed(() => {
+  const kw = orderKeyword.value.trim().toLowerCase();
+  return (orderDetail.value?.items ?? []).filter(
+    (i) =>
+      (!orderCategory.value || i.product.categoryId === orderCategory.value) &&
+      (!kw || i.product.name.toLowerCase().includes(kw)),
+  );
+});
 /** 行编辑态：productId → 件数（空串显示为 0）。 */
 const lineCases = ref<Record<string, number>>({});
 const myOrder = computed<RestockOrder | null>(() => orderDetail.value?.orders[0] ?? null);
@@ -269,6 +289,8 @@ async function openMyOrder(batch: RestockBatch) {
   orderBatch.value = batch;
   orderDrawer.value = true;
   orderDetail.value = null;
+  orderCategory.value = "";
+  orderKeyword.value = "";
   const detail = await api.restockBatchDetail(batch.id);
   orderDetail.value = detail as any;
   const own = detail.orders[0];
@@ -858,8 +880,20 @@ async function confirmReceipt() {
             已确认到货{{ myOrder?.receivedAt ? `（${fmtDateTime(myOrder.receivedAt)}）` : "" }}，
             库存已按发货数入账。
           </p>
+          <div class="order-filter">
+            <select v-model="orderCategory">
+              <option value="">全部类别</option>
+              <option v-for="[id, name] in orderCategories" :key="id" :value="id">
+                {{ name }}
+              </option>
+            </select>
+            <input v-model="orderKeyword" placeholder="搜索商品名称" />
+          </div>
           <div class="order-lines">
-            <div v-for="i in orderDetail.items" :key="i.productId" class="order-line">
+            <p v-if="!filteredOrderItems.length" class="empty-cell">
+              没有匹配的商品——换个类别或关键词试试。
+            </p>
+            <div v-for="i in filteredOrderItems" :key="i.productId" class="order-line">
               <img v-if="i.product.image" :src="i.product.image" alt="" />
               <div class="order-line-main">
                 <p class="order-line-name">{{ i.product.name }}</p>
@@ -1292,6 +1326,32 @@ async function confirmReceipt() {
   background: #e5f6eb;
   border-radius: 10px;
   padding: 10px 12px;
+}
+/* IKG7B9：订货单商品筛选栏（类别下拉+名称模糊） */
+.order-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.order-filter select,
+.order-filter input {
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 10px;
+  font-size: 13px;
+  background: #fff;
+  outline: 0;
+}
+.order-filter select {
+  flex: 0 0 140px;
+}
+.order-filter input {
+  flex: 1;
+}
+.order-filter select:focus,
+.order-filter input:focus {
+  border-color: var(--brand);
 }
 .order-lines {
   margin-top: 14px;
