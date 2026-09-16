@@ -932,6 +932,32 @@ export interface HqDailyReport {
   rows: HqDailyRow[];
 }
 
+/** 校区经营日报行（IKFOPS）：行=日期×校区（校区角色查询天然单校区） */
+export interface CampusDailyRow {
+  date: string;
+  campusId: string;
+  campusName: string;
+  campusShortName: string;
+  orders: number;
+  /** 销售额（分）=Σ payableAmount 实付 */
+  salesTotal: number;
+  /** 批发成本（分）=Σ 行数量×unitWholesaleCost 快照（缺快照按 0） */
+  costTotal: number;
+  gross: number;
+  /** 毛利率万分比整数（/100=百分比） */
+  marginRate: number;
+}
+export interface CampusDailyReport {
+  totals: {
+    orders: number;
+    salesTotal: number;
+    costTotal: number;
+    gross: number;
+    marginRate: number;
+  };
+  rows: CampusDailyRow[];
+}
+
 /* ---------- 采购单（IKFOQ1，2026-09-15 grilling 定版） ---------- */
 /** 状态由 已收/应收 推导：closedAt→closed；已收 0→pending；≥应收→completed；否则 partial。 */
 export type PurchasePhase = "pending" | "partial" | "completed" | "closed";

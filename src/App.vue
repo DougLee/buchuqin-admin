@@ -96,6 +96,8 @@ const hqGroups = [
     items: [
       ["/", "dashboard", "跨校区总览"],
       ["/orders", "orders", "订单配送"],
+      // IKFOPS：校区经营日报（校区账视角，与总部账 IKFOPR 互补）
+      ["/campus-report", "dashboard", "校区日报"],
     ],
   },
   {
@@ -185,6 +187,8 @@ const campusGroups = [
     items: [
       ["/finance", "finance", "结算中心"],
       ["/rules", "rules", "提成规则"],
+      // IKFOPS：校区经营日报（本校区+楼栋筛选）
+      ["/campus-report", "finance", "经营日报"],
       ["/audit", "audit", "审计日志"],
     ],
   },

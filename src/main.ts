@@ -7,6 +7,7 @@ import Login from "./pages/Login.vue";
 import RestockPage from "./pages/RestockPage.vue";
 import PurchasePage from "./pages/PurchasePage.vue";
 import DailyReportPage from "./pages/DailyReportPage.vue";
+import CampusReportPage from "./pages/CampusReportPage.vue";
 import { canSee, role } from "./session";
 import "./style.css";
 import "./drawer.css";
@@ -20,6 +21,8 @@ const routes = [
   { path: "/purchase", component: PurchasePage },
   // IKFOPR：总部经营日报（发货单实时聚合，T+1），权限同 purchase
   { path: "/reports", component: DailyReportPage },
+  // IKFOPS：校区经营日报（C 端订单实时聚合，T+1），权限 campus-report 键
+  { path: "/campus-report", component: CampusReportPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -34,6 +37,7 @@ router.beforeEach((to) => {
   if (to.path === "/restock") return canSee("restock") ? true : "/";
   if (to.path === "/purchase") return canSee("purchase") ? true : "/";
   if (to.path === "/reports") return canSee("purchase") ? true : "/";
+  if (to.path === "/campus-report") return canSee("campus-report") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });

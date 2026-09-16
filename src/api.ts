@@ -34,6 +34,7 @@ import type {
   RestockOrder,
   RestockShipmentDetail,
   HqDailyReport,
+  CampusDailyReport,
   PurchaseOrderRow,
   PurchaseOrderDetail,
   BatchMarginSummary,
@@ -500,6 +501,21 @@ export const api = {
         start ? `start=${start}` : undefined,
         end ? `end=${end}` : undefined,
         campusId ? `campusId=${encodeURIComponent(campusId)}` : undefined,
+      )}`,
+    ),
+  /** 校区经营日报（IKFOPS）：hq 可选校区；校区角色本校区+楼栋筛选 */
+  campusDailyReport: (
+    start?: string,
+    end?: string,
+    campusId?: string,
+    buildingId?: string,
+  ) =>
+    request<CampusDailyReport>(
+      `/admin/reports/campus-daily${withQuery(
+        start ? `start=${start}` : undefined,
+        end ? `end=${end}` : undefined,
+        campusId ? `campusId=${encodeURIComponent(campusId)}` : undefined,
+        buildingId ? `buildingId=${encodeURIComponent(buildingId)}` : undefined,
       )}`,
     ),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */

@@ -47,6 +47,8 @@ const ALL_SECTIONS = [
   "restock",
   // IKFOQ1：采购单（独立一级菜单，仅总部——对齐后端 purchase 键）
   "purchase",
+  // IKFOPS：校区经营日报（hq/admin/operations/finance，仓储不给——对齐后端矩阵）
+  "campus-report",
 ];
 
 /** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
@@ -59,6 +61,8 @@ const HQ_SECTIONS = [
   "categories",
   "restock",
   "purchase",
+  // IKFOPS：校区经营日报（总部总览组入口）
+  "campus-report",
   "campuses",
   "accounts",
   "users",
@@ -133,8 +137,9 @@ export const PERMISSIONS: Record<
     ],
   },
   // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
+  // IKFOPS：经营日报（财务看账）
   finance: {
-    sections: ["dashboard", "orders", "finance", "rules", "audit"],
+    sections: ["dashboard", "orders", "finance", "rules", "audit", "campus-report"],
     writable: ["finance", "rules"],
   },
 };
