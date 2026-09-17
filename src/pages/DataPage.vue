@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, downloadRoomTemplate, fetchAllPages } from "../api";
 import IdCardImagesField from "../components/IdCardImagesField.vue";
@@ -251,15 +251,26 @@ function openBuildingCreate() {
     { name: "", floors: 6, gender: "mixed", hasElevator: false },
   );
 }
-/* ---------- 配送费配置（IK9SO6）：校园维度即时/预约达运费与起送门槛 ---------- */
+/* ---------- 配送费配置（IK9SO6）：校园维度即时/预约达运费与起送门槛；
+   打烊停单（IKGI1C）：时间窗 + 手动闭店随同一配置提交 ---------- */
 async function openDeliveryConfig() {
-  let initial = { instant: 4, scheduled: 2, threshold: 10 };
+  let initial = {
+    instant: 4,
+    scheduled: 2,
+    threshold: 10,
+    closeStart: "22:00",
+    closeEnd: "08:00",
+    manualClosed: false,
+  };
   try {
     const config = await api.deliveryConfig();
     initial = {
       instant: Number(fenToYuan(config.deliveryFeeInstant)),
       scheduled: Number(fenToYuan(config.deliveryFeeScheduled)),
       threshold: Number(fenToYuan(config.deliveryThreshold)),
+      closeStart: config.closeStart ?? "22:00",
+      closeEnd: config.closeEnd ?? "08:00",
+      manualClosed: !!config.manualClosed,
     };
   } catch {
     // 读取失败不阻塞表单，保存时以后端校验为准
@@ -274,21 +285,87 @@ async function openDeliveryConfig() {
         { key: "instant", label: "即时达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "scheduled", label: "预约达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
+        { key: "closeStart", label: "打烊开始", placeholder: "22:00" },
+        {
+          key: "closeEnd",
+          label: "打烊结束",
+          placeholder: "08:00",
+          hint: () => "跨零点合法，如 22:00–08:00；两值相同 = 不打烊",
+        },
+        {
+          key: "manualClosed",
+          label: "手动闭店（选中 = 立即闭店，与时间窗叠加）",
+          type: "checkbox",
+        },
       ],
       save: async (d) => {
         if ([d.instant, d.scheduled, d.threshold].some((v) => Number(v) < 0))
           throw new Error("金额不能为负");
-        // 表单输元，提交统一转分（IK8W5K）
-        void (await api.updateDeliveryConfig({
+        // 打烊窗 HH:mm 校验（IKGI1C）：start > end = 跨天窗，两值相同 = 不打烊
+        const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+        if (!hhmm.test(String(d.closeStart ?? "")) || !hhmm.test(String(d.closeEnd ?? "")))
+          throw new Error("打烊时间格式须为 HH:mm，如 22:00");
+        // 表单输元，提交统一转分（IK8W5K）；返回值回填页头打烊徽标
+        closeState.value = await api.updateDeliveryConfig({
           deliveryFeeInstant: yuanToFen(d.instant),
           deliveryFeeScheduled: yuanToFen(d.scheduled),
           deliveryThreshold: yuanToFen(d.threshold),
-        }));
+          closeStart: String(d.closeStart),
+          closeEnd: String(d.closeEnd),
+          manualClosed: !!d.manualClosed,
+        });
       },
     },
     initial,
   );
 }
+/* ---------- 打烊停单状态徽标（IKGI1C）：手动闭店 > 时间窗，北京时间本地判定 ---------- */
+const closeState = ref<{
+  closeStart?: string;
+  closeEnd?: string;
+  manualClosed?: boolean;
+} | null>(null);
+async function loadCloseState() {
+  try {
+    closeState.value = await api.deliveryConfig();
+  } catch {
+    closeState.value = null; // 读取失败静默，徽标隐藏不阻塞列表
+  }
+}
+/** 北京时间当前 HH:mm（h23 避免午夜显示 24:xx）。 */
+function beijingHHmm(): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+}
+const nowTick = ref(0);
+let closeTicker: number | undefined;
+onMounted(() => {
+  closeTicker = window.setInterval(() => void nowTick.value++, 30_000);
+});
+onUnmounted(() => {
+  if (closeTicker) window.clearInterval(closeTicker);
+});
+/** 徽标文案/配色：闭店类红色 danger，营业中绿色 success；start===end 不打烊。 */
+const closeBadge = computed<{ text: string; tone: string } | null>(() => {
+  void nowTick.value; // 每 30s 重算，跨过打烊点自动翻转
+  const s = closeState.value;
+  if (!s) return null;
+  if (s.manualClosed) return { text: "已闭店（手动）", tone: "danger" };
+  const start = s.closeStart ?? "22:00";
+  const end = s.closeEnd ?? "08:00";
+  if (start !== end) {
+    const now = beijingHHmm();
+    // HH:mm 零填充字符串可直接比较；start > end = 跨天窗
+    const inWindow =
+      start < end ? now >= start && now < end : now >= start || now < end;
+    if (inWindow) return { text: "已打烊（时间窗）", tone: "danger" };
+  }
+  return { text: "营业中", tone: "success" };
+});
 function openBuildingEdit(row: Building) {
   selected.value = undefined;
   openForm(
@@ -3677,6 +3754,8 @@ async function load() {
       .then((s) => (userStatsData.value = s))
       .catch(() => {});
   }
+  // IKGI1C：打烊停单徽标随楼栋板块拉取（失败静默徽标隐藏）
+  if (section.value === "buildings" && canWriteSection.value) void loadCloseState();
   // IKAJSL：hq 的校区下拉供筛选与表单（订单/用户/审计/校区管理）；
   // IKBW0A：Banner/广告位表单已无投放校区下拉，不再预载
   if (
@@ -5271,6 +5350,14 @@ async function cancelInviteRow(row: AdminRow) {
       <div class="head-actions">
         <!-- 配送费配置（IK9SO6 → IKCRS8）：楼栋管理页入口（本校区，admin/operations）；
              校区管理页的逐校配置在校区编辑表单里 -->
+        <!-- 打烊停单状态徽标（IKGI1C）：手动闭店 > 时间窗 > 营业中，北京时间本地判定 -->
+        <span
+          v-if="section === 'buildings' && canWriteSection && closeBadge"
+          class="status"
+          :class="closeBadge.tone"
+        >
+          {{ closeBadge.text }}
+        </span>
         <button
           v-if="section === 'buildings' && canWriteSection"
           class="btn ghost"

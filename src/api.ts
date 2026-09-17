@@ -969,22 +969,33 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  /** 配送费/起送门槛配置（IK9SO6）：金额整数分，校园维度即时生效。 */
+  /** 配送费/起送门槛配置（IK9SO6）：金额整数分，校园维度即时生效。
+   *  打烊停单（IKGI1C）：closeStart/closeEnd 为 "HH:mm"（start > end = 跨天窗，
+   *  两值相同 = 不打烊），manualClosed = 手动闭店（与时间窗叠加）。 */
   deliveryConfig: () =>
     request<{
       deliveryFeeInstant: number;
       deliveryFeeScheduled: number;
       deliveryThreshold: number;
+      closeStart?: string;
+      closeEnd?: string;
+      manualClosed?: boolean;
     }>("/admin/delivery-config"),
   updateDeliveryConfig: (data: {
     deliveryFeeInstant: number;
     deliveryFeeScheduled: number;
     deliveryThreshold: number;
+    closeStart?: string;
+    closeEnd?: string;
+    manualClosed?: boolean;
   }) =>
     request<{
       deliveryFeeInstant: number;
       deliveryFeeScheduled: number;
       deliveryThreshold: number;
+      closeStart?: string;
+      closeEnd?: string;
+      manualClosed?: boolean;
     }>("/admin/delivery-config", {
       method: "PATCH",
       body: JSON.stringify(data),

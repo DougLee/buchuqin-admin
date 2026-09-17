@@ -538,6 +538,10 @@ a {
   display: flex;
   gap: 10px;
 }
+/* IKGI1C 打烊停单：页头状态徽标（stretch 容器里不随按钮拉高） */
+.head-actions .status {
+  align-self: center;
+}
 .btn {
   height: 40px;
   border-radius: 10px;
