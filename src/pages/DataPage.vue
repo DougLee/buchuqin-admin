@@ -253,6 +253,15 @@ function openBuildingCreate() {
 }
 /* ---------- 配送费配置（IK9SO6）：校园维度即时/预约达运费与起送门槛；
    打烊停单（IKGI1C）：时间窗 + 手动闭店随同一配置提交 ---------- */
+/** 打烊时间下拉选项：30 分钟粒度 00:00–23:30（当前值不在粒度内由表单层兜底回填） */
+function closeTimeOptions() {
+  const list: { value: string; label: string }[] = [];
+  for (let m = 0; m < 24 * 60; m += 30) {
+    const v = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    list.push({ value: v, label: v });
+  }
+  return list;
+}
 async function openDeliveryConfig() {
   let initial = {
     instant: 4,
@@ -302,13 +311,15 @@ async function openDeliveryConfig() {
         {
           key: "closeStart",
           label: "打烊开始",
-          placeholder: "22:00",
+          type: "select",
+          options: closeTimeOptions,
           visible: (d) => d.closeMode !== "now",
         },
         {
           key: "closeEnd",
           label: "打烊结束",
-          placeholder: "08:00",
+          type: "select",
+          options: closeTimeOptions,
           visible: (d) => d.closeMode !== "now",
           hint: () => "跨零点合法，如 22:00–08:00；两值相同 = 不打烊",
         },
