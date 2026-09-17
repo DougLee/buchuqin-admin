@@ -258,9 +258,9 @@ async function openDeliveryConfig() {
     instant: 4,
     scheduled: 2,
     threshold: 10,
+    closeMode: "on-time",
     closeStart: "22:00",
     closeEnd: "08:00",
-    manualClosed: false,
   };
   try {
     const config = await api.deliveryConfig();
@@ -268,9 +268,10 @@ async function openDeliveryConfig() {
       instant: Number(fenToYuan(config.deliveryFeeInstant)),
       scheduled: Number(fenToYuan(config.deliveryFeeScheduled)),
       threshold: Number(fenToYuan(config.deliveryThreshold)),
+      // 道哥 2026-09-17：闭店方式二选一，默认定时打烊
+      closeMode: config.manualClosed ? "now" : "on-time",
       closeStart: config.closeStart ?? "22:00",
       closeEnd: config.closeEnd ?? "08:00",
-      manualClosed: !!config.manualClosed,
     };
   } catch {
     // 读取失败不阻塞表单，保存时以后端校验为准
@@ -285,23 +286,47 @@ async function openDeliveryConfig() {
         { key: "instant", label: "即时达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "scheduled", label: "预约达配送费（元）", type: "number", min: 0, step: 0.01 },
         { key: "threshold", label: "起送门槛（元）", type: "number", min: 0, step: 0.01 },
-        { key: "closeStart", label: "打烊开始", placeholder: "22:00" },
+        {
+          key: "closeMode",
+          label: "闭店方式",
+          type: "select",
+          options: () => [
+            { value: "on-time", label: "定时打烊（每日时间窗）" },
+            { value: "now", label: "立即打烊" },
+          ],
+          hint: (d) =>
+            d.closeMode === "now"
+              ? "保存后立即停止接单；恢复营业请改回「定时打烊」再保存"
+              : undefined,
+        },
+        {
+          key: "closeStart",
+          label: "打烊开始",
+          placeholder: "22:00",
+          visible: (d) => d.closeMode !== "now",
+        },
         {
           key: "closeEnd",
           label: "打烊结束",
           placeholder: "08:00",
+          visible: (d) => d.closeMode !== "now",
           hint: () => "跨零点合法，如 22:00–08:00；两值相同 = 不打烊",
-        },
-        {
-          key: "manualClosed",
-          label: "手动闭店（选中 = 立即闭店，与时间窗叠加）",
-          type: "checkbox",
         },
       ],
       save: async (d) => {
         if ([d.instant, d.scheduled, d.threshold].some((v) => Number(v) < 0))
           throw new Error("金额不能为负");
-        // 打烊窗 HH:mm 校验（IKGI1C）：start > end = 跨天窗，两值相同 = 不打烊
+        // 立即打烊：不传时间字段（后端 undefined 不动原值），manualClosed 置真
+        if (d.closeMode === "now") {
+          closeState.value = await api.updateDeliveryConfig({
+            deliveryFeeInstant: yuanToFen(d.instant),
+            deliveryFeeScheduled: yuanToFen(d.scheduled),
+            deliveryThreshold: yuanToFen(d.threshold),
+            manualClosed: true,
+          });
+          return;
+        }
+        // 定时打烊：时间窗 HH:mm 校验（IKGI1C）：start > end = 跨天窗，两值相同 = 不打烊
         const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
         if (!hhmm.test(String(d.closeStart ?? "")) || !hhmm.test(String(d.closeEnd ?? "")))
           throw new Error("打烊时间格式须为 HH:mm，如 22:00");
@@ -312,7 +337,7 @@ async function openDeliveryConfig() {
           deliveryThreshold: yuanToFen(d.threshold),
           closeStart: String(d.closeStart),
           closeEnd: String(d.closeEnd),
-          manualClosed: !!d.manualClosed,
+          manualClosed: false,
         });
       },
     },
