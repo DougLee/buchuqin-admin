@@ -239,8 +239,9 @@ const groups = computed(() => {
 /** 按 PRD §2.2 权限矩阵过滤侧边栏板块（含 IKB5PB 路由别名映射，见 session.ts）。 */
 /* 生产环境临时隐藏「订货管理」「采购管理」菜单入口（道哥 2026-09-16）：
    功能未验收，生产先藏菜单（路由仍可直接访问），测试环境 admin-test.buchuqin.com
-   保留菜单用于验收。放开方式：把下方域名改成 "__never__" 或直接删除本行。 */
-const HIDE_RESTOCK_PURCHASE_MENU = location.hostname === "admin.buchuqin.com";
+   保留菜单用于验收。已于 2026-09-17 道哥验收后放开（域名改为 "__never__"，
+   门控结构保留备复用）。 */
+const HIDE_RESTOCK_PURCHASE_MENU = location.hostname === "__never__";
 const visibleGroups = computed(() =>
   groups.value
     .map((group) => ({
