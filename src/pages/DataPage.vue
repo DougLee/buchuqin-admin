@@ -267,9 +267,9 @@ async function openDeliveryConfig() {
     instant: 4,
     scheduled: 2,
     threshold: 10,
-    closeMode: "on-time",
-    closeStart: "22:00",
-    closeEnd: "08:00",
+    closeMode: "always",
+    closeStart: "00:00",
+    closeEnd: "00:00",
   };
   try {
     const config = await api.deliveryConfig();
@@ -277,10 +277,14 @@ async function openDeliveryConfig() {
       instant: Number(fenToYuan(config.deliveryFeeInstant)),
       scheduled: Number(fenToYuan(config.deliveryFeeScheduled)),
       threshold: Number(fenToYuan(config.deliveryThreshold)),
-      // 道哥 2026-09-17：闭店方式二选一，默认定时打烊
-      closeMode: config.manualClosed ? "now" : "on-time",
-      closeStart: config.closeStart ?? "22:00",
-      closeEnd: config.closeEnd ?? "08:00",
+      // 道哥 2026-09-17：闭店方式三选一，默认 24 小时营业（start==end 即不打烊）
+      closeMode: config.manualClosed
+        ? "now"
+        : config.closeStart === config.closeEnd
+          ? "always"
+          : "on-time",
+      closeStart: config.closeStart ?? "00:00",
+      closeEnd: config.closeEnd ?? "00:00",
     };
   } catch {
     // 读取失败不阻塞表单，保存时以后端校验为准
@@ -300,12 +304,13 @@ async function openDeliveryConfig() {
           label: "闭店方式",
           type: "select",
           options: () => [
+            { value: "always", label: "24小时营业（不打烊）" },
             { value: "on-time", label: "定时打烊（每日时间窗）" },
             { value: "now", label: "立即打烊" },
           ],
           hint: (d) =>
             d.closeMode === "now"
-              ? "保存后立即停止接单；恢复营业请改回「定时打烊」再保存"
+              ? "保存后立即停止接单；恢复营业请改回「24小时营业」或「定时打烊」再保存"
               : undefined,
         },
         {
@@ -313,14 +318,14 @@ async function openDeliveryConfig() {
           label: "打烊开始",
           type: "select",
           options: closeTimeOptions,
-          visible: (d) => d.closeMode !== "now",
+          visible: (d) => d.closeMode === "on-time",
         },
         {
           key: "closeEnd",
           label: "打烊结束",
           type: "select",
           options: closeTimeOptions,
-          visible: (d) => d.closeMode !== "now",
+          visible: (d) => d.closeMode === "on-time",
           hint: () => "跨零点合法，如 22:00–08:00；两值相同 = 不打烊",
         },
       ],
@@ -334,6 +339,18 @@ async function openDeliveryConfig() {
             deliveryFeeScheduled: yuanToFen(d.scheduled),
             deliveryThreshold: yuanToFen(d.threshold),
             manualClosed: true,
+          });
+          return;
+        }
+        // 24小时营业：显式落 start=end（清掉可能存在的打烊窗）
+        if (d.closeMode === "always") {
+          closeState.value = await api.updateDeliveryConfig({
+            deliveryFeeInstant: yuanToFen(d.instant),
+            deliveryFeeScheduled: yuanToFen(d.scheduled),
+            deliveryThreshold: yuanToFen(d.threshold),
+            closeStart: "00:00",
+            closeEnd: "00:00",
+            manualClosed: false,
           });
           return;
         }
