@@ -6,7 +6,13 @@ import IdCardImagesField from "../components/IdCardImagesField.vue";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import ProductPickerField from "../components/ProductPickerField.vue";
-import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
+import {
+  canWrite,
+  role,
+  ROLE_LABELS,
+  sessionUser,
+  type AdminRole,
+} from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fmtDate, fmtDateTime } from "../utils/datetime";
 import { fenToYuan, yuanToFen } from "../utils/money";
@@ -638,8 +644,8 @@ watch(
 function openStaffCreate() {
   void ensureBuildings();
   void ensureCampusOptions();
-  // IKGVOO：默认服务范围=顶栏当前运营校区；所选校区楼栋预拉
-  const defaultCampus = campusScope() ?? "";
+  // IKGVOO：默认服务范围=顶栏当前运营校区（切校区换 token，sessionUser.campusId 恒同步）
+  const defaultCampus = sessionUser.value?.campusId ?? "";
   void ensureStaffBuildings(defaultCampus);
   openForm(
     {
