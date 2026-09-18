@@ -280,6 +280,7 @@ function exportReport() {
               <th>状态</th>
               <th>楼栋</th>
               <th>今日营业额</th>
+              <th title="实付 − 行级批发成本快照（口径同经营日报）">今日毛利</th>
               <th>今日订单</th>
               <th>今日新用户</th>
               <th>异常</th>
@@ -296,6 +297,7 @@ function exportReport() {
               </td>
               <td>{{ row.buildings }}</td>
               <td>¥{{ fenToYuan(row.revenue, true) }}</td>
+              <td :class="{ 'profit-neg': row.profit < 0 }">¥{{ fenToYuan(row.profit, true) }}</td>
               <td>{{ row.orders }}</td>
               <td>{{ row.newUsers }}</td>
               <td>

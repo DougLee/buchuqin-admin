@@ -589,12 +589,15 @@ export interface HqDashboardData {
     status: string;
     buildings: number;
     revenue: number;
+    /** 今日毛利（分）：实付 − 行级批发成本快照，口径同经营日报 */
+    profit: number;
     orders: number;
     newUsers: number;
     exceptions: number;
   }>;
   kpis: {
     revenue: number;
+    profit: number;
     orders: number;
     newUsers: number;
     exceptions: number;

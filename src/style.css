@@ -1744,3 +1744,9 @@ td.row-actions {
   border: 1px dashed #d7e2da;
 }
 
+
+/* 校区概览毛利列：负毛利红字提醒（2026-09-18 道哥） */
+.profit-neg {
+  color: #c0392b;
+  font-weight: 600;
+}
