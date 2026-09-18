@@ -7308,48 +7308,41 @@ async function cancelInviteRow(row: AdminRow) {
                 </label>
               </div>
             </div>
-            <!-- 商品选择器（IKGNQ 采购入库）：左类别树 + 右模糊搜索，选中回填 -->
+            <!-- 商品选择器（IKGNQ 二轮）：类别下拉 + 搜索框一行，结果列表在下单选 -->
             <div
               v-else-if="field.type === 'product-picker'"
               :class="{ wide: field.wide }"
             >
               <span class="field-label">{{ field.label }}</span>
               <div class="product-picker">
-                <div class="pp-cats">
-                  <button
-                    v-for="c in ppCategories"
-                    :key="c.id"
-                    type="button"
-                    class="pp-cat"
-                    :class="{ active: ppCatId === c.id }"
-                    @click="ppCatId = c.id"
-                  >
-                    {{ c.name }}
-                  </button>
-                </div>
-                <div class="pp-right">
+                <div class="pp-bar">
+                  <select v-model="ppCatId" class="pp-cat-select">
+                    <option v-for="c in ppCategories" :key="c.id" :value="c.id">
+                      {{ c.name }}
+                    </option>
+                  </select>
                   <input
                     v-model="ppKeyword"
                     class="pp-search"
                     placeholder="搜索商品名 / 条码"
                   />
-                  <div class="pp-list">
-                    <button
-                      v-for="p in ppProducts"
-                      :key="p.id"
-                      type="button"
-                      class="pp-item"
-                      :class="{ active: formData[field.key] === p.id }"
-                      @click="formData[field.key] = p.id"
+                </div>
+                <div class="pp-list">
+                  <button
+                    v-for="p in ppProducts"
+                    :key="p.id"
+                    type="button"
+                    class="pp-item"
+                    :class="{ active: formData[field.key] === p.id }"
+                    @click="formData[field.key] = p.id"
+                  >
+                    <span class="pp-item__name">{{ p.name }}</span>
+                    <span class="pp-item__meta"
+                      >可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
                     >
-                      <span class="pp-item__name">{{ p.name }}</span>
-                      <span class="pp-item__meta"
-                        >可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
-                      >
-                    </button>
-                    <div v-if="!ppProducts.length" class="pp-empty">
-                      没有匹配的商品
-                    </div>
+                  </button>
+                  <div v-if="!ppProducts.length" class="pp-empty">
+                    没有匹配的商品
                   </div>
                 </div>
               </div>

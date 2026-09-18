@@ -1746,49 +1746,35 @@ td.row-actions {
 
 /* ---------- 商品选择器（IKGNQ 采购入库）：左类别 + 右模糊搜索 ---------- */
 .product-picker {
-  display: flex;
-  gap: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
-  height: 260px;
-}
-.pp-cats {
-  width: 148px;
-  flex: none;
-  overflow-y: auto;
-  border-right: 1px solid var(--line);
-  padding-right: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.pp-cat {
-  border: 0;
-  background: none;
-  text-align: left;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #355147;
-  cursor: pointer;
-}
-.pp-cat:hover {
-  background: #f1f6f2;
-}
-.pp-cat.active {
-  background: #eaf8e8;
-  color: #07883b;
-  font-weight: 600;
-}
-.pp-right {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 0;
+}
+.pp-bar {
+  display: flex;
+  gap: 8px;
+}
+.pp-cat-select {
+  width: 150px;
+  flex: none;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #1d2b24;
+  cursor: pointer;
+}
+.pp-cat-select:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
 }
 .pp-search {
+  flex: 1;
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1800,7 +1786,7 @@ td.row-actions {
   outline-offset: -1px;
 }
 .pp-list {
-  flex: 1;
+  height: 216px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
