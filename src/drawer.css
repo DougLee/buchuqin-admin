@@ -661,6 +661,10 @@
 .drawer.order-detail {
   width: min(640px, 94vw);
 }
+/* 商品详情编辑弹框（IKGQ6Q 弹框优化）：字段多，加宽让两列表单舒展 */
+.drawer.product-detail {
+  width: min(760px, 94vw);
+}
 /* 订单明细毛利行（IKFOPQ）：名称左对齐（超长省略）、售价/毛利右对齐（不换行），
    避免 460 窄框时代的内容流式断行（「毛利 —」孤行） */
 .margin-list {
@@ -754,6 +758,33 @@
 }
 .status-dialog {
   width: min(440px, 92vw);
+}
+/* IKGQ6Q 弹框优化：摘要移入图卡右侧横排（flex 子项自适应两列） */
+.origin-summary--inline {
+  flex: 1;
+  min-width: 0;
+  grid-column: auto;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+/* 表单分节标题（IKGQ6Q 弹框优化）：通栏绿竖条小节头 */
+.form-sec {
+  grid-column: 1/-1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #153628;
+}
+.form-sec::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--brand);
 }
 /* IKA0UW：编辑抽屉原信息摘要块，改前原值一眼可读 */
 .origin-summary {

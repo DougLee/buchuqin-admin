@@ -6363,6 +6363,8 @@ async function cancelInviteRow(row: AdminRow) {
         :class="{
           'product-create': section === 'after-sales',
           'order-detail': section === 'orders' || section === 'warehouse-orders',
+          'product-detail':
+            section === 'inventory' || section === 'products',
         }"
       >
         <div class="drawer-head">
@@ -6722,47 +6724,48 @@ async function cancelInviteRow(row: AdminRow) {
                   @click="previewImage = resolveImageUrl(src)"
                 />
               </div>
+              <!-- IKA0UW：原信息摘要移入图卡右侧（IKGQ6Q 弹框优化：横排省高度） -->
+              <div class="origin-summary origin-summary--inline">
+                <div>
+                  <span>商品名</span
+                  ><strong>{{ display(selected, "name") }}</strong>
+                </div>
+                <div>
+                  <span>分类 / 状态</span
+                  ><strong
+                    >{{ display(selected, "categoryId") }} ·
+                    {{ display(selected, "status") }}</strong
+                  >
+                </div>
+                <div>
+                  <span>当前售价</span
+                  ><strong>¥{{ fenToYuan(Number((selected as unknown as Record<string, unknown>)?.price ?? 0)) }}</strong>
+                </div>
+                <!-- 库存/库位归校区（IKAJSM），官方库视角不展示 -->
+                <div v-if="!isHqView">
+                  <span>当前可售库存</span
+                  ><strong>{{ display(selected, "availableStock") }}</strong>
+                </div>
+                <div v-if="!isHqView">
+                  <span>当前库位</span
+                  ><strong>{{ display(selected, "locationText") || "未配置" }}</strong>
+                </div>
+                <div>
+                  <span>建议零售价</span
+                  ><strong
+                    >¥{{
+                      fenToYuan(
+                        Number(
+                          (selected as unknown as Record<string, unknown>)
+                            ?.originalPrice ?? 0,
+                        ),
+                      )
+                    }}</strong
+                  >
+                </div>
+              </div>
             </div>
-            <!-- IKA0UW：原信息摘要——编辑前原值一眼可读（IKDEP0 去 SKU 伪编号） -->
-            <div class="origin-summary">
-              <div>
-                <span>商品名</span
-                ><strong>{{ display(selected, "name") }}</strong>
-              </div>
-              <div>
-                <span>分类 / 状态</span
-                ><strong
-                  >{{ display(selected, "categoryId") }} ·
-                  {{ display(selected, "status") }}</strong
-                >
-              </div>
-              <div>
-                <span>当前售价</span
-                ><strong>¥{{ fenToYuan(Number((selected as unknown as Record<string, unknown>)?.price ?? 0)) }}</strong>
-              </div>
-              <!-- 库存/库位归校区（IKAJSM），官方库视角不展示 -->
-              <div v-if="!isHqView">
-                <span>当前可售库存</span
-                ><strong>{{ display(selected, "availableStock") }}</strong>
-              </div>
-              <div v-if="!isHqView">
-                <span>当前库位</span
-                ><strong>{{ display(selected, "locationText") || "未配置" }}</strong>
-              </div>
-              <div>
-                <span>建议零售价</span
-                ><strong
-                  >¥{{
-                    fenToYuan(
-                      Number(
-                        (selected as unknown as Record<string, unknown>)
-                          ?.originalPrice ?? 0,
-                      ),
-                    )
-                  }}</strong
-                >
-              </div>
-            </div>
+            <div class="form-sec">基本信息</div>
             <!-- 资料字段（IKAHAT）：名称/副标题/分类/原价/标签/重量可编辑，改完小程序即见 -->
             <label
               >商品名称<input
@@ -6786,7 +6789,9 @@ async function cancelInviteRow(row: AdminRow) {
                 min="0"
                 :disabled="!isHqView && Boolean((selected as Product).sourceProductId)"
                 title="官方库同步行的建议零售价由总部维护" /></label
-            ><!-- IKC1AC：进货价仅官方库行可编辑（校区不可见） --><label v-if="isHqView"
+            ><!-- IKC1AC：进货价仅官方库行可编辑（校区不可见） --><div class="form-sec">
+              价格
+            </div><label v-if="isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
@@ -6817,6 +6822,7 @@ async function cancelInviteRow(row: AdminRow) {
                 step="0.001" /></label
             >
             <!-- 单位属性（IKFOPU）：官方资料——校区同步行（有来源）灰显只读 -->
+            <div class="form-sec">规格与库存</div>
             <label
               >零售单位<input
                 v-model.trim="productEdit.retailUnit"
@@ -6858,6 +6864,7 @@ async function cancelInviteRow(row: AdminRow) {
                 type="number"
                 min="0" /></label
             ><!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
+            <div v-if="!isHqView" class="form-sec">库位</div>
             <label v-if="!isHqView"
               >库位（字典选择）<select v-model="productEdit.location">
                 <option value="">未配置</option>
@@ -6874,7 +6881,8 @@ async function cancelInviteRow(row: AdminRow) {
                 type="text"
                 maxlength="20"
                 placeholder="如：03（区域内具体位置）" /></label
-            ><div class="wide product-image-edit">
+            ><div class="form-sec">图片与介绍</div>
+            <div class="wide product-image-edit">
               <span class="field-label">商品头图（换新图后小程序即见）</span>
               <ImageUploadField v-model="productEdit.image" folder="app/product" />
             </div>
