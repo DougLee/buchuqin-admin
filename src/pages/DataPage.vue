@@ -133,7 +133,8 @@ interface FieldDef {
     | "password"
     | "image"
     | "textarea"
-    | "campus-multi";
+    | "campus-multi"
+    | "product-picker";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
   wide?: boolean;
@@ -1507,12 +1508,47 @@ function onSaleProductOptions() {
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
 }
+/** 商品选择器（IKGNQ 采购入库，2026-09-18 道哥）：左类别 + 右模糊搜索，
+ *  替代 500+ 全量平铺下拉。类别接口挂了不阻塞（仅左栏空，搜索仍可用）。 */
+const ppCatId = ref("all");
+const ppKeyword = ref("");
+const ppCategoriesCache = ref<Category[]>([]);
+async function ensureCategories() {
+  if (!ppCategoriesCache.value.length) {
+    try {
+      ppCategoriesCache.value = await api.adminCategories();
+    } catch {
+      ppCategoriesCache.value = [];
+    }
+  }
+  return ppCategoriesCache.value;
+}
+const ppCategories = computed(() => [
+  { id: "all", name: "全部类别" },
+  ...ppCategoriesCache.value.map((c) => ({ id: c.id, name: c.name })),
+]);
+const ppProducts = computed(() => {
+  const kw = ppKeyword.value.trim().toLowerCase();
+  return productsCache.value.filter((p) => {
+    if (ppCatId.value !== "all" && p.categoryId !== ppCatId.value) return false;
+    if (!kw) return true;
+    return p.name.toLowerCase().includes(kw) || (p.barcode ?? "").includes(kw);
+  });
+});
+/** 打开弹窗时重置并按预填商品定位类别 */
+function ppLocate(productId?: string) {
+  ppKeyword.value = "";
+  ppCatId.value =
+    productsCache.value.find((x) => x.id === productId)?.categoryId ?? "all";
+}
 /** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
  *  stocktake=盘点（提交实际清点数量，替代原 delta 增量口径）。 */
 function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   // IKFOQ1 采购申请退役（grilling #1）：补货统一走 订货批次→采购单→验收，
   // 「采购入库」恢复全角色直入；采购单在独立「采购管理」菜单
   void ensureProducts();
+  void ensureCategories();
+  ppLocate(productId);
   const isStockIn = kind === "stock-in";
   openForm(
     {
@@ -1521,7 +1557,7 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
       submit: isStockIn ? "确认入库" : "提交盘点",
       done: isStockIn ? "入库成功，库存已更新" : "盘点已生效",
       fields: [
-        { key: "productId", label: "商品", type: "select", wide: true, options: productOptions },
+        { key: "productId", label: "商品", type: "product-picker", wide: true },
         {
           key: isStockIn ? "quantity" : "countedQty",
           label: isStockIn ? "入库数量" : "实际清点数量",
@@ -7270,6 +7306,52 @@ async function cancelInviteRow(row: AdminRow) {
                     @change="toggleCampusMulti(field.key, c.id)"
                   />{{ c.shortName || c.name }}
                 </label>
+              </div>
+            </div>
+            <!-- 商品选择器（IKGNQ 采购入库）：左类别树 + 右模糊搜索，选中回填 -->
+            <div
+              v-else-if="field.type === 'product-picker'"
+              :class="{ wide: field.wide }"
+            >
+              <span class="field-label">{{ field.label }}</span>
+              <div class="product-picker">
+                <div class="pp-cats">
+                  <button
+                    v-for="c in ppCategories"
+                    :key="c.id"
+                    type="button"
+                    class="pp-cat"
+                    :class="{ active: ppCatId === c.id }"
+                    @click="ppCatId = c.id"
+                  >
+                    {{ c.name }}
+                  </button>
+                </div>
+                <div class="pp-right">
+                  <input
+                    v-model="ppKeyword"
+                    class="pp-search"
+                    placeholder="搜索商品名 / 条码"
+                  />
+                  <div class="pp-list">
+                    <button
+                      v-for="p in ppProducts"
+                      :key="p.id"
+                      type="button"
+                      class="pp-item"
+                      :class="{ active: formData[field.key] === p.id }"
+                      @click="formData[field.key] = p.id"
+                    >
+                      <span class="pp-item__name">{{ p.name }}</span>
+                      <span class="pp-item__meta"
+                        >可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
+                      >
+                    </button>
+                    <div v-if="!ppProducts.length" class="pp-empty">
+                      没有匹配的商品
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <label v-else :class="{ wide: field.wide }"

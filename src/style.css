@@ -1743,3 +1743,106 @@ td.row-actions {
   color: #9aa5a0;
   border: 1px dashed #d7e2da;
 }
+
+/* ---------- 商品选择器（IKGNQ 采购入库）：左类别 + 右模糊搜索 ---------- */
+.product-picker {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  height: 260px;
+}
+.pp-cats {
+  width: 148px;
+  flex: none;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-cat {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #355147;
+  cursor: pointer;
+}
+.pp-cat:hover {
+  background: #f1f6f2;
+}
+.pp-cat.active {
+  background: #eaf8e8;
+  color: #07883b;
+  font-weight: 600;
+}
+.pp-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pp-search {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.pp-search:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+}
+.pp-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1d2b24;
+}
+.pp-item:hover {
+  background: #f1f6f2;
+}
+.pp-item.active {
+  background: #eaf8e8;
+}
+.pp-item.active .pp-item__name {
+  color: #07883b;
+  font-weight: 600;
+}
+.pp-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-item__meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.pp-empty {
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12px;
+  color: #8a988e;
+}
