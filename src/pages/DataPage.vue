@@ -5,6 +5,7 @@ import { api, downloadRoomTemplate, fetchAllPages } from "../api";
 import IdCardImagesField from "../components/IdCardImagesField.vue";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
+import ProductPickerField from "../components/ProductPickerField.vue";
 import { canWrite, role, ROLE_LABELS, type AdminRole } from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fmtDate, fmtDateTime } from "../utils/datetime";
@@ -1503,64 +1504,18 @@ function productOptions() {
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
 }
-/** 商品选择器（IKGNQ 采购入库，2026-09-18 道哥）：左类别 + 右模糊搜索，
- *  替代 500+ 全量平铺下拉。类别接口挂了不阻塞（仅左栏空，搜索仍可用）。 */
-const ppCatId = ref("all");
-const ppKeyword = ref("");
-const ppCategoriesCache = ref<Category[]>([]);
-async function ensureCategories() {
-  if (!ppCategoriesCache.value.length) {
-    try {
-      ppCategoriesCache.value = await api.adminCategories();
-    } catch {
-      ppCategoriesCache.value = [];
-    }
-  }
-  return ppCategoriesCache.value;
-}
-const ppCategories = computed(() => [
-  { id: "all", name: "全部类别" },
-  ...ppCategoriesCache.value.map((c) => ({ id: c.id, name: c.name })),
-]);
-/** 选择器数据源（IKGNQ 三轮扩展）：字段可用 ppItems 提供候选集（如促销只用
- *  在售商品），缺省回落全量商品缓存；同一时刻只有一个 form 打开，全局取即可 */
-const ppItemsSource = computed<Product[]>(() => {
-  const field = visibleFields.value.find((x) => x.type === "product-picker");
-  return field?.ppItems ? field.ppItems() : productsCache.value;
-});
-const ppProducts = computed(() => {
-  const kw = ppKeyword.value.trim().toLowerCase();
-  return ppItemsSource.value.filter((p) => {
-    if (ppCatId.value !== "all" && p.categoryId !== ppCatId.value) return false;
-    if (!kw) return true;
-    return p.name.toLowerCase().includes(kw) || (p.barcode ?? "").includes(kw);
-  });
-});
-/** 打开弹窗时重置并按预填商品定位类别 */
-function ppLocate(productId?: string) {
-  ppKeyword.value = "";
-  ppCatId.value =
-    ppItemsSource.value.find((x) => x.id === productId)?.categoryId ?? "all";
-}
-/** 选择器加载态（IKGNQ 道哥反馈）：缓存未就绪时列表给骨架，不再裸空白 */
+/** 商品选择器（IKGQ6Q 组件化）：筛选/骨架逻辑全部内聚进 ProductPickerField
+ *  组件，页面只管候选集加载与 loading 传递。 */
 const ppLoading = ref(false);
-async function ensureStockPicker() {
-  ppLoading.value = true;
-  try {
-    await Promise.all([ensureProducts(), ensureCategories()]);
-  } finally {
-    ppLoading.value = false;
-  }
-}
 /** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
  *  stocktake=盘点（提交实际清点数量，替代原 delta 增量口径）。 */
 function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   // IKFOQ1 采购申请退役（grilling #1）：补货统一走 订货批次→采购单→验收，
   // 「采购入库」恢复全角色直入；采购单在独立「采购管理」菜单
-  // IKGNQ 道哥反馈：先给骨架，商品+类别缓存就绪后再按预填商品定位类别
-  ppKeyword.value = "";
-  ppCatId.value = "all";
-  void ensureStockPicker().then(() => ppLocate(productId));
+  ppLoading.value = true;
+  void ensureProducts().finally(() => {
+    ppLoading.value = false;
+  });
   const isStockIn = kind === "stock-in";
   openForm(
     {
@@ -2262,12 +2217,11 @@ function promoWindowText(p: Promotion): string {
 }
 /** 新建促销：选商品/类型/促销价/起止窗口；重叠与价格底线由后端把关。 */
 function openPromotionCreate() {
-  // IKGNQ：商品选同款选择器——仅本校区在售商品作候选，同款加载骨架
+  // IKGNQ：仅本校区在售商品作候选，加载态同款
   ppLoading.value = true;
-  void Promise.all([ensureOnSaleProducts(), ensureCategories()]).finally(() => {
+  void ensureOnSaleProducts().finally(() => {
     ppLoading.value = false;
   });
-  ppLocate();
   openForm(
     {
       eyebrow: "NEW PROMOTION",
@@ -7331,61 +7285,18 @@ async function cancelInviteRow(row: AdminRow) {
                 </label>
               </div>
             </div>
-            <!-- 商品选择器（IKGNQ 二轮）：类别下拉 + 搜索框一行，结果列表在下单选 -->
+            <!-- 商品选择器（IKGQ6Q 组件化）：交互内聚 ProductPickerField -->
             <div
               v-else-if="field.type === 'product-picker'"
               :class="{ wide: field.wide }"
             >
               <span class="field-label">{{ field.label }}</span>
-              <div class="product-picker">
-                <div class="pp-bar">
-                  <select v-model="ppCatId" class="pp-cat-select">
-                    <option v-for="c in ppCategories" :key="c.id" :value="c.id">
-                      {{ c.name }}
-                    </option>
-                  </select>
-                  <input
-                    v-model="ppKeyword"
-                    class="pp-search"
-                    placeholder="搜索商品名 / 条码"
-                  />
-                </div>
-                <div class="pp-list">
-                  <!-- 加载骨架（IKGNQ 道哥反馈）：缓存未就绪给脉冲骨架，不裸空白 -->
-                  <template v-if="ppLoading">
-                    <div
-                      v-for="i in 4"
-                      :key="`sk-${i}`"
-                      class="pp-item pp-item--skeleton"
-                    >
-                      <span class="pp-item__ph skeleton-block"></span>
-                      <span class="skeleton-line"></span>
-                      <span class="skeleton-line skeleton-line--short"></span>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <button
-                      v-for="p in ppProducts"
-                      :key="p.id"
-                      type="button"
-                      class="pp-item"
-                      :class="{ active: formData[field.key] === p.id }"
-                      @click="formData[field.key] = p.id"
-                    >
-                      <img v-if="p.image" :src="p.image" alt="" />
-                      <span v-else class="pp-item__ph"></span>
-                      <span class="pp-item__name">{{ p.name }}</span>
-                      <span class="pp-item__meta"
-                        >¥{{ fenToYuan(p.price) }} · 可售
-                        {{ p.availableStock ?? p.stock ?? 0 }}</span
-                      >
-                    </button>
-                    <div v-if="!ppProducts.length" class="pp-empty">
-                      没有匹配的商品——换个类别或关键词试试。
-                    </div>
-                  </template>
-                </div>
-              </div>
+              <ProductPickerField
+                :items="field.ppItems ? field.ppItems() : productsCache"
+                :loading="ppLoading"
+                :model-value="String(formData[field.key] ?? '')"
+                @update:model-value="formData[field.key] = $event as string"
+              />
             </div>
             <label v-else :class="{ wide: field.wide }"
               >{{ field.label
