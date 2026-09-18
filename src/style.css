@@ -1837,3 +1837,22 @@ td.row-actions {
   font-size: 12px;
   color: #8a988e;
 }
+
+/* 选择器骨架行（IKGNQ 道哥反馈）：商品+类别缓存加载期的脉冲占位 */
+.pp-item--skeleton {
+  pointer-events: none;
+}
+.pp-item--skeleton .skeleton-block {
+  animation: pulse 1.5s infinite;
+}
+.skeleton-line {
+  flex: 1;
+  height: 14px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #eef2ef, #fafbfa, #eef2ef);
+  background-size: 200%;
+  animation: pulse 1.5s infinite;
+}
+.skeleton-line--short {
+  flex: 0 0 88px;
+}

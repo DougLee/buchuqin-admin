@@ -1541,14 +1541,25 @@ function ppLocate(productId?: string) {
   ppCatId.value =
     productsCache.value.find((x) => x.id === productId)?.categoryId ?? "all";
 }
+/** 选择器加载态（IKGNQ 道哥反馈）：缓存未就绪时列表给骨架，不再裸空白 */
+const ppLoading = ref(false);
+async function ensureStockPicker() {
+  ppLoading.value = true;
+  try {
+    await Promise.all([ensureProducts(), ensureCategories()]);
+  } finally {
+    ppLoading.value = false;
+  }
+}
 /** 库存操作（IKD6FJ）：stock-in=采购入库（校区角色分流为采购申请）、
  *  stocktake=盘点（提交实际清点数量，替代原 delta 增量口径）。 */
 function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   // IKFOQ1 采购申请退役（grilling #1）：补货统一走 订货批次→采购单→验收，
   // 「采购入库」恢复全角色直入；采购单在独立「采购管理」菜单
-  void ensureProducts();
-  void ensureCategories();
-  ppLocate(productId);
+  // IKGNQ 道哥反馈：先给骨架，商品+类别缓存就绪后再按预填商品定位类别
+  ppKeyword.value = "";
+  ppCatId.value = "all";
+  void ensureStockPicker().then(() => ppLocate(productId));
   const isStockIn = kind === "stock-in";
   openForm(
     {
@@ -7328,25 +7339,39 @@ async function cancelInviteRow(row: AdminRow) {
                   />
                 </div>
                 <div class="pp-list">
-                  <button
-                    v-for="p in ppProducts"
-                    :key="p.id"
-                    type="button"
-                    class="pp-item"
-                    :class="{ active: formData[field.key] === p.id }"
-                    @click="formData[field.key] = p.id"
-                  >
-                    <img v-if="p.image" :src="p.image" alt="" />
-                    <span v-else class="pp-item__ph"></span>
-                    <span class="pp-item__name">{{ p.name }}</span>
-                    <span class="pp-item__meta"
-                      >¥{{ fenToYuan(p.price) }} · 可售
-                      {{ p.availableStock ?? p.stock ?? 0 }}</span
+                  <!-- 加载骨架（IKGNQ 道哥反馈）：缓存未就绪给脉冲骨架，不裸空白 -->
+                  <template v-if="ppLoading">
+                    <div
+                      v-for="i in 4"
+                      :key="`sk-${i}`"
+                      class="pp-item pp-item--skeleton"
                     >
-                  </button>
-                  <div v-if="!ppProducts.length" class="pp-empty">
-                    没有匹配的商品——换个类别或关键词试试。
-                  </div>
+                      <span class="pp-item__ph skeleton-block"></span>
+                      <span class="skeleton-line"></span>
+                      <span class="skeleton-line skeleton-line--short"></span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <button
+                      v-for="p in ppProducts"
+                      :key="p.id"
+                      type="button"
+                      class="pp-item"
+                      :class="{ active: formData[field.key] === p.id }"
+                      @click="formData[field.key] = p.id"
+                    >
+                      <img v-if="p.image" :src="p.image" alt="" />
+                      <span v-else class="pp-item__ph"></span>
+                      <span class="pp-item__name">{{ p.name }}</span>
+                      <span class="pp-item__meta"
+                        >¥{{ fenToYuan(p.price) }} · 可售
+                        {{ p.availableStock ?? p.stock ?? 0 }}</span
+                      >
+                    </button>
+                    <div v-if="!ppProducts.length" class="pp-empty">
+                      没有匹配的商品——换个类别或关键词试试。
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
