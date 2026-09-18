@@ -6364,7 +6364,9 @@ async function cancelInviteRow(row: AdminRow) {
           'product-create': section === 'after-sales',
           'order-detail': section === 'orders' || section === 'warehouse-orders',
           'product-detail':
-            section === 'inventory' || section === 'products',
+            section === 'inventory' ||
+            section === 'products' ||
+            section === 'official-products',
         }"
       >
         <div class="drawer-head">
