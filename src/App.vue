@@ -109,16 +109,16 @@ const hqGroups = [
       ["/categories", "categories", "商品类别"],
     ],
   },
-  {
-    // IKFOQ0→IKFOQ1 二轮调整（道哥 2026-09-15）：订货/采购两菜单合并为
-    // 「采购管理」一组；IKFOPR：组下追加「经营日报」（总部账 T+1）
-    label: "采购管理",
-    items: [
-      ["/restock", "restock", "订货管理"],
-      ["/purchase", "purchase", "采购管理"],
-      ["/reports", "purchase", "经营日报"],
-    ],
-  },
+  // {
+  //   // IKFOQ0→IKFOQ1 二轮调整（道哥 2026-09-15）：订货/采购两菜单合并为
+  //   // 「采购管理」一组；IKFOPR：组下追加「经营日报」（总部账 T+1）
+  //   label: "采购管理",
+  //   items: [
+  //     ["/restock", "restock", "订货管理"],
+  //     ["/purchase", "purchase", "采购管理"],
+  //     ["/reports", "purchase", "经营日报"],
+  //   ],
+  // },
   // IKBW0A：hq 移除营销活动组——Banner/广告位校区自管，总部不做投放
   {
     label: "校区与账号",
@@ -338,7 +338,8 @@ async function switchCampus(event: Event) {
             :aria-expanded="expandedGroups.includes(group.label)"
             @click="toggleGroup(group.label)"
           >
-            <span>{{ group.label }}</span><i class="group-arrow">⌄</i>
+            <span>{{ group.label }}</span
+            ><i class="group-arrow">⌄</i>
           </button>
           <!-- 图标折叠态标题已隐藏，菜单项必须全量可见，分组开关仅在展开态生效 -->
           <RouterLink
@@ -379,16 +380,14 @@ async function switchCampus(event: Event) {
               aria-label="切换运营校区"
               @change="switchCampus"
             >
-              <option
-                v-for="c in campusChoices"
-                :key="c.id"
-                :value="c.id"
-              >
+              <option v-for="c in campusChoices" :key="c.id" :value="c.id">
                 {{ c.shortName || c.name }}
               </option>
             </select>
           </div>
-          <div v-else><small>当前运营校园</small><b>{{ campusName }}</b></div>
+          <div v-else>
+            <small>当前运营校园</small><b>{{ campusName }}</b>
+          </div>
           <strong v-if="role !== 'hq' && campusChoices.length > 1">⌄</strong>
         </div>
         <div class="header-actions">
@@ -431,11 +430,18 @@ async function switchCampus(event: Event) {
                 <button
                   class="menu-item"
                   role="menuitem"
-                  @click="userMenuOpen = false; pwdOpen = true"
+                  @click="
+                    userMenuOpen = false;
+                    pwdOpen = true;
+                  "
                 >
                   <AppIcon name="password" />修改密码
                 </button>
-                <button class="menu-item danger" role="menuitem" @click="logout">
+                <button
+                  class="menu-item danger"
+                  role="menuitem"
+                  @click="logout"
+                >
                   <AppIcon name="logout" />退出登录
                 </button>
               </div>
