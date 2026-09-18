@@ -585,6 +585,8 @@ function staffPayload(d: Record<string, FormValue>) {
     role: String(d.role || ""),
     staffNo: String(d.staffNo || "").trim(),
     status: String(d.status || "online"),
+    // IKGVOO：服务范围（所属校区）随表单提交，后端校验真实运营校区
+    campusId: String(d.campusId || "").trim(),
   };
   // IK9U3Y：楼栋仅楼长系角色（楼长/实习楼长）携带；骑手不绑楼栋（后端同样校验）。
   // IKBW0E：清空绑定必须显式传 null——省略字段会被后端视为「未修改」，
@@ -601,12 +603,44 @@ const STAFF_BUILDING_FIELD: FieldDef = {
   type: "select",
   wide: true,
   optional: true,
-  options: buildingOptions,
+  options: staffBuildingOptions,
   visible: (d) =>
     d.role === "building-manager" || d.role === "intern-building-manager",
 };
+/** IKGVOO 员工服务范围：所属校区下拉选项（运营校区全量） */
+const staffCampusOptions = () =>
+  campusOptionsData.value.map((c) => ({ value: c.id, label: c.name }));
+/** 按校区缓存楼栋（跨校区选服务范围后联动重拉） */
+const staffBuildingsByCampus = ref<Record<string, Building[]>>({});
+async function ensureStaffBuildings(campus: string) {
+  if (!campus || staffBuildingsByCampus.value[campus]) return;
+  const rows = await fetchAllPages((query) =>
+    api.buildings({ ...query, campusId: campus }),
+  );
+  staffBuildingsByCampus.value = {
+    ...staffBuildingsByCampus.value,
+    [campus]: rows,
+  };
+}
+function staffBuildingOptions() {
+  const rows =
+    staffBuildingsByCampus.value[String(formData.value.campusId ?? "")] ?? [];
+  return rows.map((b) => ({ value: b.id, label: b.name }));
+}
+/** 切换所属校区：联动拉楼栋并清空已选楼栋（改派=待分配重选，IKGVOO 拍板） */
+watch(
+  () => String(formData.value.campusId ?? ""),
+  (campus) => {
+    void ensureStaffBuildings(campus);
+    formData.value.buildingId = "";
+  },
+);
 function openStaffCreate() {
   void ensureBuildings();
+  void ensureCampusOptions();
+  // IKGVOO：默认服务范围=顶栏当前运营校区；所选校区楼栋预拉
+  const defaultCampus = campusScope() ?? "";
+  void ensureStaffBuildings(defaultCampus);
   openForm(
     {
       eyebrow: "NEW STAFF",
@@ -614,6 +648,13 @@ function openStaffCreate() {
       submit: "创建账号",
       done: "员工账号已创建",
       fields: [
+        {
+          key: "campusId",
+          label: "所属校区（服务范围）",
+          type: "select",
+          wide: true,
+          options: staffCampusOptions,
+        },
         { key: "name", label: "姓名", placeholder: "真实姓名" },
         { key: "staffNo", label: "工号", placeholder: "例如：BM-006" },
         { key: "role", label: "角色", type: "select", options: () => ROLE_OPTIONS },
@@ -626,12 +667,21 @@ function openStaffCreate() {
       ],
       save: async (d) => void (await api.createStaff(staffPayload(d))),
     },
-    { name: "", staffNo: "", role: "building-manager", buildingId: "", status: "online" },
+    {
+      name: "",
+      staffNo: "",
+      role: "building-manager",
+      buildingId: "",
+      status: "online",
+      campusId: defaultCampus,
+    },
   );
 }
 function openStaffEdit(row: Staff) {
   selected.value = undefined;
   void ensureBuildings();
+  void ensureCampusOptions();
+  void ensureStaffBuildings(row.campusId);
   openForm(
     {
       eyebrow: "EDIT STAFF",
@@ -652,6 +702,7 @@ function openStaffEdit(row: Staff) {
       save: async (d) => void (await api.updateStaff(row.id, staffPayload(d))),
     },
     {
+      campusId: row.campusId,
       name: row.name,
       staffNo: row.staffNo,
       role: row.role ?? "building-manager",
