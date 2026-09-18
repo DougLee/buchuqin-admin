@@ -7336,13 +7336,16 @@ async function cancelInviteRow(row: AdminRow) {
                     :class="{ active: formData[field.key] === p.id }"
                     @click="formData[field.key] = p.id"
                   >
+                    <img v-if="p.image" :src="p.image" alt="" />
+                    <span v-else class="pp-item__ph"></span>
                     <span class="pp-item__name">{{ p.name }}</span>
                     <span class="pp-item__meta"
-                      >可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
+                      >¥{{ fenToYuan(p.price) }} · 可售
+                      {{ p.availableStock ?? p.stock ?? 0 }}</span
                     >
                   </button>
                   <div v-if="!ppProducts.length" class="pp-empty">
-                    没有匹配的商品
+                    没有匹配的商品——换个类别或关键词试试。
                   </div>
                 </div>
               </div>

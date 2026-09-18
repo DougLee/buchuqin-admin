@@ -1744,86 +1744,91 @@ td.row-actions {
   border: 1px dashed #d7e2da;
 }
 
-/* ---------- 商品选择器（IKGNQ 采购入库）：左类别 + 右模糊搜索 ---------- */
+/* ---------- 商品选择器（IKGNQ 采购入库）：对齐 RestockPage.order-filter 模式 ---------- */
 .product-picker {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .pp-bar {
   display: flex;
   gap: 8px;
 }
-.pp-cat-select {
-  width: 150px;
-  flex: none;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 0 8px;
-  font-size: 13px;
-  background: #fff;
-  color: #1d2b24;
-  cursor: pointer;
-}
-.pp-cat-select:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: -1px;
-}
-.pp-search {
-  flex: 1;
-  height: 34px;
+.pp-bar select,
+.pp-bar input {
+  height: 36px;
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 0 10px;
   font-size: 13px;
+  background: #fff;
+  outline: 0;
 }
-.pp-search:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: -1px;
+.pp-bar select {
+  flex: 0 0 140px;
+  color: #1d2b24;
+  cursor: pointer;
+}
+.pp-bar input {
+  flex: 1;
+}
+.pp-bar select:focus,
+.pp-bar input:focus {
+  border-color: var(--brand);
 }
 .pp-list {
-  height: 216px;
+  height: 224px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+  padding-right: 2px;
 }
 .pp-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  border: 0;
-  background: none;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
   text-align: left;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
   color: #1d2b24;
 }
 .pp-item:hover {
-  background: #f1f6f2;
+  border-color: var(--brand);
 }
 .pp-item.active {
+  border-color: var(--brand);
   background: #eaf8e8;
 }
 .pp-item.active .pp-item__name {
   color: #07883b;
   font-weight: 600;
 }
+.pp-item img,
+.pp-item__ph {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f1f6f2;
+}
 .pp-item__name {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pp-item__meta {
   flex: none;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .pp-empty {
