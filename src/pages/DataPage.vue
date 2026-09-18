@@ -148,6 +148,8 @@ interface FieldDef {
   disabled?: (data: Record<string, FormValue>) => boolean;
   /** 字段级动态风险提醒（IKB3K1）：返回 undefined 不渲染。 */
   hint?: (data: Record<string, FormValue>) => string | undefined;
+  /** 商品选择器候选源（IKGNQ 三轮）：如促销只用本校区在售商品；缺省全量缓存 */
+  ppItems?: () => Product[];
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
   folder?: string;
 }
@@ -1501,13 +1503,6 @@ function productOptions() {
     label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
   }));
 }
-/** 促销选品选项：仅本校区在售商品（IKCJVS 续）。 */
-function onSaleProductOptions() {
-  return onSaleProductsCache.value.map((p) => ({
-    value: p.id,
-    label: `${p.name}（可售 ${p.availableStock ?? p.stock ?? 0}）`,
-  }));
-}
 /** 商品选择器（IKGNQ 采购入库，2026-09-18 道哥）：左类别 + 右模糊搜索，
  *  替代 500+ 全量平铺下拉。类别接口挂了不阻塞（仅左栏空，搜索仍可用）。 */
 const ppCatId = ref("all");
@@ -1527,9 +1522,15 @@ const ppCategories = computed(() => [
   { id: "all", name: "全部类别" },
   ...ppCategoriesCache.value.map((c) => ({ id: c.id, name: c.name })),
 ]);
+/** 选择器数据源（IKGNQ 三轮扩展）：字段可用 ppItems 提供候选集（如促销只用
+ *  在售商品），缺省回落全量商品缓存；同一时刻只有一个 form 打开，全局取即可 */
+const ppItemsSource = computed<Product[]>(() => {
+  const field = visibleFields.value.find((x) => x.type === "product-picker");
+  return field?.ppItems ? field.ppItems() : productsCache.value;
+});
 const ppProducts = computed(() => {
   const kw = ppKeyword.value.trim().toLowerCase();
-  return productsCache.value.filter((p) => {
+  return ppItemsSource.value.filter((p) => {
     if (ppCatId.value !== "all" && p.categoryId !== ppCatId.value) return false;
     if (!kw) return true;
     return p.name.toLowerCase().includes(kw) || (p.barcode ?? "").includes(kw);
@@ -1539,7 +1540,7 @@ const ppProducts = computed(() => {
 function ppLocate(productId?: string) {
   ppKeyword.value = "";
   ppCatId.value =
-    productsCache.value.find((x) => x.id === productId)?.categoryId ?? "all";
+    ppItemsSource.value.find((x) => x.id === productId)?.categoryId ?? "all";
 }
 /** 选择器加载态（IKGNQ 道哥反馈）：缓存未就绪时列表给骨架，不再裸空白 */
 const ppLoading = ref(false);
@@ -2261,7 +2262,12 @@ function promoWindowText(p: Promotion): string {
 }
 /** 新建促销：选商品/类型/促销价/起止窗口；重叠与价格底线由后端把关。 */
 function openPromotionCreate() {
-  void ensureOnSaleProducts();
+  // IKGNQ：商品选同款选择器——仅本校区在售商品作候选，同款加载骨架
+  ppLoading.value = true;
+  void Promise.all([ensureOnSaleProducts(), ensureCategories()]).finally(() => {
+    ppLoading.value = false;
+  });
+  ppLocate();
   openForm(
     {
       eyebrow: "NEW PROMOTION",
@@ -2269,7 +2275,13 @@ function openPromotionCreate() {
       submit: "保存活动",
       done: "促销活动已创建",
       fields: [
-        { key: "productId", label: "商品（在售）", type: "select", wide: true, options: onSaleProductOptions },
+        {
+          key: "productId",
+          label: "商品（在售）",
+          type: "product-picker",
+          wide: true,
+          ppItems: () => onSaleProductsCache.value,
+        },
         {
           key: "type",
           label: "类型",
