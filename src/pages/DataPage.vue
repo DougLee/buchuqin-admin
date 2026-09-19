@@ -157,6 +157,8 @@ interface FieldDef {
   hint?: (data: Record<string, FormValue>) => string | undefined;
   /** 商品选择器候选源（IKGNQ 三轮）：如促销只用本校区在售商品；缺省全量缓存 */
   ppItems?: () => Product[];
+  /** 选品行补显进货价（IKH15V）：定促销价对照毛利用；其余选择器场景缺省不显示 */
+  ppShowCost?: boolean;
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
   folder?: string;
 }
@@ -2292,6 +2294,8 @@ function openPromotionCreate() {
           type: "product-picker",
           wide: true,
           ppItems: () => onSaleProductsCache.value,
+          // IKH15V：定促销价时对照进货价（毛利）——选品行补显进货价
+          ppShowCost: true,
         },
         {
           key: "type",
@@ -7361,6 +7365,7 @@ async function cancelInviteRow(row: AdminRow) {
               <ProductPickerField
                 :items="field.ppItems ? field.ppItems() : productsCache"
                 :loading="ppLoading"
+                :show-cost="field.ppShowCost ?? false"
                 :model-value="String(formData[field.key] ?? '')"
                 @update:model-value="formData[field.key] = $event as string"
               />
