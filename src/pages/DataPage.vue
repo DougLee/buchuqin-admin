@@ -2010,29 +2010,38 @@ const recruitApp = computed(
 const recruitActive = computed(() =>
   ["pending", "interviewing"].includes(recruitApp.value?.status ?? ""),
 );
-/** RBAC V1：证件资料可代录（recruit.idcard.write）且未终态 */
+/** RBAC 蛋词（2026-09-19）：招募板块 URL 模式串（按钮显隐=模式串命中，超管恒真） */
+const RECRUIT_PERM = {
+  idcardRead: "GET /admin/recruit-applications/:id/idcard",
+  idcardWrite: "POST /admin/recruit-applications/:id/idcard",
+  note: "PATCH /admin/recruit-applications/:id",
+  approve: "POST /admin/recruit-applications/:id/approve",
+  interview: "POST /admin/recruit-applications/:id/transition",
+  reject: "POST /admin/recruit-applications/:id/reject",
+} as const;
+/** RBAC V1：证件资料可代录且未终态 */
 const canEditIdcard = computed(
-  () => recruitActive.value && hasPerm("recruit.idcard.write"),
+  () => recruitActive.value && hasPerm(RECRUIT_PERM.idcardWrite),
 );
-/** RBAC V1：运营备注可写（recruit.note）且未终态 */
+/** RBAC V1：运营备注可写且未终态 */
 const canEditNote = computed(
-  () => recruitActive.value && hasPerm("recruit.note"),
+  () => recruitActive.value && hasPerm(RECRUIT_PERM.note),
 );
 /** 审核资料编辑区整体显隐（有任一可写字段即出编辑态） */
 const recruitDocsEditable = computed(
   () => canEditIdcard.value || canEditNote.value,
 );
-/** 证件资料可查看（idcard.read 或 note 任一，弹层字段后端按权限置空） */
+/** 证件资料可查看（idcard 查或备注写任一，弹层字段后端按权限置空） */
 const canViewIdcard = computed(
-  () => hasPerm("recruit.idcard.read") || hasPerm("recruit.note"),
+  () => hasPerm(RECRUIT_PERM.idcardRead) || hasPerm(RECRUIT_PERM.note),
 );
 /** 审核操作可用（approve/interview/reject 任一权限且未终态） */
 const recruitCanAct = computed(
   () =>
     recruitActive.value &&
-    (hasPerm("recruit.approve") ||
-      hasPerm("recruit.interview") ||
-      hasPerm("recruit.reject")),
+    (hasPerm(RECRUIT_PERM.approve) ||
+      hasPerm(RECRUIT_PERM.interview) ||
+      hasPerm(RECRUIT_PERM.reject)),
 );
 /** 证件资料弹层（api.recruitIdcard：照片为 5 分钟签名 URL，直链展示） */
 const recruitIdcardOpen = ref(false),
@@ -3608,6 +3617,9 @@ const section = computed(() => String(route.params.section)),
     return configs[section.value] || configs.orders;
   }),
   canWriteSection = computed(() => canWrite(section.value)),
+  /** 改价权限（RBAC 蛋词）：价格字段独立端点 PATCH /admin/products/:id/price，
+   *  无权限时价格输入只读（主资料仍可编辑提交）。 */
+  canEditPrice = computed(() => hasPerm("PATCH /admin/products/:id/price")),
   /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
   createLabel = computed(() => {
     if (section.value === "marketing") {
@@ -4241,7 +4253,7 @@ function openDetail(row: AdminRow) {
     recruitEdit.value = { idCardNo: "", idCardImages: [], staffRemark: "" };
     recruitApproveArmed.value = false;
     recruitIdcardOpen.value = false;
-    if (hasPerm("recruit.note"))
+    if (hasPerm(RECRUIT_PERM.note))
       api
         .recruitIdcard(app.id)
         .then((d) => {
@@ -4299,22 +4311,46 @@ async function act(action: string) {
       // 名称空白就地拦截（IKAHAT），与后端「商品名称不能为空」同口径
       if (!productEdit.value.name.trim())
         throw new Error("商品名称不能为空");
+      const record = selected.value as Product;
+      /* RBAC 蛋词（2026-09-19）：价格字段与主资料拆分——价格有改动先走
+       * PATCH /admin/products/:id/price，主端点 body 剔除价格字段；
+       * 改价口径沿用旧规则（官方库同步行建议零售价只读、进货价仅总部、
+       * 批发价官方行+校区自建行）。 */
+      const priceBody: Record<string, number> = {};
+      if (isHqView.value || !record?.sourceProductId) {
+        const next = yuanToFen(productEdit.value.originalPrice);
+        if (next !== Number(record.originalPrice ?? 0))
+          priceBody.originalPrice = next;
+      }
+      if (isHqView.value) {
+        const cost = yuanToFen(productEdit.value.costPrice);
+        if (cost !== Number(record.costPrice ?? 0)) priceBody.costPrice = cost;
+      }
+      if (isHqView.value || !record?.sourceProductId) {
+        const ws = yuanToFen(productEdit.value.wholesalePrice);
+        if (ws !== Number(record.wholesalePrice ?? 0))
+          priceBody.wholesalePrice = ws;
+      }
+      const price = yuanToFen(productEdit.value.price);
+      if (price !== record.price) priceBody.price = price;
+      if (Object.keys(priceBody).length) {
+        if (!canEditPrice.value) throw new Error("无改价权限，价格字段未保存");
+        await api.updateProductPrice(
+          selected.value.id,
+          priceBody,
+          productView.value,
+        );
+      }
       await api.updateProduct(selected.value.id, {
         // 资料字段（IKAHAT）：副标题/标签可清空，重量/分类有值才提交
         name: productEdit.value.name.trim(),
         subtitle: productEdit.value.subtitle.trim(),
         tag: productEdit.value.tag.trim(),
-        // IKCIAA：官方库同步行的建议零售价校区只读——不提交（自建行/官方视角照常）
-        ...(isHqView.value ||
-        !(selected.value as Product)?.sourceProductId
-          ? { originalPrice: yuanToFen(productEdit.value.originalPrice) }
-          : {}),
         ...(productEdit.value.weight > 0
           ? { weight: productEdit.value.weight }
           : {}),
         // 单位属性（IKFOPU）：校区同步行只读不提交（自建行/官方视角照常）
-        ...(isHqView.value ||
-        !(selected.value as Product)?.sourceProductId
+        ...(isHqView.value || !record?.sourceProductId
           ? {
               retailUnit: productEdit.value.retailUnit.trim(),
               wholesaleUnit: productEdit.value.wholesaleUnit.trim() || "件",
@@ -4324,21 +4360,8 @@ async function act(action: string) {
         ...(productEdit.value.categoryId
           ? { categoryId: productEdit.value.categoryId }
           : {}),
-        price: yuanToFen(productEdit.value.price),
         // IKC1AB：上下架（hq 官方库放行/回收、校区自管本地上架）
         status: productEdit.value.status,
-        // IKC1AC：进货价仅官方库行提交（后端对校区行二次剔除）
-        // IKFOPQ：批发价格官方行 + 校区自建行提交（同步行后端仍剔除）
-        ...(isHqView.value
-          ? {
-              costPrice: yuanToFen(productEdit.value.costPrice),
-              wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
-            }
-          : !(selected.value as Product)?.sourceProductId
-            ? {
-                wholesalePrice: yuanToFen(productEdit.value.wholesalePrice),
-              }
-            : {}),
         // IKC1AB 修缺陷：官方库回填的 stock 是恒 0 的 availableStock，
         // 无条件提交会把官方行库存静默写 0——与库位同口径按视角排除
         ...(isHqView.value ? {} : { stock: Number(productEdit.value.stock) }),
@@ -5821,11 +5844,11 @@ async function cancelInviteRow(row: AdminRow) {
                     >{{ display(row, col[0]) }}</span
                   ><!-- IKDG8V：用户列表手机号列可点——按需单查明文（后端
                        审计留痕），本地缓存到刷新，再点收回打码；
-                       RBAC V1：入口按 users.phone.reveal 门控 --><span
+                       RBAC V1：入口按 GET /admin/users/:id/phone 门控 --><span
                     v-else-if="
                       col[0] === 'phoneMasked' &&
                       section === 'users' &&
-                      hasPerm('users.phone.reveal') &&
+                      hasPerm('GET /admin/users/:id/phone') &&
                       String(display(row, 'phoneMasked')).includes('****')
                     "
                     class="phone-reveal"
@@ -6491,7 +6514,7 @@ async function cancelInviteRow(row: AdminRow) {
                次要操作白底描边；RBAC V1 三按钮分别按权限码显隐 -->
           <div v-if="recruitCanAct" class="recruit-actions">
             <button
-              v-if="hasPerm('recruit.approve')"
+              v-if="hasPerm(RECRUIT_PERM.approve)"
               class="btn primary recruit-actions__primary"
               :class="{ 'recruit-actions__primary--armed': recruitApproveArmed }"
               type="button"
@@ -6505,12 +6528,12 @@ async function cancelInviteRow(row: AdminRow) {
             </button>
             <div
               v-if="
-                hasPerm('recruit.interview') || hasPerm('recruit.reject')
+                hasPerm(RECRUIT_PERM.interview) || hasPerm(RECRUIT_PERM.reject)
               "
               class="recruit-actions__row"
             >
               <button
-                v-if="recruitApp?.status === 'pending' && hasPerm('recruit.interview')"
+                v-if="recruitApp?.status === 'pending' && hasPerm(RECRUIT_PERM.interview)"
                 class="btn ghost"
                 type="button"
                 @click="recruitDoTransition"
@@ -6518,7 +6541,7 @@ async function cancelInviteRow(row: AdminRow) {
                 标记面试中
               </button>
               <button
-                v-if="hasPerm('recruit.reject')"
+                v-if="hasPerm(RECRUIT_PERM.reject)"
                 class="btn danger"
                 type="button"
                 @click="openRecruitRejectForm"
@@ -6681,7 +6704,10 @@ async function cancelInviteRow(row: AdminRow) {
                 v-model.number="productEdit.originalPrice"
                 type="number"
                 min="0"
-                :disabled="!isHqView && Boolean((selected as Product).sourceProductId)"
+                :disabled="
+                  !canEditPrice ||
+                  (!isHqView && Boolean((selected as Product).sourceProductId))
+                "
                 title="官方库同步行的建议零售价由总部维护" /></label
             ><!-- IKC1AC：进货价仅官方库行可编辑（校区不可见） --><div class="form-sec">
               价格
@@ -6689,7 +6715,8 @@ async function cancelInviteRow(row: AdminRow) {
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
-                min="0" /></label
+                min="0"
+                :disabled="!canEditPrice" /></label
             ><!-- IKFOPQ：批发价格官方行可编辑；校区自建行（无来源）放开自报，
                  行内毛利=售价−自报批发价；同步行仍只读 --><label
               v-if="isHqView || !(selected as Product)?.sourceProductId"
@@ -6697,6 +6724,7 @@ async function cancelInviteRow(row: AdminRow) {
                 v-model.number="productEdit.wholesalePrice"
                 type="number"
                 min="0"
+                :disabled="!canEditPrice"
                 :title="
                   isHqView
                     ? undefined
@@ -6746,7 +6774,8 @@ async function cancelInviteRow(row: AdminRow) {
               >{{ isHqView ? "批发价格（元）" : "校园售价（元）" }}<input
                 v-model.number="productEdit.price"
                 type="number"
-                min="0" /></label
+                min="0"
+                :disabled="!canEditPrice" /></label
             ><!-- IKC1AB：上下架（hq 官方库放行/回收，校区自管本地上架） -->
             <label
               >状态<select v-model="productEdit.status">

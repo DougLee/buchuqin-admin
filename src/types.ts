@@ -465,7 +465,7 @@ export interface AdminAccount {
   campusNames?: string[];
 }
 
-/** RBAC 角色（GET /admin/rbac/roles 行）。 */
+/** RBAC 角色（GET /admin/rbac/roles 行，蛋词体系）。 */
 export interface RbacRole {
   id: string;
   code: string;
@@ -474,12 +474,35 @@ export interface RbacRole {
   status: "active" | "disabled";
   builtin: boolean;
   accountCount: number;
-  permissions: string[];
-  /** 可见菜单 key 清单（两层模型第一层；超管角色为通配不落清单） */
-  menus: string[];
+  /** 勾选的菜单 code 混合集（目录+菜单+按钮；perms 由后端按菜单行推导）。 */
+  menuCodes: string[];
 }
 
-/** RBAC 权限目录（GET /admin/rbac/permissions 行）。 */
+/**
+ * RBAC 菜单全量树行（GET /admin/rbac/menus，登录可读）。
+ * 注意：此处 parentId 为**行 id**（原始行），与 permmenu.menus 的
+ * parentId=父节点 code 不同；含 type=2 按钮行与 perms 串。
+ */
+export interface RbacMenuRow {
+  id: string;
+  code: string;
+  /** 父行 id（根为 null）。 */
+  parentId: string | null;
+  name: string;
+  /** 0=目录 1=菜单 2=按钮。 */
+  type: 0 | 1 | 2;
+  path?: string;
+  viewPath?: string;
+  icon?: string;
+  /** 按钮行绑定的 URL 模式串（如 'PATCH /admin/products/:id'）。 */
+  perms?: string[];
+  orderNum?: number;
+  isShow?: boolean;
+  /** 内置行（结构字段不可改，仅 name/icon/orderNum/isShow 可编辑）。 */
+  builtin?: boolean;
+}
+
+/** RBAC 权限目录（GET /admin/rbac/permissions 行；蛋词体系下权限目录已并入菜单树，此类型仅旧页兜底）。 */
 export interface AdminPermission {
   id: string;
   code: string;
@@ -494,10 +517,10 @@ export interface AdminPermission {
 export interface RecruitIdcard {
   id: string;
   name: string;
-  /** 无 recruit.idcard.read 权限时后端置空。 */
+  /** 无 GET /admin/recruit-applications/:id/idcard 权限时后端置空。 */
   idCardNo: string;
   idCardImages: string[];
-  /** 无 recruit.note 权限时后端置空。 */
+  /** 无 PATCH /admin/recruit-applications/:id 权限时后端置空。 */
   staffRemark: string;
 }
 

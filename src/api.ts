@@ -4,6 +4,7 @@ import type {
   AccountGrant,
   AdminAccount,
   AdminPermission,
+  RbacMenuRow,
   RbacRole,
   RecruitIdcard,
   AdminUser,
@@ -299,6 +300,27 @@ export const api = {
       `/admin/products${withQuery(view ? `view=${view}` : undefined)}`,
       {
         method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
+  /** 改价独立端点（RBAC 蛋词：'PATCH /admin/products/:id/price'）——
+   *  价格字段（price/originalPrice/costPrice/wholesalePrice，整数分）与主资料
+   *  PATCH /admin/products/:id 拆分提交，主端点 body 不再含价格字段。 */
+  updateProductPrice: (
+    id: string,
+    data: Partial<{
+      price: number;
+      originalPrice: number;
+      costPrice: number;
+      wholesalePrice: number;
+    }>,
+    /** 同 updateProduct：仅 admin 生效（official 官方库 / campus 本校区） */
+    view?: string,
+  ) =>
+    request<Product>(
+      `/admin/products/${id}/price${withQuery(view ? `view=${view}` : undefined)}`,
+      {
+        method: "PATCH",
         body: JSON.stringify(data),
       },
     ),
@@ -1054,25 +1076,32 @@ export const api = {
     request<PagedResponse<AuditLog>>(
       `/admin/audit-logs${withQuery(listQuery(query))}`,
     ),
-  /* ---------- RBAC V1（2026-09-19）：授权上下文/角色/权限目录/审计 ---------- */
+  /* ---------- RBAC 蛋词体系（2026-09-19，对齐 cool-admin）：授权上下文/角色/菜单 ---------- */
   /** 当前账号有效授权（登录/切校区后拉取，session.loadRbac 消费）。 */
-  rbacMe: () => request<RbacMe>("/admin/rbac/me"),
-  /** 权限目录（只读登记表，角色编辑矩阵与权限目录页共用）。 */
+  rbacPermmenu: () => request<RbacMe>("/admin/rbac/permmenu"),
+  /** 权限目录（蛋词体系下已并入菜单树；旧权限目录页兜底保留，后端下线即 404 休眠）。 */
   rbacPermissions: () =>
     request<AdminPermission[]>("/admin/rbac/permissions"),
-  /** 菜单目录（两层模型第一层：角色勾选可见菜单用）。 */
-  rbacMenus: () =>
-    request<{ key: string; name: string; group: string }[]>(
-      "/admin/rbac/menus",
-    ),
-  /** 角色列表（含关联账号数与权限码全集）。 */
+  /** 菜单全量树扁平行（含按钮 type=2 与 perms 串；parentId 为行 id）。 */
+  /** 菜单全量树行：后端 perms 为逗号串，此处统一拆数组（页面直用） */
+  rbacMenus: async (): Promise<RbacMenuRow[]> =>
+    (await request<RbacMenuRow[]>("/admin/rbac/menus")).map((r) => ({
+      ...r,
+      perms: r.perms
+        ? String(r.perms)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    })),
+  /** 角色列表（行含 menuCodes：目录+菜单+按钮 code 混合集）。 */
   rbacRoles: () => request<RbacRole[]>("/admin/rbac/roles"),
   rbacCreateRole: (data: {
     code: string;
     name: string;
     remark?: string;
-    permissionCodes: string[];
-    menus?: string[];
+    /** 勾选哪些行就存哪些 code，不做父子自动补全。 */
+    menuCodes: string[];
   }) =>
     request<{ id: string; code: string }>("/admin/rbac/roles", {
       method: "POST",
@@ -1084,8 +1113,8 @@ export const api = {
       name?: string;
       remark?: string;
       status?: "active" | "disabled";
-      permissionCodes?: string[];
-      menus?: string[];
+      /** 全量替换（勾了哪些行就存哪些 code）。 */
+      menuCodes?: string[];
     },
   ) =>
     request<{ id: string }>(`/admin/rbac/roles/${id}`, {
@@ -1096,12 +1125,44 @@ export const api = {
     request<{ id: string }>(`/admin/rbac/roles/${id}`, {
       method: "DELETE",
     }),
+  /* ---------- 菜单管理 CRUD（RBAC 蛋词）：PATCH 只许展示字段，
+     POST/DELETE 规则（code 唯一、有子级/被角色引用不可删等）后端校验，
+     前端 toast 透传后端人话错误。 ---------- */
+  rbacCreateMenu: (data: {
+    parentId: string | null;
+    type: 0 | 1 | 2;
+    code: string;
+    name: string;
+    path?: string;
+    viewPath?: string;
+    icon?: string;
+    /** 按钮行绑定的 URL 模式串。 */
+    perms?: string[];
+    orderNum?: number;
+    isShow?: boolean;
+  }) =>
+    request<RbacMenuRow>("/admin/rbac/menus", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  rbacUpdateMenu: (
+    id: string,
+    data: { name?: string; icon?: string; orderNum?: number; isShow?: boolean },
+  ) =>
+    request<RbacMenuRow>(`/admin/rbac/menus/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  rbacDeleteMenu: (id: string) =>
+    request<{ id: string }>(`/admin/rbac/menus/${id}`, {
+      method: "DELETE",
+    }),
   /** 权限审计日志（RBAC 变更留痕，服务端分页）。 */
   rbacAudit: (page = 1, pageSize = 20) =>
     request<{ items: AuditLog[]; total: number }>(
       `/admin/rbac/audit${withQuery(`page=${page}`, `pageSize=${pageSize}`)}`,
     ),
-  /** 账号有效权限预览（同 /rbac/me 结构）。 */
+  /** 账号有效权限预览（同 /admin/rbac/permmenu 结构）。 */
   rbacPreview: (accountId: string) =>
     request<RbacMe>(`/admin/rbac/accounts/${accountId}/preview`),
   /* ---------- 后台账号管理（RBAC V1：grants 授权模型） ---------- */

@@ -9,6 +9,7 @@ import {
   clearSession,
   isPlatform,
   loadRbac,
+  menuTree,
   roleLabel,
   sessionUser,
   switchableCampuses,
@@ -79,121 +80,49 @@ async function submitPassword() {
 }
 /* 登录页不走后台外壳：无侧边栏/顶栏，只渲染登录卡片（RouterView 即 Login） */
 const isLogin = computed(() => route.path === "/login");
-/* RBAC V1（2026-09-19）：单一菜单树——合并原总部/校区双树全量条目，
- *  条目显隐一律 canSee(path)（服务端有效权限码），不再按 role 分流。 */
-/* IKB5PB：一级「营销活动」= Banner 配置 + 优惠券配置 + 限时秒杀 + 支付广告位。 */
-const MARKETING_ITEMS: [string, string, string][] = [
-  ["/banners", "marketing", "Banner 配置"],
-  ["/coupons", "marketing", "优惠券配置"],
-  ["/promotions", "marketing", "限时秒杀"],
-  ["/pay-ads", "marketing", "支付广告位"],
-  // IKH0EK：首页推荐位（手动优先+销量补齐），营销板块
-  ["/featured", "marketing", "推荐位管理"],
-  // IKD6FC：抽奖大转盘（首页入口显隐随活动开关）
-  ["/wheel", "wheel", "抽奖转盘"],
-];
-const groups = computed(() => [
-  {
-    label: "运营中心",
-    items: [
-      ["/", "dashboard", "经营总览"],
-      ["/orders", "orders", "订单配送"],
-      ["/after-sales", "after", "售后退款"],
-      // IKFOQ3：营销作战地图（权限复用 buildings）
-      ["/battle-map", "buildings", "营销作战地图"],
-      // IKFOPS：校区经营日报（校区账视角，与总部账 /reports 互补）
-      ["/campus-report", "campus-report", "校区日报"],
-    ] as [string, string, string][],
-  },
-  {
-    label: "仓储中心",
-    items: [
-      // IKCJ46：官方商品库独立菜单（/products 恒为本校区商品）
-      ["/official-products", "official-products", "官方商品库"],
-      ["/products", "products", "商品管理"],
-      ["/categories", "categories", "商品类别"],
-      ["/inventory", "inventory", "库存总览"],
-      // IKA0V2：仓库订单/出入库流水独立入口；IKA0VG：库位管理
-      ["/warehouse-orders", "warehouse-orders", "拣货任务"],
-      ["/inventory-txns", "inventory-txns", "出入库流水"],
-      ["/locations", "locations", "库位管理"],
-    ] as [string, string, string][],
-  },
-  // IKFOQ0：订货管理独立一级菜单（总部批次+审核，校区我的订货）
-  {
-    label: "订货管理",
-    items: [["/restock", "restock", "订货管理"]] as [string, string, string][],
-  },
-  // IKFOQ1：采购管理独立一级菜单（后端 purchase 键同口径）
-  {
-    label: "采购管理",
-    items: [["/purchase", "purchase", "采购管理"]] as [string, string, string][],
-  },
-  // IKB5PB：营销拆出独立一级组（见 MARKETING_ITEMS）
-  {
-    label: "营销活动",
-    items: MARKETING_ITEMS,
-  },
-  {
-    // IKB5PB：组织营销 → 组织管理（营销项已迁出）；IKCRS8 楼栋独立 /buildings
-    label: "组织管理",
-    items: [
-      ["/staff", "staff", "履约人员"],
-      // IKEAGE：楼长招募（报名→面试→审批→实习楼长）
-      ["/recruit", "recruit", "楼长招募"],
-      ["/buildings", "buildings", "楼栋管理"],
-      ["/campuses", "campus", "校区管理"],
-      // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
-      ["/users", "staff", "C端用户"],
-      ["/wechat-groups", "campus", "微信群码"],
-      ["/dispatch", "dispatch", "调配与请假"],
-    ] as [string, string, string][],
-  },
-  {
-    label: "财务系统",
-    items: [
-      ["/finance", "finance", "结算中心"],
-      ["/rules", "rules", "提成规则"],
-      ["/audit", "audit", "审计日志"],
-    ] as [string, string, string][],
-  },
-  {
-    // RBAC V1：系统分组——账号/角色/权限目录/权限审计 + 打印机（校区自管）
-    label: "系统",
-    items: [
-      ["/accounts", "accounts", "账号管理"],
-      ["/rbac-roles", "rbac-roles", "角色管理"],
-      ["/rbac-permissions", "rbac-permissions", "权限目录"],
-      ["/rbac-audit", "rbac-audit", "权限审计"],
-      // IKBW0Q：校区自主绑定小票打印机
-      ["/printers", "printers", "打印机"],
-    ] as [string, string, string][],
-  },
-]);
-/** 按 PRD §2.2 权限矩阵过滤侧边栏板块（含 IKB5PB 路由别名映射，见 session.ts）。 */
-/* 生产环境临时隐藏「订货管理」「采购管理」菜单入口（道哥 2026-09-16）：
-   功能未验收，生产先藏菜单（路由仍可直接访问），测试环境 admin-test.buchuqin.com
-   保留菜单用于验收。已于 2026-09-17 道哥验收后放开（域名改为 "__never__"，
-   门控结构保留备复用）。 */
-const HIDE_RESTOCK_PURCHASE_MENU = location.hostname === "__never__";
-const visibleGroups = computed(() =>
-  groups.value
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) =>
-        HIDE_RESTOCK_PURCHASE_MENU &&
-        (item[0] === "/restock" || item[0] === "/purchase")
-          ? false
-          : canSee(item[0] === "/" ? "dashboard" : item[0].slice(1)),
-      ),
-    }))
-    .filter((group) => group.items.length),
-);
+/* RBAC 蛋词体系（2026-09-19）：侧栏完全由 permmenu.menus 菜单树渲染——
+ * 目录（type=0，parentId=code 组树）为分组，菜单（type=1）为条目；
+ * 树本身就是授权结果（后端只回可见行），不再逐项 canSee 过滤；
+ * 名称/图标/排序均以数据库菜单行为准，改菜单不用发前端版。 */
+interface SidebarItem {
+  path: string;
+  code: string;
+  name: string;
+  icon: string;
+}
+interface SidebarGroup {
+  label: string;
+  items: SidebarItem[];
+}
+const visibleGroups = computed<SidebarGroup[]>(() => {
+  const rows = [...menuTree.value].sort(
+    (a, b) => (a.orderNum ?? 0) - (b.orderNum ?? 0),
+  );
+  const childrenOf = (parentCode: string | null) =>
+    rows.filter((r) => (r.parentId ?? null) === parentCode);
+  const toItem = (r: (typeof rows)[number]): SidebarItem => ({
+    path: r.path || "/",
+    code: r.code,
+    name: r.name,
+    icon: r.icon || r.code,
+  });
+  const groups: SidebarGroup[] = [];
+  // 根级菜单（无目录父级，如 dashboard）：归入「工作台」组置顶
+  const rootMenus = childrenOf(null).filter((r) => r.type === 1);
+  if (rootMenus.length)
+    groups.push({ label: "工作台", items: rootMenus.map(toItem) });
+  // 目录 → 分组（空组隐藏；组内只渲染菜单行）
+  for (const dir of childrenOf(null).filter((r) => r.type === 0)) {
+    const items = childrenOf(dir.code).filter((r) => r.type === 1);
+    if (items.length) groups.push({ label: dir.name, items: items.map(toItem) });
+  }
+  return groups;
+});
 /* 分组开关（IK9RTU 手风琴 → IKAJT1 默认全展开）：各组独立开关，
    默认全部展开便于查找；功能再多也不用逐组翻 */
 function groupLabelOf(path: string): string | null {
   const hit = visibleGroups.value.find((group) =>
-    group.items.some((item) => item[0] === path),
+    group.items.some((item) => item.path === path),
   );
   return hit?.label ?? null;
 }
@@ -249,29 +178,9 @@ async function loadCampusChoices() {
   }
 }
 onMounted(loadCampusChoices);
-/* 菜单目录（两层模型）：名称以数据库目录为准——侧栏与角色勾选页同源同名，
- * 改菜单名不用发前端版；拉不到用静态名兜底。结构（路由/分组）仍由代码定义。 */
-const menuCatalogNames = ref<Map<string, string>>(new Map());
-async function loadMenuCatalog() {
-  if (!localStorage.getItem("adminToken")) return;
-  try {
-    const menus = await api.rbacMenus();
-    menuCatalogNames.value = new Map(menus.map((m) => [m.key, m.name]));
-  } catch {
-    /* 目录拉不到：静态名兜底，不阻塞菜单渲染 */
-  }
-}
-function menuTitle(path: string, fallback: string): string {
-  const key = path === "/" ? "dashboard" : path.slice(1);
-  return menuCatalogNames.value.get(key) ?? fallback;
-}
-onMounted(loadMenuCatalog);
 /* 登录成功（Login push 不重挂载 App）：会话建立后补拉授权校区，多校区下拉才有数据 */
 watch(sessionUser, (u) => {
-  if (u) {
-    void loadCampusChoices();
-    void loadMenuCatalog();
-  }
+  if (u) void loadCampusChoices();
 });
 async function switchCampus(event: Event) {
   const campusId = (event.target as HTMLSelectElement).value;
@@ -314,10 +223,10 @@ async function switchCampus(event: Event) {
             v-for="item in collapsed || expandedGroups.includes(group.label)
               ? group.items
               : []"
-            :key="item[0]"
-            :to="item[0]"
-            :class="{ active: route.path === item[0] }"
-            ><AppIcon :name="item[1]" /><span>{{ menuTitle(item[0], item[2]) }}</span></RouterLink
+            :key="item.path"
+            :to="item.path"
+            :class="{ active: route.path === item.path }"
+            ><AppIcon :name="item.icon" /><span>{{ item.name }}</span></RouterLink
           >
         </section>
       </nav>

@@ -23,11 +23,13 @@ import { fmtDateTime } from "../utils/datetime";
  * - 校区视角：批次列表 + 我的订货单按件编辑（N 件(×N 听) 换算）
  * - 权限两分法与后端一致：isHqScope 管批次审单，operations/warehouse 订货
  * - RBAC V1（2026-09-19）：isHqScope→isPlatform（服务端上下文）；
- *   canManage/canOrder 直接认 restock.manage / restock.order 权限码
+ *   RBAC 蛋词：canManage/canOrder 直接认 URL 模式串（建批次/保存订货单）
  */
 const isHqScope = computed(() => isPlatform.value);
-const canManage = computed(() => hasPerm("restock.manage"));
-const canOrder = computed(() => hasPerm("restock.order"));
+const canManage = computed(() => hasPerm("POST /admin/restock/batches"));
+const canOrder = computed(() =>
+  hasPerm("PUT /admin/restock/batches/:batchId/order"),
+);
 
 const loading = ref(true);
 const error = ref("");

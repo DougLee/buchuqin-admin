@@ -15,7 +15,9 @@ import AccountsPage from "./pages/AccountsPage.vue";
 import RolesPage from "./pages/RolesPage.vue";
 import RbacPermissionsPage from "./pages/RbacPermissionsPage.vue";
 import RbacAuditPage from "./pages/RbacAuditPage.vue";
-import { canSee, hasPerm, sessionUser } from "./session";
+// RBAC 蛋词：菜单管理（无侧栏项——入口在角色管理页头，守卫 canWrite('rbac-roles')）
+import MenusPage from "./pages/MenusPage.vue";
+import { canSee, canWrite, sessionUser } from "./session";
 import "./style.css";
 import "./drawer.css";
 const routes = [
@@ -37,6 +39,8 @@ const routes = [
   // RBAC V1：系统分组四页
   { path: "/accounts", component: AccountsPage },
   { path: "/rbac-roles", component: RolesPage },
+  // RBAC 蛋词：菜单管理——菜单表没有侧栏行，入口=角色管理页头按钮
+  { path: "/rbac-menus", component: MenusPage },
   { path: "/rbac-permissions", component: RbacPermissionsPage },
   { path: "/rbac-audit", component: RbacAuditPage },
   { path: "/:section", component: DataPage },
@@ -50,22 +54,26 @@ router.beforeEach((to) => {
   );
   if (to.path === "/login") return authed ? "/" : true;
   if (!authed) return "/login";
-  // RBAC V1：平台账号无本校区商品概念时 /products 直达官方商品库
+  // RBAC 蛋词：平台账号无本校区商品菜单时 /products 直达官方商品库（查菜单树）
   if (
     to.path === "/products" &&
-    !hasPerm("products.read") &&
-    hasPerm("products.official.read")
+    !canSee("products") &&
+    canSee("official-products")
   )
     return "/official-products";
   // IKFOQ0：独立路由不走 :section 参数，单独过权限
   if (to.path === "/restock") return canSee("restock") ? true : "/";
   if (to.path === "/purchase") return canSee("purchase") ? true : "/";
-  if (to.path === "/reports") return canSee("purchase") ? true : "/";
+  // /reports 无侧栏菜单行（历史上借采购菜单键）：自有菜单行或采购菜单可见即可
+  if (to.path === "/reports")
+    return canSee("reports") || canSee("purchase") ? true : "/";
   if (to.path === "/campus-report") return canSee("campus-report") ? true : "/";
-  if (to.path === "/battle-map") return canSee("buildings") ? true : "/";
-  if (to.path === "/featured") return canSee("marketing") ? true : "/";
+  if (to.path === "/battle-map") return canSee("battle-map") ? true : "/";
+  if (to.path === "/featured") return canSee("featured") ? true : "/";
   if (to.path === "/accounts") return canSee("accounts") ? true : "/";
   if (to.path === "/rbac-roles") return canSee("rbac-roles") ? true : "/";
+  // 菜单管理：菜单表无该行，守卫与入口同用 rbac-roles 写权限
+  if (to.path === "/rbac-menus") return canWrite("rbac-roles") ? true : "/";
   if (to.path === "/rbac-permissions")
     return canSee("rbac-permissions") ? true : "/";
   if (to.path === "/rbac-audit") return canSee("rbac-audit") ? true : "/";

@@ -5,7 +5,6 @@ import { canWrite, type RbacMe } from "../session";
 import type {
   AccountGrant,
   AdminAccount,
-  AdminPermission,
   Campus,
   RbacRole,
 } from "../types";
@@ -224,26 +223,18 @@ async function submitDrawer() {
   }
 }
 
-/* ---------- 有效权限预览（弹层） ---------- */
+/* ---------- 有效权限预览（弹层，蛋词：URL 模式串 + 可见菜单树） ---------- */
 const previewOpen = ref(false);
 const previewLoading = ref(false);
 const previewAccount = ref<AdminAccount | null>(null);
 const previewMe = ref<RbacMe | null>(null);
-const permissionCatalog = ref<AdminPermission[]>([]);
 async function openPreview(row: AdminAccount) {
   previewAccount.value = row;
   previewOpen.value = true;
   previewLoading.value = true;
   previewMe.value = null;
   try {
-    const [me, catalog] = await Promise.all([
-      api.rbacPreview(row.id),
-      permissionCatalog.value.length
-        ? Promise.resolve(permissionCatalog.value)
-        : api.rbacPermissions(),
-    ]);
-    permissionCatalog.value = catalog;
-    previewMe.value = me;
+    previewMe.value = await api.rbacPreview(row.id);
   } catch (e) {
     notify(e instanceof Error ? e.message : "预览加载失败", true);
     previewOpen.value = false;
@@ -251,22 +242,16 @@ async function openPreview(row: AdminAccount) {
     previewLoading.value = false;
   }
 }
-/** 权限码按目录 group 分块（目录外或超管通配归「其他/全部」）。 */
+/** URL 模式串按接口域分块（'PATCH /admin/products/:id' → 'products'；超管通配归全部）。 */
 const previewGroups = computed(() => {
   const me = previewMe.value;
   if (!me) return [];
-  if (me.super)
-    return [{ group: "全部权限（内置通配）", perms: [{ code: "*", name: "全部权限", scope: "platform" as const }] }];
-  const byGroup = new Map<string, { code: string; name: string; scope: string }[]>();
-  for (const p of me.permissions) {
-    const meta = permissionCatalog.value.find((c) => c.code === p.code);
-    const group = meta?.group ?? "其他";
-    if (!byGroup.has(group)) byGroup.set(group, []);
-    byGroup.get(group)!.push({
-      code: p.code,
-      name: meta?.name ?? p.code,
-      scope: p.scope,
-    });
+  if (me.super) return [{ group: "全部权限（超管通配 *）", perms: ["*"] }];
+  const byGroup = new Map<string, string[]>();
+  for (const p of me.perms ?? []) {
+    const seg = /\/admin\/([^/:]+)/.exec(p)?.[1] ?? "其他";
+    if (!byGroup.has(seg)) byGroup.set(seg, []);
+    byGroup.get(seg)!.push(p);
   }
   return [...byGroup.entries()].map(([group, perms]) => ({ group, perms }));
 });
@@ -557,7 +542,19 @@ async function removeRow(row: AdminAccount) {
               未挂任何角色（无后台权限）
             </div>
           </div>
-          <p class="drawer-sec">有效权限码</p>
+          <p class="drawer-sec">可见菜单</p>
+          <div class="preview-perms">
+            <span
+              v-for="m in previewMe.menus ?? []"
+              :key="m.code"
+              class="status info"
+              >{{ m.name }}</span
+            >
+            <span v-if="!(previewMe.menus ?? []).length" class="muted"
+              >无可见菜单</span
+            >
+          </div>
+          <p class="drawer-sec">有效权限（URL 模式）</p>
           <div
             v-for="group in previewGroups"
             :key="group.group"
@@ -567,9 +564,9 @@ async function removeRow(row: AdminAccount) {
             <div class="preview-perms">
               <span
                 v-for="p in group.perms"
-                :key="p.code"
+                :key="p"
                 class="status info"
-                >{{ p.name }}（{{ p.code }}）</span
+                >{{ p }}</span
               >
             </div>
           </div>
