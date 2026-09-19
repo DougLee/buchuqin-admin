@@ -6994,7 +6994,7 @@ async function cancelInviteRow(row: AdminRow) {
                 (c) =>
                   c[0] !== 'marginTotal' &&
                   !(section === 'orders' && c[0] === 'userText'),
-              )
+              )"
               :key="col[0]"
               :class="{
                 wide:
