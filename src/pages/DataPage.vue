@@ -3122,9 +3122,16 @@ const configs: Record<string, SectionConfig> = {
               .filter(Boolean)
               .join("");
             const userMain = o.userPhone || user?.nickname?.trim() || "";
-            // 2026-09-19 道哥：详情补联系人/联系电话（地址快照内明文，客服直连用）
+            // 2026-09-19 道哥定版：详情收货人一行=姓名+明文电话+楼栋房号
+            //（脱敏手机号不再显示，下单账号标识从详情移除——列表口径不变）
+            const contactMain =
+              [address?.contactName, address?.phone].filter(Boolean).join(" / ");
             const contactText =
-              [address?.contactName, address?.phone].filter(Boolean).join(" / ") || "—";
+              contactMain
+                ? building
+                  ? `${contactMain}（${building}）`
+                  : contactMain
+                : "—";
             return {
               ...o,
               // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
@@ -3144,7 +3151,7 @@ const configs: Record<string, SectionConfig> = {
       ["orderNo", "订单编号"],
       ["itemsText", "商品"],
       ["userText", "用户"],
-      ["contactText", "联系人 / 电话"],
+      ["contactText", "收货人"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
       // IKFTZ9：毛利列（合计口径同详情，缺成本显示 —）
@@ -3159,7 +3166,6 @@ const configs: Record<string, SectionConfig> = {
       "orderNo",
       "statusText",
       "slaText",
-      "userText",
       "contactText",
       "payableAmount",
       "createdAt",
