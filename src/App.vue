@@ -235,8 +235,9 @@ const campusSwitching = ref(false);
 const isAllCampusView = computed(
   () => isPlatform.value && switchableCampuses.value.length === 0,
 );
-onMounted(async () => {
-  if (isAllCampusView.value) return;
+async function loadCampusChoices() {
+  // 未登录不发注定 401 的请求（登录页停留期 console 曾报错）；登录后由 watch 补拉
+  if (isAllCampusView.value || !localStorage.getItem("adminToken")) return;
   try {
     campusChoices.value = await api.adminCampuses();
     const hit =
@@ -246,6 +247,11 @@ onMounted(async () => {
   } catch {
     /* 取不到授权列表保持静态展示，不阻塞后台 */
   }
+}
+onMounted(loadCampusChoices);
+/* 登录成功（Login push 不重挂载 App）：会话建立后补拉授权校区，多校区下拉才有数据 */
+watch(sessionUser, (u) => {
+  if (u) loadCampusChoices();
 });
 async function switchCampus(event: Event) {
   const campusId = (event.target as HTMLSelectElement).value;

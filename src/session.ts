@@ -41,20 +41,20 @@ export const ROLE_LABELS: Record<string, string> = {
   rbac: "后台账号",
 };
 
-/** 路由别名（拆分菜单归并到主板块权限）。 */
+/** 路由别名（拆分菜单归并到主板块权限）。
+ *  注意：ROUTE_PERM 已单列条目的 key 不进别名（联调实测坑：别名先命中会压制
+ *  细粒度码——official-products 曾被别名压回 products.read 导致无官方库权
+ *  限的运营也看到官方库菜单）。 */
 const SECTION_ALIAS: Record<string, string> = {
   coupons: "marketing",
   promotions: "marketing",
   "pay-ads": "banners",
-  "official-products": "products",
   wheel: "marketing",
   featured: "marketing",
   "battle-map": "buildings",
   reports: "purchase",
   dispatch: "staff",
   rules: "finance",
-  "warehouse-orders": "orders",
-  "inventory-txns": "inventory",
 };
 
 /**
