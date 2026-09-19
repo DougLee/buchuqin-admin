@@ -3136,6 +3136,10 @@ const configs: Record<string, SectionConfig> = {
               ...o,
               // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
               itemsText: names.length ? names.join("\n") : "—",
+              // 2026-09-19 道哥：列表商品列单行摘要（首商品+等N件），悬停 title 显全部
+              itemsBrief: names.length
+                ? names[0] + (names.length > 1 ? ` 等${names.length}件` : "")
+                : "—",
               userText: [userMain, building].filter(Boolean).join("\n") || "—",
               contactText,
               // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
@@ -6038,10 +6042,11 @@ async function cancelInviteRow(row: AdminRow) {
                     }}</span></strong
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
-                  ><!-- IKBW0C/D：商品列多商品每行一个 --><span
+                  ><!-- 2026-09-19 道哥：商品列单行摘要+悬停全部（IKBW0C/D 多行版退役） --><span
                     v-else-if="col[0] === 'itemsText'"
-                    class="cell-lines"
-                    >{{ display(row, col[0]) }}</span
+                    class="cell-ellipsis"
+                    :title="String(display(row, 'itemsText')).split('\n').join('、')"
+                    >{{ display(row, "itemsBrief") }}</span
                   ><!-- 订单用户列：主行手机号（tabular-nums 对读），次行楼栋房号 --><span
                     v-else-if="col[0] === 'userText'"
                     class="user-cell"

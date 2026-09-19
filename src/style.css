@@ -1750,3 +1750,12 @@ td.row-actions {
   color: #c0392b;
   font-weight: 600;
 }
+
+/* 2026-09-19 道哥：订单商品列单行摘要（首商品+等N件），悬停显全部 */
+.cell-ellipsis {
+  display: block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
