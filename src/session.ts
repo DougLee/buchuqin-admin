@@ -27,6 +27,8 @@ export interface RbacMe {
   contextCampusId: string;
   roles: { id: string; code: string; name: string; scope: "platform" | "campus"; campusId: string | null; status: string; builtin: boolean }[];
   permissions: { code: string; scope: "platform" | "campus" }[];
+  /** 可见菜单 key 并集（两层模型第一层；超管为 ["*"]） */
+  menus: string[];
   switchableCampuses: string[];
   rbacVersion: number;
 }
@@ -113,6 +115,8 @@ export const roleLabel = computed(
 
 /* ---------- 服务端授权上下文（登录/切校区后刷新） ---------- */
 export const permissions = ref<Set<string>>(new Set());
+/** 可见菜单（两层模型第一层）：角色菜单并集，'*'=超管通配 */
+export const visibleMenus = ref<Set<string>>(new Set());
 export const isSuper = ref(false);
 export const isPlatform = ref(false);
 export const rbacRoles = ref<RbacMe["roles"]>([]);
@@ -131,10 +135,9 @@ function hasAny(codes: string[]): boolean {
 }
 
 export function canSee(section: string): boolean {
-  const key = SECTION_ALIAS[section] ?? section;
-  const perm = ROUTE_PERM[key];
-  if (!perm) return false;
-  return hasAny(perm.read);
+  // 两层模型第一层（2026-09-19 道哥拍板 A）：菜单可见性=角色菜单并集，
+  // 不再由读权限码推导（'*'=超管通配）。接口鉴权/按钮显隐仍走 canWrite/hasPerm。
+  return visibleMenus.value.has("*") || visibleMenus.value.has(section);
 }
 
 export function canWrite(section: string): boolean {
@@ -155,6 +158,7 @@ export function applyRbac(me: RbacMe) {
   permissions.value = new Set(
     me.super ? ["*"] : me.permissions.map((p) => p.code),
   );
+  visibleMenus.value = new Set(me.menus ?? []);
   isSuper.value = me.super;
   isPlatform.value = me.platform;
   rbacRoles.value = me.roles;
@@ -197,6 +201,7 @@ export async function loadRbac(): Promise<boolean> {
 export function clearSession() {
   sessionUser.value = null;
   permissions.value = new Set();
+  visibleMenus.value = new Set();
   isSuper.value = false;
   isPlatform.value = false;
   rbacRoles.value = [];

@@ -475,6 +475,8 @@ export interface RbacRole {
   builtin: boolean;
   accountCount: number;
   permissions: string[];
+  /** 可见菜单 key 清单（两层模型第一层；超管角色为通配不落清单） */
+  menus: string[];
 }
 
 /** RBAC 权限目录（GET /admin/rbac/permissions 行）。 */

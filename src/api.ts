@@ -1060,6 +1060,11 @@ export const api = {
   /** 权限目录（只读登记表，角色编辑矩阵与权限目录页共用）。 */
   rbacPermissions: () =>
     request<AdminPermission[]>("/admin/rbac/permissions"),
+  /** 菜单目录（两层模型第一层：角色勾选可见菜单用）。 */
+  rbacMenus: () =>
+    request<{ key: string; name: string; group: string }[]>(
+      "/admin/rbac/menus",
+    ),
   /** 角色列表（含关联账号数与权限码全集）。 */
   rbacRoles: () => request<RbacRole[]>("/admin/rbac/roles"),
   rbacCreateRole: (data: {
@@ -1067,6 +1072,7 @@ export const api = {
     name: string;
     remark?: string;
     permissionCodes: string[];
+    menus?: string[];
   }) =>
     request<{ id: string; code: string }>("/admin/rbac/roles", {
       method: "POST",
@@ -1079,6 +1085,7 @@ export const api = {
       remark?: string;
       status?: "active" | "disabled";
       permissionCodes?: string[];
+      menus?: string[];
     },
   ) =>
     request<{ id: string }>(`/admin/rbac/roles/${id}`, {
