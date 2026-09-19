@@ -123,8 +123,8 @@ function unitText(p: Product): string {
           <span class="pp-item__name">{{ p.name }}</span>
           <span class="pp-item__meta"
             >现价 ¥{{ fenToYuan(p.price)
-            }}<template v-if="showCost && p.costPrice"
-              > · 进货¥{{ fenToYuan(p.costPrice) }}</template
+            }}<template v-if="showCost && p.wholesalePrice"
+              > · 进货¥{{ fenToYuan(p.wholesalePrice) }}</template
             > · 可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
           >
         </button>

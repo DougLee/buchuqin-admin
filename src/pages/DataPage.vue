@@ -2294,7 +2294,7 @@ function openPromotionCreate() {
           type: "product-picker",
           wide: true,
           ppItems: () => onSaleProductsCache.value,
-          // IKH15V：定促销价时对照进货价（毛利）——选品行补显进货价
+          // IKH15V：定促销价时对照进货价（毛利）——口径定版=批发价格（道哥 2026-09-19）
           ppShowCost: true,
         },
         {
@@ -2613,8 +2613,8 @@ const isHqRole = computed(() => role.value === "hq");
 const isPlatformAdmin = computed(
   () => role.value === "hq" || role.value === "admin",
 );
-/** 列渲染出口（2026-09-19 线上反馈消歧）：进货价列（IKC1AC）仅平台角色可见——
- *  校区商品列表补进货价列供平台与促销弹窗比价，纯校区角色隐藏（不暴露成本）。 */
+/** 列渲染出口：costPrice（总部采购成本）列仅平台角色可见——
+ *  校区视角进货价=批发价格（道哥 2026-09-19 定版），成本列不向校区暴露。 */
 function cols(config: { columns: [string, string][] }): [string, string][] {
   return isPlatformAdmin.value
     ? config.columns
@@ -3203,9 +3203,9 @@ const configs: Record<string, SectionConfig> = {
       ["image", "图片"],
       ["name", "商品"],
       ["categoryId", "分类"],
-      ["costPrice", "进货价"],
       ["price", "售价"],
-      // IKC1AC：校区可见批发价快照与建议零售价；进货价列经 cols() 仅平台角色显示
+      // IKC1AC：校区可见批发价快照与建议零售价。进货价口径定版=批发价格
+      // （2026-09-19 道哥定版：定促销毛利基准），促销弹窗「进货¥」与该列同源同数
       ["wholesalePrice", "批发价格"],
       ["originalPrice", "建议零售价"],
       ["availableStock", "可售库存"],
