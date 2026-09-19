@@ -74,6 +74,10 @@ function setQty(id: string, q: number) {
   const next = { ...(props.modelValue as Record<string, number>), [id]: q };
   emit("update:modelValue", next);
 }
+/** simple 模式（无件数输入）：点行即选中/取消——件数输入原本就是多选的选中途径 */
+function togglePick(id: string) {
+  setQty(id, qtyOf(id) > 0 ? 0 : 1);
+}
 function unitText(p: Product): string {
   // 快照行 unitsPerCase 可能缺省（订货单旧快照），缺省视为无件概念
   const per = p.unitsPerCase ?? 1;
@@ -122,7 +126,13 @@ function unitText(p: Product): string {
         </div>
       </template>
       <template v-else>
-        <div v-for="p in filtered" :key="p.id" class="pp-item pp-item--multi">
+        <div
+          v-for="p in filtered"
+          :key="p.id"
+          class="pp-item pp-item--multi"
+          :class="{ active: simple && qtyOf(p.id) > 0 }"
+          @click="simple && togglePick(p.id)"
+        >
           <img v-if="p.image" :src="p.image" alt="" />
           <span v-else class="pp-item__ph"></span>
           <span class="pp-item__main">
