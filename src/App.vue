@@ -249,9 +249,29 @@ async function loadCampusChoices() {
   }
 }
 onMounted(loadCampusChoices);
+/* 菜单目录（两层模型）：名称以数据库目录为准——侧栏与角色勾选页同源同名，
+ * 改菜单名不用发前端版；拉不到用静态名兜底。结构（路由/分组）仍由代码定义。 */
+const menuCatalogNames = ref<Map<string, string>>(new Map());
+async function loadMenuCatalog() {
+  if (!localStorage.getItem("adminToken")) return;
+  try {
+    const menus = await api.rbacMenus();
+    menuCatalogNames.value = new Map(menus.map((m) => [m.key, m.name]));
+  } catch {
+    /* 目录拉不到：静态名兜底，不阻塞菜单渲染 */
+  }
+}
+function menuTitle(path: string, fallback: string): string {
+  const key = path === "/" ? "dashboard" : path.slice(1);
+  return menuCatalogNames.value.get(key) ?? fallback;
+}
+onMounted(loadMenuCatalog);
 /* 登录成功（Login push 不重挂载 App）：会话建立后补拉授权校区，多校区下拉才有数据 */
 watch(sessionUser, (u) => {
-  if (u) loadCampusChoices();
+  if (u) {
+    void loadCampusChoices();
+    void loadMenuCatalog();
+  }
 });
 async function switchCampus(event: Event) {
   const campusId = (event.target as HTMLSelectElement).value;
@@ -297,7 +317,7 @@ async function switchCampus(event: Event) {
             :key="item[0]"
             :to="item[0]"
             :class="{ active: route.path === item[0] }"
-            ><AppIcon :name="item[1]" /><span>{{ item[2] }}</span></RouterLink
+            ><AppIcon :name="item[1]" /><span>{{ menuTitle(item[0], item[2]) }}</span></RouterLink
           >
         </section>
       </nav>

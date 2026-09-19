@@ -106,6 +106,15 @@ function toggleMenuGroup(menus: { key: string }[], on: boolean) {
 function menuGroupAll(menus: { key: string }[]): boolean {
   return menus.every((m) => checkedMenus.value.has(m.key));
 }
+/* 分组折叠（对齐左侧菜单交互：组头点击展开/收起，默认全展开；
+ * checkbox 点击不冒泡折叠——用 @click.stop 隔离） */
+const foldedMenus = ref<Set<string>>(new Set());
+function toggleMenuFold(group: string) {
+  const next = new Set(foldedMenus.value);
+  if (next.has(group)) next.delete(group);
+  else next.add(group);
+  foldedMenus.value = next;
+}
 function groupAllChecked(perms: AdminPermission[]): boolean {
   return perms.every((p) => checked.value.has(p.code));
 }
@@ -363,17 +372,27 @@ function removeLabel(role: RbacRole): string {
         </div>
         <div v-else class="menu-groups" :class="{ 'is-locked': editingBuiltin }">
           <div v-for="g in menuGroups" :key="g.group" class="menu-group">
-            <label class="checkbox-row menu-group-head">
-              <input
-                type="checkbox"
-                class="raw-checkbox"
-                :disabled="editingBuiltin"
-                :checked="menuGroupAll(g.menus)"
-                @change="toggleMenuGroup(g.menus, !menuGroupAll(g.menus))"
-              />
-              <strong>{{ g.group }}</strong>
-            </label>
-            <div class="menu-chips">
+            <div class="menu-group-head">
+              <label class="checkbox-row" @click.stop>
+                <input
+                  type="checkbox"
+                  class="raw-checkbox"
+                  :disabled="editingBuiltin"
+                  :checked="menuGroupAll(g.menus)"
+                  @change="toggleMenuGroup(g.menus, !menuGroupAll(g.menus))"
+                />
+                <strong>{{ g.group }}</strong>
+              </label>
+              <button
+                type="button"
+                class="menu-fold-btn"
+                :aria-expanded="!foldedMenus.has(g.group)"
+                @click="toggleMenuFold(g.group)"
+              >
+                {{ foldedMenus.has(g.group) ? "▸" : "▾" }}
+              </button>
+            </div>
+            <div v-show="!foldedMenus.has(g.group)" class="menu-chips">
               <label
                 v-for="m in g.menus"
                 :key="m.key"
@@ -547,6 +566,21 @@ function removeLabel(role: RbacRole): string {
 .menu-group-head {
   font-size: 12px;
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.menu-fold-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.menu-fold-btn:hover {
+  color: #07883b;
 }
 .menu-chips {
   display: flex;
