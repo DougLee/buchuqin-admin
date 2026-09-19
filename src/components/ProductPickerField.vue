@@ -122,7 +122,7 @@ function unitText(p: Product): string {
           <span v-else class="pp-item__ph"></span>
           <span class="pp-item__name">{{ p.name }}</span>
           <span class="pp-item__meta"
-            >¥{{ fenToYuan(p.price)
+            >现价 ¥{{ fenToYuan(p.price)
             }}<template v-if="showCost && p.costPrice"
               > · 进货¥{{ fenToYuan(p.costPrice) }}</template
             > · 可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
@@ -145,7 +145,7 @@ function unitText(p: Product): string {
           <span class="pp-item__main">
             <span class="pp-item__name">{{ p.name }}</span>
             <span class="pp-item__meta"
-              >批发价 {{ fenToYuan(p.price) }}/{{ p.wholesaleUnit || "件"
+              >单价 {{ fenToYuan(p.price) }}/{{ p.wholesaleUnit || "件"
               }}{{ unitText(p) }}</span
             >
           </span>
