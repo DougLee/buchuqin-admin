@@ -8,16 +8,15 @@ import ProductImagesField from "../components/ProductImagesField.vue";
 import ProductPickerField from "../components/ProductPickerField.vue";
 import {
   canWrite,
-  role,
-  ROLE_LABELS,
+  hasPerm,
+  isPlatform,
+  isSuper,
   sessionUser,
-  type AdminRole,
 } from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fmtDate, fmtDateTime } from "../utils/datetime";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import type {
-  AccountRow,
   AdminRow,
   AdminUser,
   AfterSale,
@@ -43,6 +42,7 @@ import type {
   Product,
   Promotion,
   RecruitingApplication,
+  RecruitIdcard,
   Room,
   RuleRow,
   Settlement,
@@ -140,7 +140,6 @@ interface FieldDef {
     | "password"
     | "image"
     | "textarea"
-    | "campus-multi"
     | "product-picker";
   options?: () => { value: string | number; label: string }[];
   placeholder?: string;
@@ -1295,169 +1294,8 @@ async function cancelInvite() {
 }
 
 /* ---------- 提成规则：新建 + 启停 ---------- */
-/* ---------- 后台账号（IK9KWO）：超管维护运营/仓储/财务账号 ---------- */
-const ACCOUNT_ROLE_OPTIONS = [
-  { value: "operations", label: "运营" },
-  { value: "warehouse", label: "仓储" },
-  { value: "finance", label: "财务" },
-  { value: "admin", label: "管理员" },
-];
-/** IKBFJ4 滞后修正：admin 平台超管同 hq 可建总部角色（后端 2790 行已同权）。 */
-function accountRoleOptions() {
-  return isPlatformAdmin.value
-    ? [...ACCOUNT_ROLE_OPTIONS, { value: "hq", label: "总部长" }]
-    : ACCOUNT_ROLE_OPTIONS;
-}
-/* IKB3KG 方案A：可运营校区多选（FormValue 扩 string[]，模板勾选驱动） */
-function campusMultiValue(key: string): string[] {
-  const value = formData.value[key];
-  return Array.isArray(value) ? value : [];
-}
-function toggleCampusMulti(key: string, campusId: string) {
-  const current = campusMultiValue(key);
-  formData.value[key] = current.includes(campusId)
-    ? current.filter((x) => x !== campusId)
-    : [...current, campusId];
-}
-function openAccountCreate() {
-  void ensureCampusOptions().catch(() => {});
-  openForm(
-    {
-      eyebrow: "NEW ADMIN ACCOUNT",
-      title: "新建后台账号",
-      submit: "创建账号",
-      done: "后台账号已创建",
-      fields: [
-        { key: "username", label: "账号", placeholder: "3-20 位字母/数字/下划线" },
-        { key: "password", label: "初始密码", type: "password", placeholder: "至少 8 位" },
-        { key: "nickname", label: "昵称", placeholder: "如：仓储小王" },
-        { key: "role", label: "角色", type: "select", options: accountRoleOptions },
-        // IKBFJ4：平台账号（hq/admin）建号选归属（空 = 总部账号，角色须总部长）
-        {
-          key: "campusId",
-          label: "所属校区",
-          type: "select",
-          visible: () => isPlatformAdmin.value,
-          options: () => [
-            { value: "", label: "总部（仅总部长角色）" },
-            ...campusOptionsData.value.map((c) => ({
-              value: c.id,
-              label: c.shortName || c.name,
-            })),
-          ],
-        },
-        // IKB3KG 方案A：hq 授权多校区（登录后顶栏可切换）；所属校区始终在授权内
-        {
-          key: "campusIds",
-          label: "可运营校区",
-          type: "campus-multi",
-          wide: true,
-          visible: (d) =>
-            isPlatformAdmin.value && String(d.role || "") !== "hq",
-        },
-      ],
-      save: async (d) =>
-        void (await api.createAccount({
-          username: String(d.username || "").trim(),
-          password: String(d.password || ""),
-          nickname: String(d.nickname || "").trim(),
-          role: String(d.role || ""),
-          ...(isPlatformAdmin.value
-            ? { campusId: String(d.campusId ?? "") }
-            : {}),
-          ...(isPlatformAdmin.value && String(d.role || "") !== "hq"
-            ? { campusIds: campusMultiValue("campusIds") }
-            : {}),
-        })),
-    },
-    {
-      username: "",
-      password: "",
-      nickname: "",
-      role: "operations",
-      campusId: "",
-      campusIds: [] as string[],
-    },
-  );
-}
-function openAccountEdit(row: AdminRow) {
-  const account = row as AccountRow;
-  selected.value = undefined;
-  void ensureCampusOptions().catch(() => {});
-  openForm(
-    {
-      eyebrow: "EDIT ADMIN ACCOUNT",
-      title: `编辑账号 ${account.username}`,
-      submit: "保存修改",
-      done: "账号已更新",
-      fields: [
-        { key: "nickname", label: "昵称" },
-        { key: "role", label: "角色", type: "select", options: accountRoleOptions },
-        // IKB3KG 方案A：hq 重设可运营校区（整体替换授权；至少保留一个）
-        {
-          key: "campusIds",
-          label: "可运营校区",
-          type: "campus-multi",
-          wide: true,
-          visible: () =>
-            isPlatformAdmin.value &&
-            account.role !== "hq" &&
-            !!account.campusId,
-        },
-      ],
-      save: async (d) =>
-        void (await api.updateAccount(account.id, {
-          nickname: String(d.nickname || "").trim(),
-          role: String(d.role || ""),
-          ...(isPlatformAdmin.value &&
-          account.role !== "hq" &&
-          account.campusId
-            ? { campusIds: campusMultiValue("campusIds") }
-            : {}),
-        })),
-    },
-    {
-      nickname: account.nickname,
-      role: account.role,
-      campusIds: (account.campusIds ?? []).slice(),
-    },
-  );
-}
-function openAccountResetPassword(row: AdminRow) {
-  const account = row as AccountRow;
-  selected.value = undefined;
-  openForm(
-    {
-      eyebrow: "RESET PASSWORD",
-      title: `重置密码 ${account.username}`,
-      submit: "重置密码",
-      done: "密码已重置",
-      fields: [
-        { key: "password", label: "新密码", type: "password", placeholder: "至少 8 位" },
-      ],
-      save: async (d) =>
-        void (await api.updateAccount(account.id, {
-          password: String(d.password || ""),
-        })),
-    },
-    { password: "" },
-  );
-}
-async function removeAccount() {
-  if (!selected.value) return;
-  if (!confirmDelete.value) {
-    confirmDelete.value = true;
-    return;
-  }
-  try {
-    await api.deleteAccount(selected.value.id);
-    notify("后台账号已删除");
-    selected.value = undefined;
-    await load();
-  } catch (error) {
-    notify(error instanceof Error ? error.message : "删除失败", true);
-  }
-}
+/* RBAC V1（2026-09-19）：后台账号板块已整体移交独立页 /accounts
+   （AccountsPage：grants 授权模型），本页不再持有账号表单/角色下拉。 */
 function openRuleCreate() {
   void ensureBuildings();
   openForm(
@@ -1905,8 +1743,10 @@ const isProductsSection = computed(
     section.value === "products" || section.value === "official-products",
 );
 const productView = computed<"official" | "campus">(() => {
-  if (role.value === "hq") return "official";
-  if (role.value === "admin") return isOfficialProducts.value ? "official" : "campus";
+  // RBAC V1：平台账号（platform 上下文）默认官方库视角、经 /products 菜单
+  // 可切本校区；校区账号恒本校区
+  if (isPlatform.value)
+    return isOfficialProducts.value ? "official" : "campus";
   return "campus";
 });
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
@@ -2152,7 +1992,9 @@ async function removeBannerRow() {
   }
 }
 /* ---------- 楼长招募操作（IKEAGE）：补录 / 面试 / 审批 ---------- */
-/** 抽屉补录编辑区（openDetail 回填；保存走 PATCH） */
+/** 抽屉补录编辑区（openDetail 回填；保存走 PATCH）。
+ *  RBAC V1：列表已脱敏——编辑器恒空起步，「留空/不上传 = 保留已录」防覆盖；
+ *  已录原文经「查看证件资料」弹层按权限单查。 */
 const recruitEdit = ref({
   idCardNo: "",
   idCardImages: [] as string[],
@@ -2164,28 +2006,75 @@ const recruitApproveArmed = ref(false);
 const recruitApp = computed(
   () => selected.value as unknown as RecruitingApplication | undefined,
 );
-/** 审核资料可编辑：有写权限且未到终态（approved/rejected 只读展示已录内容） */
+/** 未到终态（approved/rejected 只读展示已录内容） */
+const recruitActive = computed(() =>
+  ["pending", "interviewing"].includes(recruitApp.value?.status ?? ""),
+);
+/** RBAC V1：证件资料可代录（recruit.idcard.write）且未终态 */
+const canEditIdcard = computed(
+  () => recruitActive.value && hasPerm("recruit.idcard.write"),
+);
+/** RBAC V1：运营备注可写（recruit.note）且未终态 */
+const canEditNote = computed(
+  () => recruitActive.value && hasPerm("recruit.note"),
+);
+/** 审核资料编辑区整体显隐（有任一可写字段即出编辑态） */
 const recruitDocsEditable = computed(
+  () => canEditIdcard.value || canEditNote.value,
+);
+/** 证件资料可查看（idcard.read 或 note 任一，弹层字段后端按权限置空） */
+const canViewIdcard = computed(
+  () => hasPerm("recruit.idcard.read") || hasPerm("recruit.note"),
+);
+/** 审核操作可用（approve/interview/reject 任一权限且未终态） */
+const recruitCanAct = computed(
   () =>
-    canWriteSection.value &&
-    ["pending", "interviewing"].includes(recruitApp.value?.status ?? ""),
+    recruitActive.value &&
+    (hasPerm("recruit.approve") ||
+      hasPerm("recruit.interview") ||
+      hasPerm("recruit.reject")),
 );
-/** 已落库的身份证照片（终态只读展示用，过滤空串占位） */
-const recruitSavedImages = computed(() =>
-  (recruitApp.value?.idCardImages ?? []).filter(Boolean),
-);
+/** 证件资料弹层（api.recruitIdcard：照片为 5 分钟签名 URL，直链展示） */
+const recruitIdcardOpen = ref(false),
+  recruitIdcardLoading = ref(false),
+  recruitIdcardData = ref<RecruitIdcard | null>(null);
+async function openRecruitIdcard() {
+  const app = recruitRow();
+  if (!app || recruitIdcardLoading.value) return;
+  recruitIdcardOpen.value = true;
+  recruitIdcardLoading.value = true;
+  recruitIdcardData.value = null;
+  try {
+    recruitIdcardData.value = await api.recruitIdcard(app.id);
+  } catch (error) {
+    recruitIdcardOpen.value = false;
+    notify(error instanceof Error ? error.message : "证件资料加载失败", true);
+  } finally {
+    recruitIdcardLoading.value = false;
+  }
+}
 function recruitRow(): RecruitingApplication | undefined {
   return selected.value as unknown as RecruitingApplication | undefined;
 }
-/** 身份证等资料补录（运营线下收集后台代录，C 端不采集） */
+/** 身份证等资料补录（运营线下收集后台代录，C 端不采集）。
+ *  RBAC V1：按权限分字段提交；证件字段「全空 = 不动」保留已录资料。 */
 async function saveRecruitDocs() {
   const app = recruitRow();
   if (!app) return;
+  const idcardTouched =
+    recruitEdit.value.idCardNo.trim() !== "" ||
+    recruitEdit.value.idCardImages.some(Boolean);
   try {
     const updated = await api.updateRecruitApplication(app.id, {
-      idCardNo: recruitEdit.value.idCardNo.trim(),
-      idCardImages: recruitEdit.value.idCardImages,
-      staffRemark: recruitEdit.value.staffRemark.trim(),
+      ...(canEditIdcard.value && idcardTouched
+        ? {
+            idCardNo: recruitEdit.value.idCardNo.trim(),
+            idCardImages: recruitEdit.value.idCardImages,
+          }
+        : {}),
+      ...(canEditNote.value
+        ? { staffRemark: recruitEdit.value.staffRemark.trim() }
+        : {}),
     });
     selected.value = updated as unknown as AdminRow;
     notify("资料已保存");
@@ -2604,18 +2493,14 @@ function clearCategoryFilter() {
   categorySearchOpen.value = false;
 }
 const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
-const isHqRole = computed(() => role.value === "hq");
-/** IKBFJ4：平台超管 admin 与 hq 同权（账号管理表单按此放开校区选择）。 */
-const isPlatformAdmin = computed(
-  () => role.value === "hq" || role.value === "admin",
-);
-/** IKCHEW：官方库视角 UI——hq 恒真；admin 随商品视角切换；校区角色恒假。
+/* RBAC V1（2026-09-19）：role 判断换服务端授权上下文——
+ *  isHqRole（本校区 UI 分流）→ isPlatform；isPlatformAdmin（跨校区筛选/表单）
+ *  → isSuper||isPlatform；isHqView 恒等于官方库视角。 */
+const isHqRole = computed(() => isPlatform.value);
+const isPlatformAdmin = computed(() => isSuper.value || isPlatform.value);
+/** IKCHEW：官方库视角 UI——平台账号随商品视角切换；校区账号恒假。
  *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
-const isHqView = computed(
-  () =>
-    isHqRole.value ||
-    (role.value === "admin" && productView.value === "official"),
-);
+const isHqView = computed(() => productView.value === "official");
 /** IKCRS8：campuses=纯校区管理（平台视图），楼栋独立 /buildings 板块——
  *  原 IKBWRT 双 tab（campusTab/campusPlatformView）拆除。 */
 watch(campusFilter, () => {
@@ -3340,9 +3225,8 @@ const configs: Record<string, SectionConfig> = {
           rows: res.items.map((x) => ({
             ...x,
             statusText: RECRUIT_STATUS_LABEL[x.status] ?? x.status,
-            // 身份证列：号或照片任一已录即「已录」
-            idCardText:
-              x.idCardNo || (x.idCardImages?.length ?? 0) > 0 ? "已录" : "—",
+            // 身份证列：RBAC V1 后端脱敏，hasIdCard=true 表示已录
+            idCardText: x.hasIdCard ? "已录" : "—",
           })),
           total: res.total,
         })),
@@ -3535,41 +3419,6 @@ const configs: Record<string, SectionConfig> = {
       ["entityId", "对象 ID"],
     ],
   },
-  accounts: {
-    title: "账号管理",
-    eyebrow: "ADMIN ACCOUNTS",
-    // IKAJSL：admin 管本校区职能账号；hq 管全部（含总部/各校区账号）
-    desc: "后台账号的创建、角色分配与密码重置（平台超管 admin 与总部 hq 管全部账号）。",
-    loader: (query) =>
-      api.adminAccounts(query).then((res) => ({
-        total: res.total,
-        rows: res.items.map((x) => {
-          const withNames = x as AccountRow & {
-            campusName?: string;
-            campusNames?: string[];
-          };
-          return {
-            ...x,
-            roleText: ROLE_LABELS[x.role as AdminRole] ?? x.role,
-            // IKB5PC：hq 视角后端附 campusNames（多校区账号全量列出）；
-            // 校区视角无该字段回落「本校区」
-            campusNameText:
-              x.campusId === ""
-                ? "总部"
-                : withNames.campusNames?.length
-                  ? withNames.campusNames.join("、")
-                  : withNames.campusName || "本校区",
-          };
-        }),
-      })),
-    columns: [
-      ["username", "账号"],
-      ["nickname", "昵称"],
-      ["roleText", "角色"],
-      ["campusNameText", "校区"],
-      ["createdAt", "创建时间"],
-    ],
-  },
 };
 /** Banner 管理（IK9RX2）：营销板块 banners tab 的表格配置。
  *  IKBW0A：Banner 校区自管，投放范围概念废止（仅作用本校区）。 */
@@ -3726,7 +3575,7 @@ const createLabels: Record<string, string> = {
   staff: "＋ 新建员工账号",
   dispatch: "＋ 邀请调配",
   rules: "＋ 新建提成规则",
-  accounts: "＋ 新建后台账号",
+  // RBAC V1：accounts 板块移交独立页 /accounts
   // IKBW0Q：打印机板块新建 = 绑定打印机
   printers: "＋ 绑定打印机",
   // IKAJSY：群码上传（users 为只读板块，无新建入口）
@@ -4384,15 +4233,21 @@ function openDetail(row: AdminRow) {
   confirmDelete.value = false;
   inviteConfirmCancel.value = "";
   selected.value = { ...row };
-  // IKEAGE：招募抽屉打开即回填补录编辑区（身份证号/照片/备注）
+  // IKEAGE：招募抽屉打开即回填补录编辑区。
+  //  RBAC V1：列表已脱敏——编辑器恒空起步（证件留空=保留已录）；
+  //  有备注权限时拉取已录运营备注回填（防整段覆盖丢历史评价）
   if (section.value === "recruit") {
     const app = row as unknown as RecruitingApplication;
-    recruitEdit.value = {
-      idCardNo: app.idCardNo ?? "",
-      idCardImages: Array.isArray(app.idCardImages) ? [...app.idCardImages] : [],
-      staffRemark: app.staffRemark ?? "",
-    };
+    recruitEdit.value = { idCardNo: "", idCardImages: [], staffRemark: "" };
     recruitApproveArmed.value = false;
+    recruitIdcardOpen.value = false;
+    if (hasPerm("recruit.note"))
+      api
+        .recruitIdcard(app.id)
+        .then((d) => {
+          recruitEdit.value.staffRemark = d.staffRemark ?? "";
+        })
+        .catch(() => {});
   }
   // IKAJSW：用户抽屉打开即拉该用户订单流水（失败静默，抽屉显示暂无）
   if (section.value === "users") {
@@ -4616,7 +4471,6 @@ function openCreate() {
   else if (section.value === "printers") openPrinterBind();
   else if (section.value === "dispatch") openInviteForm();
   else if (section.value === "rules") openRuleCreate();
-  else if (section.value === "accounts") openAccountCreate();
   // IKAJSY：群码上传/替换
   else if (section.value === "wechat-groups") openWechatGroupForm();
 }
@@ -5435,15 +5289,6 @@ async function removeStaffInline(row: AdminRow) {
     notify(error instanceof Error ? error.message : "删除失败", true);
   }
 }
-async function removeAccountInline(row: AdminRow) {
-  if (!rowConfirmFirst(row.id)) return;
-  try {
-    await api.deleteAccount(row.id);
-    await rowDone("账号已删除");
-  } catch (error) {
-    notify(error instanceof Error ? error.message : "删除失败", true);
-  }
-}
 async function removeWechatGroupInline(row: AdminRow) {
   if (!rowConfirmFirst(row.id)) return;
   try {
@@ -5975,10 +5820,12 @@ async function cancelInviteRow(row: AdminRow) {
                     }"
                     >{{ display(row, col[0]) }}</span
                   ><!-- IKDG8V：用户列表手机号列可点——按需单查明文（后端
-                       审计留痕），本地缓存到刷新，再点收回打码 --><span
+                       审计留痕），本地缓存到刷新，再点收回打码；
+                       RBAC V1：入口按 users.phone.reveal 门控 --><span
                     v-else-if="
                       col[0] === 'phoneMasked' &&
                       section === 'users' &&
+                      hasPerm('users.phone.reveal') &&
                       String(display(row, 'phoneMasked')).includes('****')
                     "
                     class="phone-reveal"
@@ -6273,29 +6120,7 @@ async function cancelInviteRow(row: AdminRow) {
                       {{ confirmRowId === row.id ? "确认删除" : "删除" }}
                     </button>
                   </template>
-                  <!-- IKCJ3M：账号——编辑/改密/删除行内直达 -->
-                  <template
-                    v-else-if="section === 'accounts' && canWriteSection"
-                  >
-                    <button
-                      class="btn mini primary"
-                      @click="openAccountEdit(row)"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      class="btn mini ghost"
-                      @click="openAccountResetPassword(row)"
-                    >
-                      改密
-                    </button>
-                    <button
-                      class="btn mini danger-btn"
-                      @click="removeAccountInline(row)"
-                    >
-                      {{ confirmRowId === row.id ? "确认删除" : "删除" }}
-                    </button>
-                  </template>
+                  <!-- IKCJ3M：账号板块已移交独立页 /accounts（RBAC V1） -->
                   <!-- IKCJ3M：财务账单——确认/打款状态机直达（未到状态禁用） -->
                   <template v-else-if="section === 'finance' && canWriteSection">
                     <button
@@ -6599,19 +6424,20 @@ async function cancelInviteRow(row: AdminRow) {
             </div>
           </div>
           <p class="drawer-sec">审核资料</p>
-          <!-- 编辑态（待联系/面试中 + 运营可写）：证件号/备注整行表单 + 双槽位照片 -->
+          <!-- 编辑态（待联系/面试中 + 分字段写权限）：证件区 idcard.write、
+               备注 note；RBAC V1 列表脱敏——证件留空/不上传 = 保留已录资料 -->
           <template v-if="recruitDocsEditable">
             <div class="drawer-fields">
-              <label class="wide">
-                身份证号（线下收集后代录，选填）
+              <label v-if="canEditIdcard" class="wide">
+                身份证号（留空 = 保留已录）
                 <input
                   v-model="recruitEdit.idCardNo"
                   maxlength="18"
                   placeholder="18 位身份证号"
                 />
               </label>
-              <label class="wide">
-                运营备注（面试评价等，选填）
+              <label v-if="canEditNote" class="wide">
+                运营备注（面试评价等）
                 <input
                   v-model="recruitEdit.staffRemark"
                   maxlength="200"
@@ -6619,8 +6445,10 @@ async function cancelInviteRow(row: AdminRow) {
                 />
               </label>
             </div>
-            <div class="recruit-idcards">
-              <span class="proof-label">身份证照片（人像面 / 国徽面）</span>
+            <div v-if="canEditIdcard" class="recruit-idcards">
+              <span class="proof-label"
+                >身份证照片（不上传 = 保留已录；人像面 / 国徽面）</span
+              >
               <IdCardImagesField
                 v-model="recruitEdit.idCardImages"
                 folder="recruit"
@@ -6636,33 +6464,34 @@ async function cancelInviteRow(row: AdminRow) {
               </button>
             </div>
           </template>
-          <!-- 只读态（终态或查看视角）：仅展示已录内容 -->
+          <!-- 只读态（终态或无写权限）：状态 + 按权限单查证件资料 -->
           <template v-else>
             <div class="drawer-fields">
-              <div class="wide">
-                <span>身份证号</span
-                ><strong>{{ recruitApp?.idCardNo || "未录入" }}</strong>
+              <div class="wide recruit-idcard-summary">
+                <span>身份证资料</span>
+                <strong>{{
+                  recruitApp?.hasIdCard ? "已录入" : "未录入"
+                }}</strong>
+                <button
+                  v-if="canViewIdcard"
+                  class="btn mini ghost"
+                  type="button"
+                  @click="openRecruitIdcard"
+                >
+                  查看证件资料
+                </button>
               </div>
             </div>
-            <div v-if="recruitSavedImages.length" class="proof-block">
-              <span class="proof-label">身份证照片（人像面 / 国徽面）</span>
-              <div class="proof-grid">
-                <img
-                  v-for="(src, i) in recruitSavedImages"
-                  :key="`${i}-${src}`"
-                  :src="resolveImageUrl(src)"
-                  :alt="`身份证照片 ${i + 1}`"
-                  loading="lazy"
-                  @click="previewImage = resolveImageUrl(src)"
-                />
-              </div>
-            </div>
-            <p v-else class="recruit-empty">尚未录入身份证资料</p>
+            <p v-if="!recruitApp?.hasIdCard" class="recruit-empty">
+              尚未录入身份证资料
+            </p>
           </template>
           <p class="drawer-sec">审核操作</p>
-          <!-- 可写且未终态：主操作通栏（两击确认防误创建账号），次要操作白底描边 -->
-          <div v-if="recruitDocsEditable" class="recruit-actions">
+          <!-- 有操作权限且未终态：主操作通栏（两击确认防误创建账号），
+               次要操作白底描边；RBAC V1 三按钮分别按权限码显隐 -->
+          <div v-if="recruitCanAct" class="recruit-actions">
             <button
+              v-if="hasPerm('recruit.approve')"
               class="btn primary recruit-actions__primary"
               :class="{ 'recruit-actions__primary--armed': recruitApproveArmed }"
               type="button"
@@ -6674,9 +6503,14 @@ async function cancelInviteRow(row: AdminRow) {
                   : "通过并创建实习楼长"
               }}
             </button>
-            <div class="recruit-actions__row">
+            <div
+              v-if="
+                hasPerm('recruit.interview') || hasPerm('recruit.reject')
+              "
+              class="recruit-actions__row"
+            >
               <button
-                v-if="recruitApp?.status === 'pending'"
+                v-if="recruitApp?.status === 'pending' && hasPerm('recruit.interview')"
                 class="btn ghost"
                 type="button"
                 @click="recruitDoTransition"
@@ -6684,6 +6518,7 @@ async function cancelInviteRow(row: AdminRow) {
                 标记面试中
               </button>
               <button
+                v-if="hasPerm('recruit.reject')"
                 class="btn danger"
                 type="button"
                 @click="openRecruitRejectForm"
@@ -7220,15 +7055,6 @@ async function cancelInviteRow(row: AdminRow) {
               {{ confirmDelete ? "确认删除" : "删除账号" }}
             </button>
           </template>
-          <template v-else-if="section === 'accounts' && canWriteSection">
-            <button class="btn primary" @click="openAccountEdit(selected)">
-              编辑账号</button
-            ><button class="btn ghost" @click="openAccountResetPassword(selected)">
-              重置密码</button
-            ><button class="btn danger-btn" @click="removeAccount">
-              {{ confirmDelete ? "确认删除" : "删除账号" }}
-            </button>
-          </template>
           <template v-else-if="section === 'finance' && canWriteSection">
             <button
               class="btn primary"
@@ -7271,6 +7097,51 @@ async function cancelInviteRow(row: AdminRow) {
             关闭详情
           </button>
         </div>
+      </aside>
+    </div>
+    <!-- 招募证件资料弹层（RBAC V1）：按权限单查——无对应权限的字段后端置空，
+         照片为 5 分钟签名 URL，直链 img 展示（不走 resolveImageUrl 加前缀） -->
+    <div
+      v-if="recruitIdcardOpen"
+      class="drawer-mask"
+      @click.self="recruitIdcardOpen = false"
+    >
+      <aside class="drawer product-create">
+        <div class="drawer-head">
+          <div>
+            <h2>证件资料 · {{ recruitIdcardData?.name || recruitApp?.name }}</h2>
+          </div>
+          <button aria-label="关闭" @click="recruitIdcardOpen = false">×</button>
+        </div>
+        <p v-if="recruitIdcardLoading" class="recruit-empty">加载中...</p>
+        <template v-else-if="recruitIdcardData">
+          <div class="drawer-fields">
+            <div class="wide">
+              <span>身份证号</span>
+              <strong>{{ recruitIdcardData.idCardNo || "未录入 / 无查看权限" }}</strong>
+            </div>
+            <div class="wide">
+              <span>运营备注</span>
+              <strong class="desc-full">{{
+                recruitIdcardData.staffRemark || "未填写 / 无查看权限"
+              }}</strong>
+            </div>
+          </div>
+          <div v-if="recruitIdcardData.idCardImages?.length" class="proof-block">
+            <span class="proof-label">身份证照片（人像面 / 国徽面）</span>
+            <div class="proof-grid">
+              <img
+                v-for="(src, i) in recruitIdcardData.idCardImages"
+                :key="`${i}-${src.slice(0, 40)}`"
+                :src="src"
+                :alt="`身份证照片 ${i + 1}`"
+                loading="lazy"
+                @click="previewImage = src"
+              />
+            </div>
+          </div>
+          <p v-else class="recruit-empty">无证件照片（未录或无查看权限）</p>
+        </template>
       </aside>
     </div>
     <!-- 通用表单抽屉：优惠券 / 楼栋 / 员工 / 库存操作 -->
@@ -7335,22 +7206,6 @@ async function cancelInviteRow(row: AdminRow) {
                   formData[field.key] = ($event.target as HTMLTextAreaElement).value
                 "
               ></textarea>
-            </div>
-            <!-- 可运营校区多选（IKB3KG 方案A）：账号授权范围勾选 -->
-            <div
-              v-else-if="field.type === 'campus-multi'"
-              :class="{ wide: field.wide }"
-            >
-              <span class="field-label">{{ field.label }}</span>
-              <div class="campus-checks">
-                <label v-for="c in campusOptionsData" :key="c.id">
-                  <input
-                    type="checkbox"
-                    :checked="campusMultiValue(field.key).includes(c.id)"
-                    @change="toggleCampusMulti(field.key, c.id)"
-                  />{{ c.shortName || c.name }}
-                </label>
-              </div>
             </div>
             <!-- 商品选择器（IKGQ6Q 组件化）：交互内聚 ProductPickerField -->
             <div

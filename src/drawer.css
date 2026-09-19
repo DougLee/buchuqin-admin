@@ -1090,6 +1090,15 @@
   font-size: 12px;
   color: var(--muted);
 }
+/* RBAC V1 只读态：资料状态行 + 「查看证件资料」入口（弹层单查） */
+.recruit-idcard-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recruit-idcard-summary .btn {
+  margin-left: auto;
+}
 /* 审核操作：主操作通栏 + 次要操作一行两个（白底描边），层级立现 */
 .recruit-actions {
   display: grid;

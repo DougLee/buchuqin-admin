@@ -5,7 +5,7 @@ import {
   api,
 } from "../api";
 import ProductPickerField from "../components/ProductPickerField.vue";
-import { canSee, canWrite, role } from "../session";
+import { canSee, hasPerm, isPlatform } from "../session";
 import type {
   Product,
   RestockBatch,
@@ -22,10 +22,12 @@ import { fmtDateTime } from "../utils/datetime";
  * - 总部视角：批次管理（建/改/关窗）+ 全校区订货单审核（确认锁库存/驳回/撤销）
  * - 校区视角：批次列表 + 我的订货单按件编辑（N 件(×N 听) 换算）
  * - 权限两分法与后端一致：isHqScope 管批次审单，operations/warehouse 订货
+ * - RBAC V1（2026-09-19）：isHqScope→isPlatform（服务端上下文）；
+ *   canManage/canOrder 直接认 restock.manage / restock.order 权限码
  */
-const isHqScope = computed(() => role.value === "hq" || role.value === "admin");
-const canManage = computed(() => canWrite("restock") && isHqScope.value);
-const canOrder = computed(() => canWrite("restock") && !isHqScope.value);
+const isHqScope = computed(() => isPlatform.value);
+const canManage = computed(() => hasPerm("restock.manage"));
+const canOrder = computed(() => hasPerm("restock.order"));
 
 const loading = ref(true);
 const error = ref("");

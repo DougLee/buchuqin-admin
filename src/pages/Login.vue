@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { login } from "../api";
-import { applySession, isBackendRole } from "../session";
+import { applySession, loadRbac } from "../session";
 
 const router = useRouter(),
   username = ref(""),
@@ -18,12 +18,14 @@ async function submit() {
   }
   submitting.value = true;
   try {
+    // RBAC V1：不再按旧角色白名单拦截——能否进后台由 /admin/rbac/me 决定；
+    // 权限拉取失败=拒绝进入（默认拒绝，不回退宽松）
     const result = await login(username.value.trim(), password.value);
-    if (!isBackendRole(result.user.role)) {
-      error.value = `该账号无后台访问权限（角色：${result.user.role}）`;
+    applySession(result.user);
+    if (!(await loadRbac())) {
+      error.value = "权限加载失败，请重试";
       return;
     }
-    applySession(result.user);
     router.push("/");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "登录失败";

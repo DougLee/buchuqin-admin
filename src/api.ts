@@ -1,7 +1,11 @@
-import { clearSession, type SessionUser } from "./session";
+import { clearSession, type RbacMe, type SessionUser } from "./session";
 import { compressToWebp } from "./utils/image";
 import type {
+  AccountGrant,
   AdminAccount,
+  AdminPermission,
+  RbacRole,
+  RecruitIdcard,
   AdminUser,
   UserOrderRow,
   UserStats,
@@ -960,6 +964,10 @@ export const api = {
       application: RecruitingApplication;
       staff: { id: string; staffNo: string; name: string };
     }>(`/admin/recruit-applications/${id}/approve`, { method: "POST" }),
+  /** 证件资料按权限单查（RBAC V1：列表已脱敏；照片为 5 分钟签名 URL，
+   *  无对应权限的字段后端置空）。 */
+  recruitIdcard: (id: string) =>
+    request<RecruitIdcard>(`/admin/recruit-applications/${id}/idcard`),
   /** 促销活动（ADR-0006 / IKAHFF）：price 为促销价（分），无删除（留审计）。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗判定）。 */
   promotions: (query?: ListQuery, state?: string) =>
@@ -1046,7 +1054,50 @@ export const api = {
     request<PagedResponse<AuditLog>>(
       `/admin/audit-logs${withQuery(listQuery(query))}`,
     ),
-  /* 后台账号管理（IK9KWO）：仅 admin 角色可用，后端矩阵兜底 */
+  /* ---------- RBAC V1（2026-09-19）：授权上下文/角色/权限目录/审计 ---------- */
+  /** 当前账号有效授权（登录/切校区后拉取，session.loadRbac 消费）。 */
+  rbacMe: () => request<RbacMe>("/admin/rbac/me"),
+  /** 权限目录（只读登记表，角色编辑矩阵与权限目录页共用）。 */
+  rbacPermissions: () =>
+    request<AdminPermission[]>("/admin/rbac/permissions"),
+  /** 角色列表（含关联账号数与权限码全集）。 */
+  rbacRoles: () => request<RbacRole[]>("/admin/rbac/roles"),
+  rbacCreateRole: (data: {
+    code: string;
+    name: string;
+    remark?: string;
+    permissionCodes: string[];
+  }) =>
+    request<{ id: string; code: string }>("/admin/rbac/roles", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  rbacUpdateRole: (
+    id: string,
+    data: {
+      name?: string;
+      remark?: string;
+      status?: "active" | "disabled";
+      permissionCodes?: string[];
+    },
+  ) =>
+    request<{ id: string }>(`/admin/rbac/roles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  rbacDeleteRole: (id: string) =>
+    request<{ id: string }>(`/admin/rbac/roles/${id}`, {
+      method: "DELETE",
+    }),
+  /** 权限审计日志（RBAC 变更留痕，服务端分页）。 */
+  rbacAudit: (page = 1, pageSize = 20) =>
+    request<{ items: AuditLog[]; total: number }>(
+      `/admin/rbac/audit${withQuery(`page=${page}`, `pageSize=${pageSize}`)}`,
+    ),
+  /** 账号有效权限预览（同 /rbac/me 结构）。 */
+  rbacPreview: (accountId: string) =>
+    request<RbacMe>(`/admin/rbac/accounts/${accountId}/preview`),
+  /* ---------- 后台账号管理（RBAC V1：grants 授权模型） ---------- */
   adminAccounts: (query?: ListQuery) =>
     request<PagedResponse<AdminAccount>>(
       `/admin/accounts${withQuery(listQuery(query))}`,
@@ -1055,11 +1106,7 @@ export const api = {
     username: string;
     password: string;
     nickname?: string;
-    role: string;
-    /** IKAJSL：仅 hq 操作者生效（空串 = 总部账号）。 */
-    campusId?: string;
-    /** IKB3KG 方案A：可运营校区全集（仅 hq 生效；缺省=[campusId]）。 */
-    campusIds?: string[];
+    grants?: AccountGrant[];
   }) =>
     request<AdminAccount>("/admin/accounts", {
       method: "POST",
@@ -1069,10 +1116,10 @@ export const api = {
     id: string,
     data: {
       nickname?: string;
-      role?: string;
       password?: string;
-      /** IKB3KG 方案A：整体替换可运营校区（仅 hq 生效）。 */
-      campusIds?: string[];
+      status?: "active" | "disabled";
+      /** 全量重设授权（整体替换）。 */
+      grants?: AccountGrant[];
     },
   ) =>
     request<AdminAccount>(`/admin/accounts/${id}`, {

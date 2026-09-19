@@ -220,16 +220,19 @@ export interface RecruitingApplication {
   phone: string;
   /** 报名备注（候选人自我介绍） */
   note: string;
-  /** 运营备注（面试评价等，admin 补录；与候选人自我介绍 note 相互独立） */
-  staffRemark: string;
+  /** @deprecated RBAC V1 列表脱敏恒空；原文经 idcard 端点按权限单查。 */
+  staffRemark?: string | null;
   /** pending 待联系 | interviewing 面试中 | approved 已通过 | rejected 已拒绝 */
   status: "pending" | "interviewing" | "approved" | "rejected";
   /** 拒绝原因（C 端进度页可见） */
   rejectReason: string;
-  /** 身份证号（运营线下收集后台代录，C 端不采集） */
-  idCardNo: string;
-  /** 身份证照片 URL 数组（后台代录） */
-  idCardImages: string[] | null;
+  /** RBAC V1：列表脱敏——身份证/备注不再随列表下发，hasIdCard=true 表示已录；
+   *  原文经 GET /admin/recruit-applications/:id/idcard 按权限单查。 */
+  hasIdCard?: boolean;
+  /** @deprecated 列表已脱敏恒空；仅 PATCH 响应等历史口径保留可选。 */
+  idCardNo?: string | null;
+  /** @deprecated 同上。 */
+  idCardImages?: string[] | null;
   /** approved 时附带：创建的实习楼长工号（骑手小程序登录凭证） */
   staffNo?: string;
   createdAt: string;
@@ -434,21 +437,67 @@ export interface AuditLog {
   createdAt: string;
 }
 
-/** 后台账号（IK9KWO）：后端不下发 passwordHash。 */
+/* ---------- RBAC V1（2026-09-19）：授权上下文/角色/权限目录 ---------- */
+
+/** 账号角色授权（GET /admin/accounts 列表行内嵌）：一账号可挂多角色。 */
+export interface AccountGrant {
+  roleCode: string;
+  roleName: string;
+  roleStatus: string;
+  scope: "platform" | "campus";
+  /** scope=campus 时的归属校区（platform 为 null/空）。 */
+  campusId?: string | null;
+}
+
+/** 后台账号（RBAC V1 改造后列表行）：role 为旧档案字段仅展示，真实授权看 grants。 */
 export interface AdminAccount {
   id: string;
   username: string;
   nickname: string;
   role: string;
   campusId: string;
+  status: "active" | "disabled";
   createdAt: string;
-  /** IKAJSL：hq 视角附校区名（空 campusId = 总部）。 */
+  grants: AccountGrant[];
+  /** 校区名（campusId 当前登录校区）。 */
   campusName?: string;
-  /** IKB3KG 方案A：可运营校区全集（campusId=当前登录校区）。 */
-  campusIds?: string[];
+  /** 多校区授权的校区名全集（平台视角附）。 */
+  campusNames?: string[];
 }
-/** 账号管理板块表格行：附角色中文文案。 */
-export type AccountRow = AdminAccount & { roleText: string };
+
+/** RBAC 角色（GET /admin/rbac/roles 行）。 */
+export interface RbacRole {
+  id: string;
+  code: string;
+  name: string;
+  remark: string;
+  status: "active" | "disabled";
+  builtin: boolean;
+  accountCount: number;
+  permissions: string[];
+}
+
+/** RBAC 权限目录（GET /admin/rbac/permissions 行）。 */
+export interface AdminPermission {
+  id: string;
+  code: string;
+  name: string;
+  group: string;
+  scope: "platform" | "campus";
+  sort: number;
+  remark: string;
+}
+
+/** 招募证件资料（GET /admin/recruit-applications/:id/idcard，照片为 5 分钟签名 URL）。 */
+export interface RecruitIdcard {
+  id: string;
+  name: string;
+  /** 无 recruit.idcard.read 权限时后端置空。 */
+  idCardNo: string;
+  idCardImages: string[];
+  /** 无 recruit.note 权限时后端置空。 */
+  staffRemark: string;
+}
 
 /** C 端用户（IKAJSW 聚合列表；手机/openid 脱敏口径同后端）。 */
 export interface AdminUser {
@@ -657,7 +706,6 @@ export type AdminRow =
   | DispatchRow
   | RuleRow
   | AfterSaleRow
-  | AccountRow
   | CategoryRow
   | WheelRow;
 

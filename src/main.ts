@@ -10,7 +10,12 @@ import DailyReportPage from "./pages/DailyReportPage.vue";
 import CampusReportPage from "./pages/CampusReportPage.vue";
 import BattleMapPage from "./pages/BattleMapPage.vue";
 import FeaturedPage from "./pages/FeaturedPage.vue";
-import { canSee, role } from "./session";
+// RBAC V1：账号/角色/权限目录/权限审计独立页（系统分组）
+import AccountsPage from "./pages/AccountsPage.vue";
+import RolesPage from "./pages/RolesPage.vue";
+import RbacPermissionsPage from "./pages/RbacPermissionsPage.vue";
+import RbacAuditPage from "./pages/RbacAuditPage.vue";
+import { canSee, hasPerm, sessionUser } from "./session";
 import "./style.css";
 import "./drawer.css";
 const routes = [
@@ -29,16 +34,29 @@ const routes = [
   { path: "/battle-map", component: BattleMapPage },
   // IKH0EK：首页推荐位管理（营销板块）
   { path: "/featured", component: FeaturedPage },
+  // RBAC V1：系统分组四页
+  { path: "/accounts", component: AccountsPage },
+  { path: "/rbac-roles", component: RolesPage },
+  { path: "/rbac-permissions", component: RbacPermissionsPage },
+  { path: "/rbac-audit", component: RbacAuditPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
 // 会话守卫：未登录跳登录页；已登录不可回登录页；无权限板块重定向工作台
 router.beforeEach((to) => {
-  const authed = Boolean(localStorage.getItem("adminToken") && role.value);
+  // RBAC V1：不再按旧角色判定——token + 会话用户即视为已登录
+  const authed = Boolean(
+    localStorage.getItem("adminToken") && sessionUser.value,
+  );
   if (to.path === "/login") return authed ? "/" : true;
   if (!authed) return "/login";
-  // IKCJ46：hq 无本校区商品概念，/products 直达官方商品库菜单
-  if (to.path === "/products" && role.value === "hq") return "/official-products";
+  // RBAC V1：平台账号无本校区商品概念时 /products 直达官方商品库
+  if (
+    to.path === "/products" &&
+    !hasPerm("products.read") &&
+    hasPerm("products.official.read")
+  )
+    return "/official-products";
   // IKFOQ0：独立路由不走 :section 参数，单独过权限
   if (to.path === "/restock") return canSee("restock") ? true : "/";
   if (to.path === "/purchase") return canSee("purchase") ? true : "/";
@@ -46,6 +64,11 @@ router.beforeEach((to) => {
   if (to.path === "/campus-report") return canSee("campus-report") ? true : "/";
   if (to.path === "/battle-map") return canSee("buildings") ? true : "/";
   if (to.path === "/featured") return canSee("marketing") ? true : "/";
+  if (to.path === "/accounts") return canSee("accounts") ? true : "/";
+  if (to.path === "/rbac-roles") return canSee("rbac-roles") ? true : "/";
+  if (to.path === "/rbac-permissions")
+    return canSee("rbac-permissions") ? true : "/";
+  if (to.path === "/rbac-audit") return canSee("rbac-audit") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });

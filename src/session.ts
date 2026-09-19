@@ -1,10 +1,15 @@
 import { computed, ref } from "vue";
 
-/** 后台角色，口径与后端 admin.controller authorize 一致（hq/admin/operations/warehouse/finance）。
- *  IKAJSL：hq=总部长，campusId 空=跨校区视角。 */
-export type AdminRole = "hq" | "admin" | "operations" | "warehouse" | "finance";
+/**
+ * 会话与权限（RBAC V1，2026-09-19）：
+ * - 角色/权限**不再前端静态矩阵**——登录与切校区后拉取 GET /admin/rbac/me，
+ *   菜单/路由/按钮统一以服务端返回的有效权限码为准；
+ * - 保留的静态映射只有「路由/菜单 section → 权限码」（下方 ROUTE_PERM），
+ *   与后端 src/admin/rbac/registry.ts 的权限登记一一对应；
+ * - role 字段仅作旧档案展示（超管/总部长等真实能力看 platform/isSuper）。
+ */
 
-/** admin-login 返回的 user/claims。 */
+/** admin-login 返回的 user/claims（role 为旧档案字段，仅展示）。 */
 export interface SessionUser {
   id: string;
   campusId: string;
@@ -14,146 +19,79 @@ export interface SessionUser {
   avatar?: string;
 }
 
-export const ROLE_LABELS: Record<AdminRole, string> = {
+/** /admin/rbac/me 返回的授权上下文。 */
+export interface RbacMe {
+  account: { id: string; username: string; nickname: string; status: string; campusId: string };
+  platform: boolean;
+  super: boolean;
+  contextCampusId: string;
+  roles: { id: string; code: string; name: string; scope: "platform" | "campus"; campusId: string | null; status: string; builtin: boolean }[];
+  permissions: { code: string; scope: "platform" | "campus" }[];
+  switchableCampuses: string[];
+  rbacVersion: number;
+}
+
+/** 旧角色标签（账号列表/审计展示兜底）。 */
+export const ROLE_LABELS: Record<string, string> = {
   hq: "总部长",
   admin: "管理员",
   operations: "运营",
   warehouse: "仓储",
   finance: "财务",
+  rbac: "后台账号",
 };
 
-/** 校区侧板块（对应路由 section 与侧边栏路径）。 */
-const ALL_SECTIONS = [
-  "dashboard",
-  "orders",
-  "after-sales",
-  "products",
-  "categories",
-  "inventory",
-  "warehouse-orders",
-  "inventory-txns",
-  "locations",
-  "staff",
-  "campuses",
-  "buildings",
-  "users",
-  "wechat-groups",
-  "marketing",
-  "finance",
-  "audit",
-  // IKEAGE：楼长招募（运营域，与后端 recruit 板块同口径——admin/operations 可见可写）
-  "recruit",
-  // IKFOQ0：订货批次（独立一级菜单，权限对齐后端 restock 键）
-  "restock",
-  // IKFOQ1：采购单（独立一级菜单，仅总部——对齐后端 purchase 键）
-  "purchase",
-  // IKFOPS：校区经营日报（hq/admin/operations/finance，仓储不给——对齐后端矩阵）
-  "campus-report",
-];
-
-/** 总部长板块（IKAJSL）：跨校区汇总 + 官方商品库 + 校区/账号/用户/审计。
- *  products 对 hq 是官方商品库视图（IKAJSM）；orders/users/audit 只读跨校区。
- *  IKBW0A：Banner/广告位移出 hq——投放范围概念废止，校区自管。 */
-const HQ_SECTIONS = [
-  "dashboard",
-  "orders",
-  "products",
-  "categories",
-  "restock",
-  "purchase",
-  // IKFOPS：校区经营日报（总部总览组入口）
-  "campus-report",
-  "campuses",
-  "accounts",
-  "users",
-  "audit",
-];
-
-/** PRD §2.2 + ADR-0004 签字权限矩阵：sections=侧边栏可见板块，writable=可执行写操作的板块。
- *  口径与后端 buchuqin-api src/admin/permissions.ts 一致，改动需两侧同步。
- *  售后板块（IK9JHQ）全角色只读留档，不在任何 writable 里。 */
-export const PERMISSIONS: Record<
-  AdminRole,
-  { sections: string[]; writable: string[] }
-> = {
-  // 总部长（IKAJSL）：总部板块；订单/用户/审计只读，不参与校区履约与本地营销。
-  // IKBW0A：banners 移出 hq（总部不做投放，Banner/广告位校区自管）。
-  hq: {
-    sections: HQ_SECTIONS,
-    // IKFOQ0：restock 可写（批次管理+审单）；IKFOQ1：purchase 可写（采购全链）
-    writable: ["products", "categories", "campuses", "accounts", "restock", "purchase"],
-  },
-  admin: {
-    // 平台超管全菜单开放（2026-08-26 道哥决策）；IKBW0A 起 banners 归本校区自管
-    sections: [
-      ...ALL_SECTIONS,
-      "dispatch",
-      "rules",
-      "accounts",
-      "banners",
-      "printers",
-    ],
-    writable: [
-      ...ALL_SECTIONS.filter((s) => s !== "after-sales"),
-      "dispatch",
-      "rules",
-      "accounts",
-      "banners",
-      "printers",
-    ],
-  },
-  // 运营：全部板块可见，但结算/提成规则只读（不含结算类写操作）；可发起调配。
-  // IKFOQ1：purchase 仅总部（hq/admin），operations 排除
-  operations: {
-    sections: [...ALL_SECTIONS.filter((s) => s !== "purchase"), "dispatch", "rules"],
-    writable: [
-      ...ALL_SECTIONS.filter(
-        (s) => s !== "finance" && s !== "after-sales" && s !== "purchase",
-      ),
-      "dispatch",
-    ],
-  },
-  // 仓储：工作台 / 商品与类别（读写）/ 订单只读 / 出入库与仓库订单 / 库位。
-  // IKFOQ0：仓储角色可订货（对齐采购申请口径，operations 同）
-  warehouse: {
-    sections: [
-      "dashboard",
-      "orders",
-      "products",
-      "categories",
-      "inventory",
-      "warehouse-orders",
-      "inventory-txns",
-      "locations",
-      "restock",
-    ],
-    writable: [
-      "inventory",
-      "products",
-      "categories",
-      "warehouse-orders",
-      "locations",
-      "restock",
-    ],
-  },
-  // 财务：工作台 / 订单只读 / 结算中心 / 提成规则 / 审计日志。
-  // IKFOPS：经营日报（财务看账）
-  finance: {
-    sections: ["dashboard", "orders", "finance", "rules", "audit", "campus-report"],
-    writable: ["finance", "rules"],
-  },
+/** 路由别名（拆分菜单归并到主板块权限）。 */
+const SECTION_ALIAS: Record<string, string> = {
+  coupons: "marketing",
+  promotions: "marketing",
+  "pay-ads": "banners",
+  "official-products": "products",
+  wheel: "marketing",
+  featured: "marketing",
+  "battle-map": "buildings",
+  reports: "purchase",
+  dispatch: "staff",
+  rules: "finance",
+  "warehouse-orders": "orders",
+  "inventory-txns": "inventory",
 };
 
-function readRole(): AdminRole | null {
-  const stored = localStorage.getItem("adminRole");
-  return stored === "hq" ||
-    stored === "admin" ||
-    stored === "operations" ||
-    stored === "warehouse" ||
-    stored === "finance"
-    ? stored
-    : null;
-}
+/**
+ * 路由/菜单 section → 权限码（read/write 各一组，any-of 命中）。
+ * 口径与后端 registry.ts 各端点 requirePerm 一致。
+ */
+export const ROUTE_PERM: Record<string, { read: string[]; write: string[] }> = {
+  dashboard: { read: ["dashboard.read"], write: ["dashboard.read"] },
+  orders: { read: ["orders.read"], write: ["orders.write"] },
+  "after-sales": { read: ["after-sales.read"], write: [] },
+  products: { read: ["products.read"], write: ["products.write", "products.price", "products.status"] },
+  "official-products": { read: ["products.official.read"], write: ["products.official.write"] },
+  categories: { read: ["categories.read"], write: ["categories.write"] },
+  inventory: { read: ["inventory.read"], write: ["inventory.adjust"] },
+  "warehouse-orders": { read: ["orders.read"], write: ["inventory.outbound"] },
+  "inventory-txns": { read: ["inventory.read"], write: [] },
+  locations: { read: ["locations.read"], write: ["locations.write"] },
+  restock: { read: ["restock.read"], write: ["restock.order", "restock.manage"] },
+  purchase: { read: ["purchase.read"], write: ["purchase.write"] },
+  "campus-report": { read: ["campus-report.read"], write: [] },
+  staff: { read: ["staff.read"], write: ["staff.write"] },
+  campuses: { read: ["campuses.read"], write: ["campuses.manage"] },
+  buildings: { read: ["buildings.read"], write: ["buildings.write"] },
+  finance: { read: ["finance.read"], write: ["finance.confirm", "finance.pay"] },
+  marketing: { read: ["marketing.read"], write: ["marketing.write"] },
+  banners: { read: ["banners.read"], write: ["banners.write"] },
+  printers: { read: ["printers.read"], write: ["printers.write"] },
+  audit: { read: ["audit.read"], write: [] },
+  accounts: { read: ["rbac.accounts.read"], write: ["rbac.accounts.write"] },
+  users: { read: ["users.read"], write: ["users.read"] },
+  "wechat-groups": { read: ["wechat-groups.read"], write: ["wechat-groups.write"] },
+  recruit: { read: ["recruit.read"], write: ["recruit.approve", "recruit.reject", "recruit.note"] },
+  // RBAC V1 新增菜单
+  "rbac-roles": { read: ["rbac.roles.read"], write: ["rbac.roles.write"] },
+  "rbac-permissions": { read: ["rbac.permissions.read"], write: [] },
+  "rbac-audit": { read: ["rbac.audit.read"], write: [] },
+};
 
 function readUser(): SessionUser | null {
   try {
@@ -164,64 +102,107 @@ function readUser(): SessionUser | null {
   }
 }
 
-export const role = ref<AdminRole | null>(readRole());
 export const sessionUser = ref<SessionUser | null>(readUser());
-export const roleLabel = computed(() =>
-  role.value ? ROLE_LABELS[role.value] : "未登录",
+export const role = computed(() => sessionUser.value?.role ?? null);
+export const roleLabel = computed(
+  () =>
+    (role.value && ROLE_LABELS[role.value]) ||
+    rbacRoles.value.map((r) => r.name).join("、") ||
+    "未登录",
 );
 
-export function isBackendRole(value: string): value is AdminRole {
-  return (
-    value === "hq" ||
-    value === "admin" ||
-    value === "operations" ||
-    value === "warehouse" ||
-    value === "finance"
-  );
+/* ---------- 服务端授权上下文（登录/切校区后刷新） ---------- */
+export const permissions = ref<Set<string>>(new Set());
+export const isSuper = ref(false);
+export const isPlatform = ref(false);
+export const rbacRoles = ref<RbacMe["roles"]>([]);
+export const switchableCampuses = ref<string[]>([]);
+export const rbacVersion = ref(0);
+export const rbacLoaded = ref(false);
+
+export function hasPerm(code: string): boolean {
+  if (isSuper.value) return true;
+  return permissions.value.has(code);
 }
 
-/** IKB5PB：营销拆分路由的权限映射——/coupons//promotions 归 marketing，
- *  /pay-ads 归 banners；权限矩阵本身不变，只是路由别名。 */
-const SECTION_ALIAS: Record<string, string> = {
-  coupons: "marketing",
-  promotions: "marketing",
-  "pay-ads": "banners",
-  // IKCJ46：官方商品库独立菜单（权限复用 products 板块）
-  "official-products": "products",
-  // IKD6FC：抽奖转盘独立菜单（权限复用 marketing 板块）
-  wheel: "marketing",
-  // IKH0EK：首页推荐位管理（营销板块）——漏配会让菜单被 canSee 过滤掉
-  featured: "marketing",
-  // IKFOQ3：营销作战地图独立菜单（权限复用 buildings 板块——对齐后端 authorize）
-  "battle-map": "buildings",
-  // IKFOPR：总部经营日报独立菜单（权限复用 purchase 板块——对齐路由守卫）
-  reports: "purchase",
-};
+/** 任一码命中（菜单/按钮 any-of）。 */
+function hasAny(codes: string[]): boolean {
+  return codes.length > 0 && codes.some((c) => hasPerm(c));
+}
 
 export function canSee(section: string): boolean {
   const key = SECTION_ALIAS[section] ?? section;
-  return Boolean(role.value && PERMISSIONS[role.value].sections.includes(key));
+  const perm = ROUTE_PERM[key];
+  if (!perm) return false;
+  return hasAny(perm.read);
 }
 
 export function canWrite(section: string): boolean {
   const key = SECTION_ALIAS[section] ?? section;
-  return Boolean(
-    role.value && PERMISSIONS[role.value].writable.includes(key),
-  );
+  const perm = ROUTE_PERM[key];
+  if (!perm) return false;
+  return hasAny(perm.write);
 }
 
-/** 登录成功后落地会话（role 来自 admin-login 返回的账号角色）。 */
+/** 登录成功后落地基础会话（权限随后 loadRbac 拉取）。 */
 export function applySession(user: SessionUser) {
-  role.value = isBackendRole(user.role) ? user.role : null;
   sessionUser.value = user;
-  localStorage.setItem("adminRole", role.value ?? "");
   localStorage.setItem("adminUser", JSON.stringify(user));
 }
 
+/** 应用 /admin/rbac/me 结果（登录/切校区/权限变更后调用）。 */
+export function applyRbac(me: RbacMe) {
+  permissions.value = new Set(
+    me.super ? ["*"] : me.permissions.map((p) => p.code),
+  );
+  isSuper.value = me.super;
+  isPlatform.value = me.platform;
+  rbacRoles.value = me.roles;
+  switchableCampuses.value = me.switchableCampuses;
+  rbacVersion.value = me.rbacVersion;
+  rbacLoaded.value = true;
+  try {
+    localStorage.setItem("adminRbac", JSON.stringify(me));
+  } catch {
+    /* 忽略序列化失败（超限时丢缓存，下次登录重拉） */
+  }
+}
+
+/** 启动时从缓存恢复（避免刷新后菜单闪变；请求前仍会重新校验）。 */
+function readCachedRbac() {
+  try {
+    const raw = localStorage.getItem("adminRbac");
+    if (raw) applyRbac(JSON.parse(raw) as RbacMe);
+  } catch {
+    /* 无效缓存忽略 */
+  }
+}
+readCachedRbac();
+
+/** 拉取有效权限（登录/切校区后调用）。失败=拒绝一切（默认拒绝，不回退宽松）。 */
+export async function loadRbac(): Promise<boolean> {
+  const { api } = await import("./api");
+  try {
+    applyRbac(await api.rbacMe());
+    return true;
+  } catch {
+    permissions.value = new Set();
+    isSuper.value = false;
+    isPlatform.value = false;
+    rbacLoaded.value = false;
+    return false;
+  }
+}
+
 export function clearSession() {
-  role.value = null;
   sessionUser.value = null;
-  ["adminToken", "adminRole", "adminUser"].forEach((key) =>
+  permissions.value = new Set();
+  isSuper.value = false;
+  isPlatform.value = false;
+  rbacRoles.value = [];
+  switchableCampuses.value = [];
+  rbacLoaded.value = false;
+  ["adminToken", "adminUser", "adminRbac"].forEach((key) =>
     localStorage.removeItem(key),
   );
 }

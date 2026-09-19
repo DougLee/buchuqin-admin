@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
-import { role } from "../session";
+import { isPlatform } from "../session";
 import type {
   DashboardActivity,
   DashboardData,
@@ -17,8 +17,9 @@ const router = useRouter();
 /* IKAJSL：hq 登录先看跨校区汇总，点校区行下钻单校区明细（复用本页模板）。
    追修（道哥 2026-09-16）：admin 与 hq 同为平台跨校区视角（campusScope 同口径，
    后端本就落 hqDashboard）——原来只认 hq，admin 登录时出现三重错位：标题显示
-   校区文案、数据是跨校区合计、履约完成率卡渲染 undefined 只剩「%」。 */
-const isHq = computed(() => role.value === "hq" || role.value === "admin");
+   校区文案、数据是跨校区合计、履约完成率卡渲染 undefined 只剩「%」。
+   RBAC V1（2026-09-19）：role 判断换服务端 platform 上下文。 */
+const isHq = computed(() => isPlatform.value);
 const hqData = ref<HqDashboardData>();
 const drillCampus = ref("");
 const drillName = ref("");

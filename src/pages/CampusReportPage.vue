@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 import type { Building, Campus, CampusDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
-import { canSee, role, sessionUser } from "../session";
+import { canSee, isPlatform, sessionUser } from "../session";
 
 /**
  * 校区经营日报（IKFOPS，2026-09-16 grilling 定版）：
@@ -17,8 +17,9 @@ const report = ref<Awaited<ReturnType<typeof api.campusDailyReport>> | null>(nul
 const campuses = ref<Campus[]>([]);
 const buildings = ref<Building[]>([]);
 
-/* 数据范围与后端 isHqScope 同口径：hq/admin 跨校区，其余锁本校区 */
-const isHqScope = computed(() => role.value === "hq" || role.value === "admin");
+/* 数据范围与后端 isHqScope 同口径：平台上下文跨校区，其余锁本校区
+   （RBAC V1：role 判断换服务端 platform 上下文） */
+const isHqScope = computed(() => isPlatform.value);
 
 function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
