@@ -2616,9 +2616,8 @@ const isPlatformAdmin = computed(
 /** 列渲染出口：costPrice（总部采购成本）列仅平台角色可见——
  *  校区视角进货价=批发价格（道哥 2026-09-19 定版），成本列不向校区暴露。 */
 function cols(config: { columns: [string, string][] }): [string, string][] {
-  return isPlatformAdmin.value
-    ? config.columns
-    : config.columns.filter((c) => c[0] !== "costPrice");
+  const list = config.columns.filter((c) => c[0] !== "contactText"); // 详情专用列不进列表
+  return isPlatformAdmin.value ? list : list.filter((c) => c[0] !== "costPrice");
 }
 /** IKCHEW：官方库视角 UI——hq 恒真；admin 随商品视角切换；校区角色恒假。
  *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
@@ -3123,11 +3122,15 @@ const configs: Record<string, SectionConfig> = {
               .filter(Boolean)
               .join("");
             const userMain = o.userPhone || user?.nickname?.trim() || "";
+            // 2026-09-19 道哥：详情补联系人/联系电话（地址快照内明文，客服直连用）
+            const contactText =
+              [address?.contactName, address?.phone].filter(Boolean).join(" / ") || "—";
             return {
               ...o,
               // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
               itemsText: names.length ? names.join("\n") : "—",
               userText: [userMain, building].filter(Boolean).join("\n") || "—",
+              contactText,
               // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
               slaText:
                 o.deliveryMode === "instant" ? "立即配送" : "2小时送达",
@@ -3141,6 +3144,7 @@ const configs: Record<string, SectionConfig> = {
       ["orderNo", "订单编号"],
       ["itemsText", "商品"],
       ["userText", "用户"],
+      ["contactText", "联系人 / 电话"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
       // IKFTZ9：毛利列（合计口径同详情，缺成本显示 —）
@@ -3156,6 +3160,7 @@ const configs: Record<string, SectionConfig> = {
       "statusText",
       "slaText",
       "userText",
+      "contactText",
       "payableAmount",
       "createdAt",
     ],
