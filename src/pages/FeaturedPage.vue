@@ -105,149 +105,138 @@ async function save() {
 }
 </script>
 <template>
-  <div class="page-wrap">
+  <div class="workspace">
+    <!-- 用 div 不用 header：.shell header 是顶栏专用元素选择器（白底 sticky 72px），
+         header 标签会误命中变白卡 -->
     <div class="page-head">
       <div>
-        <h2>推荐位管理</h2>
-        <p class="muted">
+        <h1>推荐位管理</h1>
+        <p>
           首页「为你推荐」前排手动位（跟顶栏当前运营校区），未满 18
-          个由销量自动补齐；清空即纯销量推荐
+          个由销量自动补齐；清空即纯销量推荐。
         </p>
       </div>
-      <button class="primary" :disabled="!dirty || saving" @click="save">
-        {{ saving ? "保存中…" : "保存推荐位" }}
-      </button>
+      <div class="head-actions">
+        <button class="btn primary" :disabled="!dirty || saving" @click="save">
+          {{ saving ? "保存中…" : "保存推荐位" }}
+        </button>
+      </div>
     </div>
-    <p v-if="toast" class="toast">{{ toast }}</p>
-    <div class="panel">
-      <h3>选择商品</h3>
-      <ProductPickerField
-        :items="candidates"
-        :loading="loadingCands"
-        multiple
-        :model-value="model"
-        @update:model-value="onPick"
-      />
-    </div>
-    <div class="panel">
-      <h3>
-        已选推荐位（{{ picked.length }}）<span class="muted"
-          >列表顺序 = 首页展示顺序</span
-        >
-      </h3>
-      <p v-if="!picked.length" class="muted empty">
-        还没有勾选推荐商品，首页推荐位将全部按销量展示
-      </p>
-      <div v-for="(p, i) in picked" :key="p.id" class="feat-row">
-        <span class="feat-row__no">{{ i + 1 }}</span>
-        <img class="feat-row__img" :src="p.image" :alt="p.name" />
-        <div class="feat-row__main">
-          <div class="feat-row__name">{{ p.name }}</div>
-          <div class="muted">¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</div>
+
+    <!-- 行内提示条（RestockPage confirm-banner 同款绿底）；不用全局 .toast：
+         那是 fixed 居中且依赖 script 自动消失（本页 toast 常驻至下次操作） -->
+    <p v-if="toast" class="feat-toast">{{ toast }}</p>
+
+    <div class="feat-stack">
+      <!-- 选择商品：表单内容面板（全局 .panel） -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>选择商品</h2>
         </div>
-        <div class="feat-row__ops">
-          <button :disabled="i === 0" @click="move(i, -1)">上移</button>
-          <button
-            :disabled="i === picked.length - 1"
-            @click="move(i, 1)"
-          >
-            下移
-          </button>
-          <button class="danger" @click="remove(p.id)">移除</button>
+        <ProductPickerField
+          :items="candidates"
+          :loading="loadingCands"
+          multiple
+          :model-value="model"
+          @update:model-value="onPick"
+        />
+      </div>
+
+      <!-- 已选推荐位：数据面板 + 表格行（rank 序号/cell-thumb 缩略/row-actions 操作列） -->
+      <div class="data-panel">
+        <div class="data-summary">
+          <div>
+            <strong>{{ picked.length }}</strong><span> 个已选</span>
+          </div>
+          <p>列表顺序 = 首页展示顺序，未满 18 个由销量补齐</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>顺序</th>
+                <th>商品</th>
+                <th>售价 / 库存</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loadingCands" v-for="i in 3" :key="i">
+                <td :colspan="4"><div class="row-skeleton"></div></td>
+              </tr>
+              <template v-else>
+                <tr v-if="!picked.length">
+                  <td :colspan="4" class="empty-cell">
+                    还没有勾选推荐商品，首页推荐位将全部按销量展示。
+                  </td>
+                </tr>
+                <tr v-for="(p, i) in picked" :key="p.id">
+                  <td><span class="rank">{{ i + 1 }}</span></td>
+                  <td>
+                    <div class="feat-product">
+                      <img class="cell-thumb" :src="p.image" :alt="p.name" />
+                      <strong>{{ p.name }}</strong>
+                    </div>
+                  </td>
+                  <td>¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</td>
+                  <td class="row-actions">
+                    <button
+                      class="btn mini ghost"
+                      :disabled="i === 0"
+                      @click="move(i, -1)"
+                    >
+                      上移
+                    </button>
+                    <button
+                      class="btn mini ghost"
+                      :disabled="i === picked.length - 1"
+                      @click="move(i, 1)"
+                    >
+                      下移
+                    </button>
+                    <button class="btn mini danger" @click="remove(p.id)">
+                      移除
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
 </template>
 <style scoped>
-.page-wrap {
+/* 页面壳/页头/面板/表格/按钮全走全局（style.css + drawer.css），与订货/采购管理
+   同源；scoped 只留四处私有（IKH0EK 样式对齐 2026-09-19）：
+   面板纵向间距 / 商品单元格横排 / 行内提示条（色值同 .status.success） */
+.feat-stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
+.feat-stack .panel-head {
+  margin-bottom: 12px;
 }
-.page-head h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-.page-head p {
-  margin: 0;
-  font-size: 13px;
-}
-.toast {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--brand-soft, #eaf8e8);
-  color: #07883b;
-  font-size: 13px;
+.feat-toast {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e5f6eb;
+  color: #087641;
+  font-size: 12px;
   width: fit-content;
 }
-.panel {
-  background: #fff;
-  border: 1px solid #e8ece8;
-  border-radius: 14px;
-  padding: 16px;
-}
-.panel h3 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.panel h3 .muted {
-  font-size: 12px;
-  font-weight: 400;
-}
-.empty {
-  padding: 20px 0;
-  text-align: center;
-}
-.feat-row {
+.feat-product {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 8px;
-  border-bottom: 1px solid #f1f4f1;
-}
-.feat-row:last-child {
-  border-bottom: none;
-}
-.feat-row__no {
-  width: 24px;
-  text-align: center;
-  font-weight: 700;
-  color: #07883b;
-}
-.feat-row__img {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: #f2f5f2;
-}
-.feat-row__main {
-  flex: 1;
+  gap: 10px;
   min-width: 0;
 }
-.feat-row__name {
-  font-weight: 600;
+.feat-product strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.feat-row__ops {
-  display: flex;
-  gap: 6px;
-}
-.feat-row__ops button {
-  padding: 4px 10px;
-  font-size: 12px;
 }
 </style>
