@@ -6034,10 +6034,8 @@ async function cancelInviteRow(row: AdminRow) {
                       (section === 'orders' || section === 'warehouse-orders')
                     "
                     class="order-no"
-                    ><span>{{
-                      String(display(row, "orderNo")).slice(0, -8)
-                    }}</span
-                    ><span class="order-no__tail">{{
+                    :title="String(display(row, 'orderNo'))"
+                    >…<span class="order-no__tail">{{
                       String(display(row, "orderNo")).slice(-8)
                     }}</span></strong
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
