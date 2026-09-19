@@ -18,6 +18,8 @@ const props = defineProps<{
   multiple?: boolean;
   /** 多选行件数输入禁用（订货单非草稿态只读） */
   disabled?: boolean;
+  /** IKH0EK 推荐位模式：隐藏多选行件数输入（纯勾选，无件数语义） */
+  simple?: boolean;
   modelValue: string | Record<string, number>;
 }>();
 const emit = defineEmits<{
@@ -130,7 +132,7 @@ function unitText(p: Product): string {
               }}{{ unitText(p) }}</span
             >
           </span>
-          <span class="pp-item__qty">
+          <span v-if="!simple" class="pp-item__qty">
             <input
               type="number"
               min="0"

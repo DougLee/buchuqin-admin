@@ -44,7 +44,8 @@ onMounted(async () => {
       api.products({ page: 1, pageSize: 300, status: "on-sale" }, "campus"),
       api.featured(),
     ]);
-    candidates.value = prods.items;
+    // IKH0EK 验收拍板：有库存才可进推荐位（件数语义不适用，纯勾选）
+    candidates.value = prods.items.filter((p) => p.stock > 0);
     picked.value = feat;
     savedIds.value = feat.map((f) => f.id);
   } catch (e) {
@@ -137,6 +138,7 @@ async function save() {
           :items="candidates"
           :loading="loadingCands"
           multiple
+          simple
           :model-value="model"
           @update:model-value="onPick"
         />
