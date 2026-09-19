@@ -190,6 +190,8 @@ const SECTION_ALIAS: Record<string, string> = {
   "official-products": "products",
   // IKD6FC：抽奖转盘独立菜单（权限复用 marketing 板块）
   wheel: "marketing",
+  // IKH0EK：首页推荐位管理（营销板块）——漏配会让菜单被 canSee 过滤掉
+  featured: "marketing",
   // IKFOQ3：营销作战地图独立菜单（权限复用 buildings 板块——对齐后端 authorize）
   "battle-map": "buildings",
   // IKFOPR：总部经营日报独立菜单（权限复用 purchase 板块——对齐路由守卫）
