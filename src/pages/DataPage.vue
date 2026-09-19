@@ -2613,6 +2613,13 @@ const isHqRole = computed(() => role.value === "hq");
 const isPlatformAdmin = computed(
   () => role.value === "hq" || role.value === "admin",
 );
+/** 列渲染出口（2026-09-19 线上反馈消歧）：进货价列（IKC1AC）仅平台角色可见——
+ *  校区商品列表补进货价列供平台与促销弹窗比价，纯校区角色隐藏（不暴露成本）。 */
+function cols(config: { columns: [string, string][] }): [string, string][] {
+  return isPlatformAdmin.value
+    ? config.columns
+    : config.columns.filter((c) => c[0] !== "costPrice");
+}
 /** IKCHEW：官方库视角 UI——hq 恒真；admin 随商品视角切换；校区角色恒假。
  *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
 const isHqView = computed(
@@ -3196,8 +3203,9 @@ const configs: Record<string, SectionConfig> = {
       ["image", "图片"],
       ["name", "商品"],
       ["categoryId", "分类"],
+      ["costPrice", "进货价"],
       ["price", "售价"],
-      // IKC1AC：校区可见批发价快照与建议零售价，不见进货价
+      // IKC1AC：校区可见批发价快照与建议零售价；进货价列经 cols() 仅平台角色显示
       ["wholesalePrice", "批发价格"],
       ["originalPrice", "建议零售价"],
       ["availableStock", "可售库存"],
@@ -5930,7 +5938,7 @@ async function cancelInviteRow(row: AdminRow) {
                   @change="toggleAllProductChecks"
                 />
               </th>
-              <th v-for="col in config.columns" :key="col[0]">{{ col[1] }}</th>
+              <th v-for="col in cols(config)" :key="col[0]">{{ col[1] }}</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -5955,7 +5963,7 @@ async function cancelInviteRow(row: AdminRow) {
                     @change="toggleProductCheck(row.id, $event)"
                   />
                 </td>
-                <td v-for="col in config.columns" :key="col[0]">
+                <td v-for="col in cols(config)" :key="col[0]">
                   <span
                     v-if="col[0] === 'typeText' && section === 'wheel'"
                     class="wheel-type"
