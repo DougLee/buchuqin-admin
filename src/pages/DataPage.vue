@@ -2439,6 +2439,20 @@ const ordersCache = ref<Order[]>([]),
   orderLoading = ref(false),
   orderError = ref(""),
   previewImage = ref("");
+/** 2026-09-19 道哥：截断字段点击显全部——轻量文本卡（订单号/商品清单，可复制） */
+const textPreview = ref<{ title: string; text: string } | null>(null);
+function openTextPreview(title: string, text: string) {
+  textPreview.value = { title, text };
+}
+async function copyPreviewText() {
+  if (!textPreview.value) return;
+  try {
+    await navigator.clipboard.writeText(textPreview.value.text);
+    notify("已复制到剪贴板");
+  } catch {
+    notify("复制失败，请手动选择复制", true);
+  }
+}
 /** 关联订单补全：列表行自带 order 时直接用，否则翻页查询订单列表匹配。 */
 async function ensureAfterSaleOrder(row: AfterSaleRow) {
   afterSaleOrder.value = row.order ?? null;
@@ -6033,8 +6047,11 @@ async function cancelInviteRow(row: AdminRow) {
                       col[0] === 'orderNo' &&
                       (section === 'orders' || section === 'warehouse-orders')
                     "
-                    class="order-no"
+                    class="order-no clickable"
                     :title="String(display(row, 'orderNo'))"
+                    @click="
+                      openTextPreview('订单编号', String(display(row, 'orderNo')))
+                    "
                     >…<span class="order-no__tail">{{
                       String(display(row, "orderNo")).slice(-8)
                     }}</span></strong
@@ -6042,8 +6059,14 @@ async function cancelInviteRow(row: AdminRow) {
                     >{{ display(row, col[0]) }}</strong
                   ><!-- 2026-09-19 道哥：商品列单行摘要+悬停全部（IKBW0C/D 多行版退役） --><span
                     v-else-if="col[0] === 'itemsText'"
-                    class="cell-ellipsis"
+                    class="cell-ellipsis clickable"
                     :title="String(display(row, 'itemsText')).split('\n').join('、')"
+                    @click="
+                      openTextPreview(
+                        '商品清单',
+                        String(display(row, 'itemsText')).split('\n').join('\n'),
+                      )
+                    "
                     >{{ display(row, "itemsBrief") }}</span
                   ><!-- 订单用户列：主行手机号（tabular-nums 对读），次行楼栋房号 --><span
                     v-else-if="col[0] === 'userText'"
@@ -8040,6 +8063,21 @@ async function cancelInviteRow(row: AdminRow) {
       @click="previewImage = ''"
     >
       <img :src="previewImage" alt="凭证大图" />
+    </div>
+    <!-- 截断字段点击显全部：完整内容卡（复制高频：订单号/商品清单） -->
+    <div
+      v-if="textPreview"
+      class="text-lightbox"
+      @click.self="textPreview = null"
+    >
+      <div class="text-lightbox__card">
+        <h3>{{ textPreview.title }}</h3>
+        <p class="text-lightbox__text">{{ textPreview.text }}</p>
+        <div class="text-lightbox__actions">
+          <button class="btn mini ghost" @click="textPreview = null">关闭</button>
+          <button class="btn mini primary" @click="copyPreviewText">复制</button>
+        </div>
+      </div>
     </div>
     <div
       v-if="message"
