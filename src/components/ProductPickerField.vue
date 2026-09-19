@@ -71,7 +71,10 @@ function qtyOf(id: string): number {
   return (props.modelValue as Record<string, number>)[id] ?? 0;
 }
 function setQty(id: string, q: number) {
-  const next = { ...(props.modelValue as Record<string, number>), [id]: q };
+  const next = { ...(props.modelValue as Record<string, number>) };
+  // 键=选中语义：qty 归零即删键（消费方 Object.keys 即选中集，取消选中才彻底）
+  if (q > 0) next[id] = q;
+  else delete next[id];
   emit("update:modelValue", next);
 }
 /** simple 模式（无件数输入）：点行即选中/取消——件数输入原本就是多选的选中途径 */

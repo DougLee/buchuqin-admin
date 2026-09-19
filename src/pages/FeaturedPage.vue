@@ -57,7 +57,12 @@ onMounted(async () => {
 
 /** 选择器变更 → 同步有序列表：新增 append（元数据取候选池），取消则移除 */
 function onPick(v: string | Record<string, number>) {
-  const ids = typeof v === "object" && v !== null ? Object.keys(v) : v ? [v] : [];
+  const ids =
+    typeof v === "object" && v !== null
+      ? Object.keys(v).filter((k) => (v as Record<string, number>)[k] > 0)
+      : v
+        ? [v]
+        : [];
   const idSet = new Set(ids);
   const byId = new Map(candidates.value.map((c) => [c.id, c]));
   const next: FeatRow[] = picked.value.filter((p) => idSet.has(p.id));
