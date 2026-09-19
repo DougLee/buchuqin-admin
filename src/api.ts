@@ -233,6 +233,25 @@ export const api = {
     request<DashboardData | HqDashboardData>(
       `/admin/dashboard${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
     ),
+  /** IKH0EK 首页推荐位：本校区已选列表（featuredSort 升序）/ 全量有序保存 */
+  featured: () =>
+    request<
+      Array<{
+        id: string;
+        name: string;
+        price: number;
+        image: string;
+        status: string;
+        stock: number;
+        sales: number;
+        categoryId: string;
+      }>
+    >("/admin/featured"),
+  saveFeatured: (productIds: string[]) =>
+    request<{ count: number }>("/admin/featured", {
+      method: "PUT",
+      body: JSON.stringify({ productIds }),
+    }),
   /** view（IKCHEW 商品双视角）：仅 admin 生效——official 官方库 / campus 本校区 */
   products: (query?: ListQuery, view?: string) =>
     request<PagedResponse<Product>>(

@@ -87,6 +87,8 @@ const MARKETING_ITEMS: [string, string, string][] = [
   ["/coupons", "marketing", "优惠券配置"],
   ["/promotions", "marketing", "限时秒杀"],
   ["/pay-ads", "marketing", "支付广告位"],
+  // IKH0EK：首页推荐位（手动优先+销量补齐），营销板块
+  ["/featured", "marketing", "推荐位管理"],
   // IKD6FC：抽奖大转盘（首页入口显隐随活动开关）
   ["/wheel", "wheel", "抽奖转盘"],
 ];

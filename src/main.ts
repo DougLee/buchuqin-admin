@@ -9,6 +9,7 @@ import PurchasePage from "./pages/PurchasePage.vue";
 import DailyReportPage from "./pages/DailyReportPage.vue";
 import CampusReportPage from "./pages/CampusReportPage.vue";
 import BattleMapPage from "./pages/BattleMapPage.vue";
+import FeaturedPage from "./pages/FeaturedPage.vue";
 import { canSee, role } from "./session";
 import "./style.css";
 import "./drawer.css";
@@ -26,6 +27,8 @@ const routes = [
   { path: "/campus-report", component: CampusReportPage },
   // IKFOQ3：营销作战地图（寝室三色格），权限复用 buildings 键
   { path: "/battle-map", component: BattleMapPage },
+  // IKH0EK：首页推荐位管理（营销板块）
+  { path: "/featured", component: FeaturedPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -42,6 +45,7 @@ router.beforeEach((to) => {
   if (to.path === "/reports") return canSee("purchase") ? true : "/";
   if (to.path === "/campus-report") return canSee("campus-report") ? true : "/";
   if (to.path === "/battle-map") return canSee("buildings") ? true : "/";
+  if (to.path === "/featured") return canSee("marketing") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });
