@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
-import { canWrite } from "../session";
+import { canWrite, loadRbac, menuPath } from "../session";
 import type { RbacMenuRow, RbacRole } from "../types";
 
 /**
@@ -83,12 +83,15 @@ interface FlatRow {
   node: MenuNode;
   depth: number;
 }
+const treeSearch = ref("");
 const flatRows = computed<FlatRow[]>(() => {
   const out: FlatRow[] = [];
   const walk = (list: MenuNode[], depth: number, hidden: boolean) => {
     for (const node of list) {
       const folded = foldedNodes.value.has(node.row.id);
-      if (!hidden) out.push({ node, depth });
+      const q = treeSearch.value.trim().toLowerCase();
+      const matches = !q || [node, ...node.descendants].some(n => `${n.row.name} ${n.row.code}`.toLowerCase().includes(q));
+      if ((!hidden || q) && matches) out.push({ node, depth });
       walk(node.children, depth + 1, hidden || folded);
     }
   };
@@ -110,18 +113,36 @@ function toggleFold(id: string) {
 const checkedCodes = ref<Set<string>>(new Set());
 function setChecked(code: string, on: boolean) {
   const next = new Set(checkedCodes.value);
-  if (on) next.add(code);
-  else next.delete(code);
+  const node = flatAll().find(n => n.row.code === code);
+  if (!node) return;
+  for (const n of [node, ...node.descendants]) on ? next.add(n.row.code) : next.delete(n.row.code);
+  let parent = node.row.parentId;
+  while (parent) {
+    const ancestor = flatAll().find(n => n.row.id === parent);
+    if (!ancestor) break;
+    if (ancestor.descendants.some(n => next.has(n.row.code))) next.add(ancestor.row.code);
+    else next.delete(ancestor.row.code);
+    parent = ancestor.row.parentId;
+  }
   checkedCodes.value = next;
 }
-/** 全选子级：只动子级（含后代按钮），不改本行勾选状态。 */
-function toggleDescendants(node: MenuNode, on: boolean) {
+function flatAll(): MenuNode[] {
+  const walk = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap(n => [n, ...walk(n.children)]);
+  return walk(menuTree.value);
+}
+function selectReadOnly(node: MenuNode) {
+  setChecked(node.row.code, false);
   const next = new Set(checkedCodes.value);
-  node.descendants.forEach((d) =>
-    on ? next.add(d.row.code) : next.delete(d.row.code),
-  );
+  next.add(node.row.code);
+  let parent = node.row.parentId;
+  while (parent) {
+    const ancestor = menuRows.value.find(n => n.id === parent);
+    if (!ancestor) break;
+    next.add(ancestor.code); parent = ancestor.parentId;
+  }
   checkedCodes.value = next;
 }
+function toggleDescendants(node: MenuNode, on: boolean) { setChecked(node.row.code, on); }
 function descendantsAllChecked(node: MenuNode): boolean {
   return (
     node.descendants.length > 0 &&
@@ -153,7 +174,7 @@ function openCreate() {
 function openEdit(role: RbacRole) {
   editingId.value = role.id;
   // 内置超管整卡禁用（通配全菜单）；其它内置角色可编辑，后端兜底校验
-  editingBuiltin.value = role.builtin && role.code === "super";
+  editingBuiltin.value = role.builtin && role.code === "super-admin";
   form.value = {
     code: role.code,
     name: role.name,
@@ -176,7 +197,7 @@ function openCopy(role: RbacRole) {
   };
   checkedCodes.value = new Set(
     // 超管通配不落清单——复制时按全量树预填
-    role.builtin && role.code === "super"
+    role.builtin && role.code === "super-admin"
       ? menuRows.value.map((m) => m.code)
       : (role.menuCodes ?? []),
   );
@@ -190,8 +211,6 @@ async function submitDrawer() {
   if (!editingId.value && !code)
     return (drawerError.value = "请输入角色编码");
   if (!name) return (drawerError.value = "请输入角色名称");
-  if (!checkedCodes.value.size)
-    return (drawerError.value = "至少勾选一个菜单项");
   drawerSaving.value = true;
   try {
     if (editingId.value) {
@@ -214,6 +233,7 @@ async function submitDrawer() {
       notify("角色已创建");
     }
     drawerOpen.value = false;
+    await loadRbac();
     await load();
   } catch (e) {
     drawerError.value = e instanceof Error ? e.message : "保存失败";
@@ -258,7 +278,7 @@ function removeLabel(role: RbacRole): string {
         <button
           v-if="canWrite('rbac-roles')"
           class="btn ghost"
-          @click="router.push('/rbac-menus')"
+          @click="router.push(menuPath('rbac-menus') || '/access-denied')"
         >
           菜单管理
         </button>
@@ -320,7 +340,7 @@ function removeLabel(role: RbacRole): string {
               <td>{{ role.accountCount }}</td>
               <td>
                 {{
-                  role.builtin && role.code === "super"
+                  role.builtin && role.code === "super-admin"
                     ? "全部"
                     : (role.menuCodes ?? []).length
                 }}
@@ -329,7 +349,7 @@ function removeLabel(role: RbacRole): string {
                 <button
                   v-if="canWrite('rbac-roles')"
                   class="btn mini primary"
-                  :disabled="role.builtin && role.code === 'super'"
+                  :disabled="role.builtin && role.code === 'super-admin'"
                   @click="openEdit(role)"
                 >
                   编辑
@@ -388,12 +408,13 @@ function removeLabel(role: RbacRole): string {
             <input v-model.trim="form.remark" placeholder="职责说明（选填）" />
           </label>
         </div>
-        <p class="drawer-sec">菜单权限（勾了即授权，不自动补父子）</p>
+        <p class="drawer-sec">功能权限（父子联动，支持仅查看和清空授权）</p>
         <!-- 内置超管：通配全菜单，整树禁用 -->
-        <div v-if="editingBuiltin && form.code === 'super'" class="builtin-card">
+        <div v-if="editingBuiltin && form.code === 'super-admin'" class="builtin-card">
           全部菜单（内置通配）——超级管理员不受菜单勾选约束，不可编辑。
         </div>
-        <div v-else class="menu-tree" :class="{ 'is-locked': editingBuiltin }">
+        <input v-if="!editingBuiltin" v-model="treeSearch" placeholder="搜索菜单或操作" aria-label="搜索功能权限" />
+        <div v-if="!editingBuiltin" class="menu-tree" :class="{ 'is-locked': editingBuiltin }">
           <div
             v-for="{ node, depth } in flatRows"
             :key="node.row.id"
@@ -419,8 +440,9 @@ function removeLabel(role: RbacRole): string {
                   type="checkbox"
                   class="raw-checkbox"
                   :disabled="editingBuiltin"
-                  :checked="checkedCodes.has(node.row.code)"
-                  @change="setChecked(node.row.code, !checkedCodes.has(node.row.code))"
+                  :checked="node.children.length ? descendantsAllChecked(node) : checkedCodes.has(node.row.code)"
+                  :indeterminate="node.children.length > 0 && checkedCodes.has(node.row.code) && !descendantsAllChecked(node)"
+                  @change="setChecked(node.row.code, ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="menu-node__name">{{ node.row.name }}</span>
                 <code class="menu-node__code">{{ node.row.code }}</code>
@@ -434,6 +456,7 @@ function removeLabel(role: RbacRole): string {
               <code v-if="node.row.perms?.length" class="menu-node__perms">{{
                 node.row.perms.join("；")
               }}</code>
+              <button v-if="node.row.type === 1" type="button" class="btn mini" @click="selectReadOnly(node)">仅查看</button>
               <!-- 全选子级：只勾子级（含按钮），不改本行勾选状态 -->
               <label
                 v-if="node.children.length"
@@ -523,6 +546,7 @@ function removeLabel(role: RbacRole): string {
 }
 .menu-node__line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 4px 0;
@@ -551,9 +575,13 @@ function removeLabel(role: RbacRole): string {
 }
 .menu-node__check {
   cursor: pointer;
+  flex: 0 0 auto;
+  max-width: 100%;
   min-width: 0;
 }
 .menu-node__name {
+  flex: none;
+  white-space: nowrap;
   font-size: 13px;
 }
 .menu-node.is-dir .menu-node__name {
@@ -569,8 +597,14 @@ function removeLabel(role: RbacRole): string {
   white-space: nowrap;
 }
 .menu-node__perms {
-  max-width: 220px;
+  order: 2;
+  flex: 1 0 100%;
+  max-width: 100%;
+  padding-left: 26px;
+  box-sizing: border-box;
 }
+.menu-node__code { max-width: 160px; }
+.menu-node__path { max-width: 140px; }
 .menu-node__type {
   flex: none;
   font-size: 11px;

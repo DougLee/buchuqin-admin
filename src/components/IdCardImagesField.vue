@@ -9,7 +9,7 @@ import { resolveImageUrl } from "../utils/image";
  * v-model 绑定 URL 数组：[0]=人像面、[1]=国徽面；更新时仅裁「尾部空位」，
  * 保留「人像空、国徽有」的占位（["", url]），重开抽屉槽位不错位。
  */
-const props = defineProps<{ modelValue: string[]; folder?: string }>();
+const props = defineProps<{ modelValue: string[] }>();
 const emit = defineEmits<{
   (e: "update:modelValue", value: string[]): void;
 }>();
@@ -40,7 +40,7 @@ async function onChange(event: Event) {
   if (!file) return;
   uploadingSlot.value = activeSlot.value;
   try {
-    setAt(activeSlot.value, await uploadImage(file, props.folder));
+    setAt(activeSlot.value, await uploadImage(file, "app/idcard"));
   } catch (err) {
     error.value = err instanceof Error ? err.message : "上传失败";
   } finally {

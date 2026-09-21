@@ -5,7 +5,7 @@ import {
   api,
 } from "../api";
 import ProductPickerField from "../components/ProductPickerField.vue";
-import { canSee, hasPerm, isPlatform } from "../session";
+import { canSee, hasPerm, isPlatform, menuPath } from "../session";
 import type {
   Product,
   RestockBatch,
@@ -79,7 +79,7 @@ async function loadBatches() {
   }
 }
 async function loadHqOrders() {
-  hqOrders.value = await api.restockOrders();
+  hqOrders.value = hasPerm("GET /admin/restock/orders") ? await api.restockOrders() : [];
 }
 function refresh() {
   loadBatches();
@@ -268,8 +268,8 @@ const lineCases = ref<Record<string, number>>({});
 const myOrder = computed<RestockOrder | null>(() => orderDetail.value?.orders[0] ?? null);
 const editable = computed(
   () =>
-    myOrder.value === null ||
-    ["draft", "rejected"].includes(myOrder.value?.status ?? ""),
+    canOrder.value && (myOrder.value === null ||
+    ["draft", "rejected"].includes(myOrder.value?.status ?? "")),
 );
 const totalCases = computed(() =>
   Object.values(lineCases.value).reduce((s, n) => s + (Number(n) || 0), 0),
@@ -371,7 +371,7 @@ function gotoBatch() {
 /** 追溯：发货单 → 采购管理（批次同源；无采购菜单角色不显示） */
 function gotoPurchase() {
   shipmentDrawer.value = false;
-  router.push("/purchase");
+  router.push(menuPath("purchase") || "/access-denied");
 }
 /** 校区确认到货：按发货数全额入账（grilling #3 不登记差异） */
 const receiptBusy = ref(false);
@@ -419,7 +419,7 @@ async function confirmReceipt() {
     </div>
 
     <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar（DataPage 同款 segmented） -->
-    <div v-if="canManage" class="toolbar">
+    <div v-if="isHqScope" class="toolbar">
       <div class="segmented inv-tabs">
         <button :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
           订货批次
@@ -433,7 +433,7 @@ async function confirmReceipt() {
     <p v-if="error" class="load-error">{{ error }}</p>
 
     <!-- 校区视角：批次列表（窗口 + 我的单状态 + 填单入口），表格形态与全站一致 -->
-    <div v-if="!canManage" class="data-panel">
+    <div v-if="!isHqScope" class="data-panel">
       <div class="data-summary">
         <div>
           <strong>{{ batches.length }}</strong><span> 个批次</span>
@@ -486,6 +486,7 @@ async function confirmReceipt() {
                 <td class="row-actions">
                   <button
                     class="btn mini primary"
+                    v-if="hasPerm('GET /admin/restock/batches/:id') && (canOrder || b.orderTotal)"
                     :disabled="b.phase !== 'open' && !b.orderTotal"
                     @click="openMyOrder(b)"
                   >
@@ -500,7 +501,7 @@ async function confirmReceipt() {
     </div>
 
     <!-- 总部：批次表 -->
-    <div v-if="canManage && tab === 'batches'" class="data-panel">
+    <div v-if="isHqScope && tab === 'batches'" class="data-panel">
       <div class="data-summary">
         <div>
           <strong>{{ batches.length }}</strong><span> 个批次</span>
@@ -540,16 +541,16 @@ async function confirmReceipt() {
                 </td>
                 <td>{{ b.createdByName || "—" }}</td>
                 <td class="row-actions">
-                  <button class="btn mini ghost" @click="openBatchDetail(b)">详情</button>
+                  <button v-if="hasPerm('GET /admin/restock/batches/:id')" class="btn mini ghost" @click="openBatchDetail(b)">详情</button>
                   <button
-                    v-if="b.phase === 'upcoming' || b.phase === 'open'"
+                    v-if="hasPerm('PATCH /admin/restock/batches/:id') && (b.phase === 'upcoming' || b.phase === 'open')"
                     class="btn mini ghost"
                     @click="openBatchForm(b)"
                   >
                     编辑
                   </button>
                   <button
-                    v-if="!b.closedAt"
+                    v-if="hasPerm('POST /admin/restock/batches/:id/close') && !b.closedAt"
                     class="btn mini ghost danger-btn"
                     @click="closeBatch(b)"
                   >
@@ -564,7 +565,7 @@ async function confirmReceipt() {
     </div>
 
     <!-- 总部：全部订货单 -->
-    <div v-if="canManage && tab === 'orders'" class="data-panel">
+    <div v-if="isHqScope && tab === 'orders'" class="data-panel">
       <div class="data-summary">
         <div>
           <strong>{{ hqOrders.length }}</strong><span> 张订货单</span>
@@ -621,20 +622,20 @@ async function confirmReceipt() {
                 </td>
                 <td class="row-actions">
                   <button
-                    v-if="o.status === 'submitted'"
+                    v-if="hasPerm('POST /admin/restock/orders/:id/audit') && o.status === 'submitted'"
                     class="btn mini primary"
                     @click="openAudit(o)"
                   >
                     审核
                   </button>
                   <template v-else-if="o.status === 'confirmed'">
-                    <button class="btn mini primary" @click="openShip(o)">发货</button>
-                    <button class="btn mini ghost danger-btn" @click="openAudit(o)">
+                    <button v-if="hasPerm('POST /admin/restock/orders/:id/ship') && hasPerm('GET /admin/restock/orders/:id')" class="btn mini primary" @click="openShip(o)">发货</button>
+                    <button v-if="hasPerm('POST /admin/restock/orders/:id/audit')" class="btn mini ghost danger-btn" @click="openAudit(o)">
                       撤销确认
                     </button>
                   </template>
                   <button
-                    v-else-if="o.status === 'shipped' || o.status === 'received'"
+                    v-else-if="hasPerm('GET /admin/restock/orders/:id/shipment') && (o.status === 'shipped' || o.status === 'received')"
                     class="btn mini ghost"
                     @click="openShipment(o.id)"
                   >
@@ -709,16 +710,16 @@ async function confirmReceipt() {
               <span>订货批发价合计</span>
               <strong>¥{{ fenToYuan(detail.wholesaleTotal) }}</strong>
             </div>
-            <div class="margin-row">
+            <div v-if="detail.purchaseReceivedTotal != null" class="margin-row">
               <span>采购已收金额</span>
               <strong>¥{{ fenToYuan(detail.purchaseReceivedTotal) }}</strong>
             </div>
-            <div class="margin-row">
+            <div v-if="detail.grossEstimate != null" class="margin-row">
               <span>本批毛利预估</span>
               <strong class="margin-value">¥{{ fenToYuan(detail.grossEstimate) }}</strong>
             </div>
             <button
-              v-if="canManage"
+              v-if="hasPerm('POST /admin/restock/batches/:batchId/purchase-order')"
               class="btn mini ghost po-btn"
               @click="openPurchaseForm"
             >
@@ -753,20 +754,20 @@ async function confirmReceipt() {
               </p>
               <div class="order-brief-ops">
                 <button
-                  v-if="o.status === 'submitted'"
+                  v-if="hasPerm('POST /admin/restock/orders/:id/audit') && o.status === 'submitted'"
                   class="btn mini ghost"
                   @click="openAudit(o)"
                 >
                   审核
                 </button>
                 <template v-else-if="o.status === 'confirmed'">
-                  <button class="btn mini primary" @click="openShip(o)">发货</button>
-                  <button class="btn mini ghost danger-btn" @click="openAudit(o)">
+                  <button v-if="hasPerm('POST /admin/restock/orders/:id/ship') && hasPerm('GET /admin/restock/orders/:id')" class="btn mini primary" @click="openShip(o)">发货</button>
+                  <button v-if="hasPerm('POST /admin/restock/orders/:id/audit')" class="btn mini ghost danger-btn" @click="openAudit(o)">
                     撤销确认
                   </button>
                 </template>
                 <button
-                  v-else-if="o.status === 'shipped' || o.status === 'received'"
+                  v-else-if="hasPerm('GET /admin/restock/orders/:id/shipment') && (o.status === 'shipped' || o.status === 'received')"
                   class="btn mini ghost"
                   @click="openShipment(o.id)"
                 >
@@ -897,15 +898,15 @@ async function confirmReceipt() {
         <div v-if="editable" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">取消</button>
           <button class="btn ghost" @click="saveMyOrder(false)">保存草稿</button>
-          <button class="btn primary" @click="saveMyOrder(true)">提交审核</button>
+          <button v-if="hasPerm('POST /admin/restock/batches/:batchId/order/submit')" class="btn primary" @click="saveMyOrder(true)">提交审核</button>
         </div>
         <div v-else-if="myOrder?.status === 'submitted'" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
-          <button class="btn danger-btn" @click="withdrawMyOrder">撤回订货单</button>
+          <button v-if="hasPerm('POST /admin/restock/batches/:batchId/order/withdraw')" class="btn danger-btn" @click="withdrawMyOrder">撤回订货单</button>
         </div>
         <div v-else-if="myOrder?.status === 'shipped'" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
-          <button class="btn primary" :disabled="receiptBusy" @click="confirmReceipt">
+          <button v-if="hasPerm('POST /admin/restock/orders/:id/receipt')" class="btn primary" :disabled="receiptBusy" @click="confirmReceipt">
             {{ receiptBusy ? "入账中…" : "确认到货入账" }}
           </button>
         </div>

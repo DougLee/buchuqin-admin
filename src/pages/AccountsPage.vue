@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
-import { canWrite, type RbacMe } from "../session";
+import { isSuper, type RbacMe } from "../session";
 import type {
   AccountGrant,
   AdminAccount,
@@ -40,8 +40,8 @@ const campusOptions = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 async function ensureOptions() {
   try {
     const [roles, campuses] = await Promise.all([
-      api.rbacRoles(),
-      api.campuses(),
+      isSuper.value ? api.rbacRoles() : Promise.resolve([]),
+      api.adminCampuses("filter"),
     ]);
     roleOptions.value = roles;
     campusOptions.value = campuses;
@@ -111,7 +111,7 @@ function goto(p: number | "…") {
 interface GrantDraft {
   roleCode: string;
   scope: "platform" | "campus";
-  campusId: string;
+  campusIds: string[];
 }
 const drawerOpen = ref(false);
 const drawerSaving = ref(false);
@@ -126,14 +126,14 @@ const form = ref({
 const grantDrafts = ref<GrantDraft[]>([]);
 /** 内置超管：不可编辑授权（后端通配全权限），下拉标「内置」 */
 function roleOptionLabel(r: RbacRole): string {
-  return r.builtin && r.code === "super"
+  return r.builtin && r.code === "super-admin"
     ? "超级管理员(内置)"
     : `${r.name}${r.builtin ? "(内置)" : ""}`;
 }
 function openCreate() {
   editingId.value = null;
   form.value = { username: "", password: "", nickname: "", status: "active" };
-  grantDrafts.value = [{ roleCode: "", scope: "campus", campusId: "" }];
+  grantDrafts.value = [{ roleCode: "", scope: "campus", campusIds: [] }];
   drawerError.value = "";
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
@@ -146,17 +146,19 @@ function openEdit(row: AdminAccount) {
     nickname: row.nickname,
     status: row.status,
   };
-  grantDrafts.value = (row.grants ?? []).map((g) => ({
-    roleCode: g.roleCode,
-    scope: g.scope,
-    campusId: g.campusId ?? "",
-  }));
+  const grouped = new Map<string, GrantDraft>();
+  for (const g of row.grants ?? []) {
+    const key = `${g.roleCode}:${g.scope}`;
+    if (!grouped.has(key)) grouped.set(key, { roleCode: g.roleCode, scope: g.scope, campusIds: [] });
+    if (g.campusId) grouped.get(key)!.campusIds.push(g.campusId);
+  }
+  grantDrafts.value = [...grouped.values()];
   drawerError.value = "";
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
 }
 function addGrant() {
-  grantDrafts.value.push({ roleCode: "", scope: "campus", campusId: "" });
+  grantDrafts.value.push({ roleCode: "", scope: "campus", campusIds: [] });
 }
 function removeGrant(i: number) {
   grantDrafts.value.splice(i, 1);
@@ -164,10 +166,11 @@ function removeGrant(i: number) {
 function validateGrants(): string | null {
   const seen = new Set<string>();
   for (const g of grantDrafts.value) {
+    if (g.roleCode === "super-admin" && g.scope !== "platform") return "超级管理员必须使用平台范围";
     if (!g.roleCode) return "有授权行未选择角色";
-    if (g.scope === "campus" && !g.campusId)
+    if (g.scope === "campus" && !g.campusIds.length)
       return `校区范围授权必须选择校区（${roleNameOf(g.roleCode)}）`;
-    const key = `${g.roleCode}:${g.scope}:${g.campusId}`;
+    const key = `${g.roleCode}:${g.scope}`;
     if (seen.has(key)) return "存在重复的授权行";
     seen.add(key);
   }
@@ -188,13 +191,12 @@ async function submitDrawer() {
   }
   const grantError = validateGrants();
   if (grantError) return (drawerError.value = grantError);
-  const grants: AccountGrant[] = grantDrafts.value.map((g) => ({
-    roleCode: g.roleCode,
-    roleName: roleNameOf(g.roleCode),
-    roleStatus: "active",
-    scope: g.scope,
-    campusId: g.scope === "campus" ? g.campusId : null,
-  }));
+  const grants: AccountGrant[] = grantDrafts.value.flatMap(g =>
+    (g.scope === "campus" ? g.campusIds : [null]).map(campusId => ({
+      roleCode: g.roleCode, roleName: roleNameOf(g.roleCode), roleStatus: "active" as const,
+      scope: g.scope, campusId,
+    })),
+  );
   drawerSaving.value = true;
   try {
     if (editingId.value) {
@@ -285,7 +287,7 @@ async function removeRow(row: AdminAccount) {
       </div>
       <div class="head-actions">
         <button
-          v-if="canWrite('accounts')"
+          v-if="isSuper"
           class="btn primary"
           @click="openCreate"
         >
@@ -362,7 +364,7 @@ async function removeRow(row: AdminAccount) {
                 <button class="btn mini ghost" @click="openPreview(row)">
                   预览权限
                 </button>
-                <template v-if="canWrite('accounts')">
+                <template v-if="isSuper">
                   <button class="btn mini primary" @click="openEdit(row)">
                     编辑
                   </button>
@@ -449,14 +451,14 @@ async function removeRow(row: AdminAccount) {
         </div>
         <p class="drawer-sec">角色授权</p>
         <p class="drawer-note">
-          一账号可挂多角色；范围选「校区」须指定归属校区（该角色仅在该校区生效）。
+          一账号可挂多角色；每个角色可选择多个生效校区（按住 Ctrl / Command 多选）。各角色与校区分别生效。
         </p>
         <div
           v-for="(g, i) in grantDrafts"
           :key="i"
           class="grant-row"
         >
-          <select v-model="g.roleCode" aria-label="角色">
+          <select v-model="g.roleCode" aria-label="角色" @change="g.roleCode === 'super-admin' && (g.scope = 'platform')">
             <option value="" disabled>选择角色</option>
             <option
               v-for="r in roleOptions"
@@ -467,16 +469,18 @@ async function removeRow(row: AdminAccount) {
               {{ roleOptionLabel(r) }}
             </option>
           </select>
-          <select v-model="g.scope" aria-label="范围">
+          <select v-model="g.scope" aria-label="范围" :disabled="g.roleCode === 'super-admin'">
             <option value="campus">校区</option>
             <option value="platform">平台（跨校区）</option>
           </select>
           <select
             v-if="g.scope === 'campus'"
-            v-model="g.campusId"
-            aria-label="归属校区"
+            v-model="g.campusIds"
+            multiple
+            size="4"
+            aria-label="生效校区（可多选）"
           >
-            <option value="" disabled>选择校区</option>
+
             <option v-for="c in campusOptions" :key="c.id" :value="c.id">
               {{ c.shortName || c.name }}
             </option>

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc --noEmit && vite build",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "test:rbac-session": "node --test scripts/test-rbac-session.mjs"
   },
   "dependencies": {
     "vue": "^3.5.41",

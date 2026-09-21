@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
  * 会话与权限（RBAC 蛋词体系，2026-09-19，对齐 dancikeji cool-admin）：
  * - 登录与切校区后拉取 GET /admin/rbac/permmenu：
  *   · perms = URL 模式串全集（如 'PATCH /admin/products/:id'，超管 ['*']）；
- *   · menus = 可见菜单树扁平行（只含 type!=2 且 isShow 行）——侧栏/路由显隐的唯一依据；
+ *   · menus = 可见菜单树扁平行（包含隐藏菜单，侧栏按 isShow 筛选）——侧栏/路由显隐的唯一依据；
  * - 按钮显隐不再按权限码（products.write 等），改按 hasPerm(模式串)（超管恒真）；
  * - 保留的静态映射只有「路由/菜单 section → write 模式串」（下方 ROUTE_PERM），
  *   口径与后端各端点登记一一对应；
@@ -21,7 +21,7 @@ export interface SessionUser {
   avatar?: string;
 }
 
-/** permmenu.menus 菜单树扁平行（parentId=父节点 code，根为 null；只含 type!=2 且 isShow 行）。 */
+/** permmenu.menus 菜单树扁平行（parentId=父节点 code，根为 null；包含隐藏菜单，侧栏按 isShow 筛选）。 */
 export interface MeMenu {
   id: string;
   code: string;
@@ -31,6 +31,8 @@ export interface MeMenu {
   type: 0 | 1 | 2;
   path: string;
   viewPath?: string;
+  keepAlive?: boolean;
+  authorized?: boolean;
   icon?: string;
   orderNum?: number;
   isShow?: boolean;
@@ -82,6 +84,8 @@ export const ROUTE_PERM: Record<string, string[]> = {
   "rbac-audit": [],
 
   orders: [
+    "POST /admin/orders/:id/print-receipt",
+    "POST /admin/orders/:id/actions/outbound",
     "POST /admin/orders/:id/status",
     "POST /admin/orders/:id/actions/:action",
   ],
@@ -92,8 +96,8 @@ export const ROUTE_PERM: Record<string, string[]> = {
     "PATCH /admin/categories/:id",
     "DELETE /admin/categories/:id",
   ],
-  inventory: ["POST /admin/inventory/stocktake", "POST /admin/inventory/adjust"],
-  "warehouse-orders": ["POST /admin/orders/:id/actions/outbound"],
+  inventory: ["POST /admin/inventory/stock-in", "POST /admin/inventory/stocktake", "POST /admin/inventory/adjust"],
+  "warehouse-orders": ["POST /admin/orders/:id/actions/outbound", "POST /admin/orders/:id/print-receipt"],
   locations: [
     "POST /admin/locations",
     "PATCH /admin/locations/:id",
@@ -109,15 +113,15 @@ export const ROUTE_PERM: Record<string, string[]> = {
     "POST /admin/recruit-applications/:id/reject",
     "PATCH /admin/recruit-applications/:id",
   ],
-  buildings: ["POST /admin/buildings", "PATCH /admin/buildings/:id"],
-  campuses: ["PATCH /admin/delivery-config", "POST /admin/campuses"],
+  buildings: ["POST /admin/buildings", "PATCH /admin/buildings/:id", "DELETE /admin/buildings/:id", "POST /admin/buildings/:id/rooms", "POST /admin/buildings/:id/rooms/import", "DELETE /admin/buildings/:id/rooms/:roomId"],
+  campuses: ["PATCH /admin/delivery-config", "POST /admin/campuses", "PATCH /admin/campuses/:id"],
   finance: [
     "POST /admin/settlements/:id/confirm",
     "POST /admin/settlements/:id/pay",
   ],
   rules: ["POST /admin/commission-rules", "PATCH /admin/commission-rules/:id"],
-  marketing: ["POST /admin/coupons", "POST /admin/promotions"],
-  banners: ["POST /admin/banners", "PATCH /admin/banners/:id"],
+  marketing: ["POST /admin/coupons", "PATCH /admin/coupons/:id", "DELETE /admin/coupons/:id", "POST /admin/coupons/:id/issue", "POST /admin/promotions", "PATCH /admin/promotions/:id"],
+  banners: ["POST /admin/banners", "PATCH /admin/banners/:id", "DELETE /admin/banners/:id"],
   "pay-ads": [
     "POST /admin/banners",
     "PATCH /admin/banners/:id",
@@ -132,7 +136,7 @@ export const ROUTE_PERM: Record<string, string[]> = {
   promotions: ["POST /admin/promotions", "PATCH /admin/promotions/:id"],
   wheel: ["PUT /admin/wheel"],
   featured: ["PUT /admin/featured"],
-  "wechat-groups": ["POST /admin/wechat-groups"],
+  "wechat-groups": ["POST /admin/wechat-groups", "DELETE /admin/wechat-groups/:id"],
   restock: [
     "POST /admin/restock/batches",
     "PUT /admin/restock/batches/:batchId/order",
@@ -143,8 +147,8 @@ export const ROUTE_PERM: Record<string, string[]> = {
   ],
   accounts: ["POST /admin/accounts", "PATCH /admin/accounts/:id"],
   "rbac-roles": ["POST /admin/rbac/roles", "PATCH /admin/rbac/roles/:id"],
-  printers: ["POST /admin/printers"],
-  dispatch: ["POST /admin/dispatch-invitations"],
+  printers: ["POST /admin/printers", "DELETE /admin/printers/:id", "POST /admin/printers/:id/test-print"],
+  dispatch: ["POST /admin/dispatch-invitations", "POST /admin/dispatch-invitations/:id/cancel"],
 };
 
 function readUser(): SessionUser | null {
@@ -176,11 +180,28 @@ export const rbacRoles = ref<RbacMe["roles"]>([]);
 export const switchableCampuses = ref<string[]>([]);
 export const rbacVersion = ref(0);
 export const rbacLoaded = ref(false);
+export const authorizationEpoch = ref(0);
+let sessionGeneration = 0;
+let authorizationRequest = 0;
+let authorizationSignature = "";
 
-/** 按钮显隐：模式串精确命中（perms.includes 语义）；超管恒真。 */
+export function getSessionGeneration(): number {
+  return sessionGeneration;
+}
+
+/** 与服务端相同：HTTP 方法一致、参数匹配单段、尾斜杠归一。 */
 export function hasPerm(pattern: string): boolean {
   if (isSuper.value) return true;
-  return patterns.value.has(pattern);
+  const separator = pattern.indexOf(" ");
+  if (separator < 0) return false;
+  const method = pattern.slice(0, separator);
+  const path = pattern.slice(separator + 1).replace(/\/+$/, "").split("/");
+  return [...patterns.value].some(grant => {
+    const split = grant.indexOf(" ");
+    if (split < 0 || grant.slice(0, split) !== method) return false;
+    const parts = grant.slice(split + 1).replace(/\/+$/, "").split("/");
+    return parts.length === path.length && parts.every((part, i) => part.startsWith(":") || part === path[i]);
+  });
 }
 
 /** 路由/菜单 section 归一：'/'→dashboard，去头斜杠。 */
@@ -199,8 +220,14 @@ export function canSee(section: string): boolean {
   const key = menuKeyOf(section);
   const path = `/${key}`;
   return menuTree.value.some(
-    (m) => m.type === 1 && (m.code === key || m.path === path),
+    (m) => m.type === 1 && m.authorized !== false && (m.code === key || m.path === path || m.viewPath === key),
   );
+}
+
+/** Resolve navigation from authorized database configuration, including moved/hidden routes. */
+export function menuPath(section: string): string | undefined {
+  return menuTree.value.find(m => m.type === 1 && m.authorized !== false &&
+    (m.viewPath === section || m.code === section))?.path || undefined;
 }
 
 /** 写能力：section → write 模式串 any-of 命中（空数组=只读，恒 false）。 */
@@ -212,12 +239,19 @@ export function canWrite(section: string): boolean {
 
 /** 登录成功后落地基础会话（权限随后 loadRbac 拉取）。 */
 export function applySession(user: SessionUser) {
+  sessionGeneration++;
   sessionUser.value = user;
   localStorage.setItem("adminUser", JSON.stringify(user));
 }
 
 /** 应用 /admin/rbac/permmenu 结果（登录/切校区/权限变更后调用）。 */
 export function applyRbac(me: RbacMe) {
+  const signature = JSON.stringify([me.account.id, me.contextCampusId, me.perms, me.menus, me.super]);
+  if (signature !== authorizationSignature) {
+    authorizationSignature = signature;
+    authorizationEpoch.value++;
+  }
+
   patterns.value = new Set(me.perms ?? []);
   menuTree.value = Array.isArray(me.menus) ? me.menus : [];
   isSuper.value = me.super;
@@ -233,28 +267,22 @@ export function applyRbac(me: RbacMe) {
   }
 }
 
-/** 启动时从缓存恢复（避免刷新后菜单闪变；请求前仍会重新校验）。 */
-function readCachedRbac() {
-  try {
-    const raw = localStorage.getItem("adminRbac");
-    if (!raw) return;
-    const cached = JSON.parse(raw) as RbacMe;
-    // 旧两层模型缓存（permissions/menus:string[]）不兼容——丢弃等登录重拉
-    if (!Array.isArray(cached.perms)) return;
-    applyRbac(cached);
-  } catch {
-    /* 无效缓存忽略 */
-  }
-}
-readCachedRbac();
-
 /** 拉取有效授权（登录/切校区后调用）。失败=拒绝一切（默认拒绝，不回退宽松）。 */
 export async function loadRbac(): Promise<boolean> {
-  const { api } = await import("./api");
+  const generation = sessionGeneration;
+  const request = ++authorizationRequest;
   try {
-    applyRbac(await api.rbacPermmenu());
+    const { api } = await import("./api");
+    if (generation !== sessionGeneration) return false;
+    const me = await api.rbacPermmenu();
+    if (request !== authorizationRequest) return rbacLoaded.value;
+    if (generation !== sessionGeneration || me.account.id !== sessionUser.value?.id) return false;
+    applyRbac(me);
     return true;
   } catch {
+    if (request !== authorizationRequest) return rbacLoaded.value;
+    if (generation !== sessionGeneration) return false;
+    authorizationEpoch.value++;
     patterns.value = new Set();
     menuTree.value = [];
     isSuper.value = false;
@@ -265,6 +293,9 @@ export async function loadRbac(): Promise<boolean> {
 }
 
 export function clearSession() {
+  sessionGeneration++;
+  authorizationEpoch.value++;
+  authorizationSignature = "";
   sessionUser.value = null;
   patterns.value = new Set();
   menuTree.value = [];

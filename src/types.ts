@@ -493,6 +493,7 @@ export interface RbacMenuRow {
   type: 0 | 1 | 2;
   path?: string;
   viewPath?: string;
+  keepAlive?: boolean;
   icon?: string;
   /** 按钮行绑定的 URL 模式串（如 'PATCH /admin/products/:id'）。 */
   perms?: string[];
@@ -1127,6 +1128,6 @@ export interface PurchaseOrderDetail {
 /** 批次详情毛利聚合（IQ8）：批发价合计−全部采购单已收金额 */
 export interface BatchMarginSummary {
   wholesaleTotal: number;
-  purchaseReceivedTotal: number;
-  grossEstimate: number;
+  purchaseReceivedTotal?: number;
+  grossEstimate?: number;
 }

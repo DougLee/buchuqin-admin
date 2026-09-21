@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowReactive, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, downloadRoomTemplate, fetchAllPages } from "../api";
 import IdCardImagesField from "../components/IdCardImagesField.vue";
@@ -53,8 +53,18 @@ import type {
   WheelPrizeInput,
   WheelRow,
 } from "../types";
-const route = useRoute(),
-  rows = ref<AdminRow[]>([]),
+// Each cached dynamic route owns its filters. A deactivated page must not follow
+// another page's global route and issue requests or reset its cached state.
+const liveRoute = useRoute();
+const pagePath = liveRoute.path;
+const route = shallowReactive({ meta: liveRoute.meta, params: liveRoute.params, query: liveRoute.query });
+watch(() => liveRoute.fullPath, () => {
+  if (liveRoute.path !== pagePath) return;
+  route.meta = liveRoute.meta;
+  route.params = liveRoute.params;
+  route.query = liveRoute.query;
+});
+const rows = ref<AdminRow[]>([]),
   loading = ref(true),
   loadError = ref(""),
   keyword = ref(""),
@@ -156,6 +166,8 @@ interface FieldDef {
   hint?: (data: Record<string, FormValue>) => string | undefined;
   /** 商品选择器候选源（IKGNQ 三轮）：如促销只用本校区在售商品；缺省全量缓存 */
   ppItems?: () => Product[];
+  /** 选品行补显进货价（IKH15V）：定促销价对照毛利用；其余选择器场景缺省不显示 */
+  ppShowCost?: boolean;
   /** COS 目录（IK9VBI）：app=小程序素材（Banner 背景）；缺省 uploads/。 */
   folder?: string;
 }
@@ -1375,7 +1387,9 @@ async function ensureProducts() {
     // IKCHEW 追修：促销选品/库存入库/盘点都是校区上下文操作，固定本校区口径——
     // admin 裸调 /admin/products 现默认官方库，选品错位会导致后端按本校区校验必败
     productsCache.value = await fetchAllPages((query) =>
-      api.products({ ...query, campusId: campus || undefined }, "campus"),
+      section.value === "inventory"
+        ? api.inventory({ ...query, campusId: campus || undefined })
+        : api.products({ ...query, campusId: campus || undefined }, "campus"),
     );
     productsCacheCampus.value = campus;
   }
@@ -1408,9 +1422,9 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   // IKFOQ1 采购申请退役（grilling #1）：补货统一走 订货批次→采购单→验收，
   // 「采购入库」恢复全角色直入；采购单在独立「采购管理」菜单
   ppLoading.value = true;
-  void ensureProducts().finally(() => {
-    ppLoading.value = false;
-  });
+  void ensureProducts()
+    .catch(error => notify(error instanceof Error ? error.message : "商品加载失败", true))
+    .finally(() => { ppLoading.value = false; });
   const isStockIn = kind === "stock-in";
   openForm(
     {
@@ -2190,6 +2204,8 @@ function openPromotionCreate() {
           type: "product-picker",
           wide: true,
           ppItems: () => onSaleProductsCache.value,
+          // IKH15V：定促销价时对照进货价（毛利）——口径定版=批发价格（道哥 2026-09-19）
+          ppShowCost: true,
         },
         {
           key: "type",
@@ -2507,6 +2523,10 @@ const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
  *  → isSuper||isPlatform；isHqView 恒等于官方库视角。 */
 const isHqRole = computed(() => isPlatform.value);
 const isPlatformAdmin = computed(() => isSuper.value || isPlatform.value);
+function cols(config: { columns: [string, string][] }): [string, string][] {
+  const list = config.columns.filter((c) => c[0] !== "contactText"); // 详情专用列不进列表
+  return isPlatformAdmin.value ? list : list.filter((c) => c[0] !== "costPrice");
+}
 /** IKCHEW：官方库视角 UI——平台账号随商品视角切换；校区账号恒假。
  *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
 const isHqView = computed(() => productView.value === "official");
@@ -2523,7 +2543,7 @@ watch([categoryFilter, staffRoleFilter, orderDeliveryFilter], () =>
 );
 async function ensureCampusOptions() {
   if (!campusOptionsData.value.length)
-    campusOptionsData.value = await api.campuses();
+    campusOptionsData.value = await api.adminCampuses("filter");
   return campusOptionsData.value;
 }
 /** 平台视角选了校区就透传 campus 参数（IKCHEW：admin 同 hq 跨校区筛选） */
@@ -2850,9 +2870,12 @@ const ORDER_STATUS_TABS: StatusTab[] = [
   { key: "completed", label: "已完成", statuses: ["completed"] },
   {
     key: "closed",
-    label: "取消/退款/异常",
-    statuses: ["cancelled", "refunded", "exception"],
+    label: "取消/退款",
+    statuses: ["cancelled", "refunded"],
   },
+  /* 异常独立成桶：工作台「待处理异常」直达定位（?status=exception），
+     混在取消/退款里按时间倒序翻不到 */
+  { key: "exception", label: "异常", statuses: ["exception"] },
 ];
 /* IKB3K9：商品状态 Tab（口径含售罄映射——在售但库存 0 = 售罄）。 */
 const PRODUCT_STATUS_TABS: StatusTab[] = [
@@ -3006,11 +3029,26 @@ const configs: Record<string, SectionConfig> = {
               .filter(Boolean)
               .join("");
             const userMain = o.userPhone || user?.nickname?.trim() || "";
+            // 2026-09-19 道哥定版：详情收货人一行=姓名+明文电话+楼栋房号
+            //（脱敏手机号不再显示，下单账号标识从详情移除——列表口径不变）
+            const contactMain =
+              [address?.contactName, address?.phone].filter(Boolean).join(" / ");
+            const contactText =
+              contactMain
+                ? building
+                  ? `${contactMain}（${building}）`
+                  : contactMain
+                : "—";
             return {
               ...o,
               // IKBW0C：商品逐行（多商品每行一个），不再「前 2 个+等」平铺
               itemsText: names.length ? names.join("\n") : "—",
+              // 2026-09-19 道哥：列表商品列单行摘要（首商品+等N件），悬停 title 显全部
+              itemsBrief: names.length
+                ? names[0] + (names.length > 1 ? ` 等${names.length}件` : "")
+                : "—",
               userText: [userMain, building].filter(Boolean).join("\n") || "—",
+              contactText,
               // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
               slaText:
                 o.deliveryMode === "instant" ? "立即配送" : "2小时送达",
@@ -3024,6 +3062,7 @@ const configs: Record<string, SectionConfig> = {
       ["orderNo", "订单编号"],
       ["itemsText", "商品"],
       ["userText", "用户"],
+      ["contactText", "收货人"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
       // IKFTZ9：毛利列（合计口径同详情，缺成本显示 —）
@@ -3038,10 +3077,12 @@ const configs: Record<string, SectionConfig> = {
       "orderNo",
       "statusText",
       "slaText",
-      "userText",
+      "contactText",
       "payableAmount",
       "createdAt",
     ],
+    // 2026-09-21 道哥：详情去「商品」卡——毛利详情已含逐商品+数量（渲染处
+    // 过滤防 detailCols rest 追加回显，同 userText 手法）
   },
   users: usersConfig,
   "wechat-groups": wechatGroupsConfig,
@@ -3087,7 +3128,8 @@ const configs: Record<string, SectionConfig> = {
       ["name", "商品"],
       ["categoryId", "分类"],
       ["price", "售价"],
-      // IKC1AC：校区可见批发价快照与建议零售价，不见进货价
+      // IKC1AC：校区可见批发价快照与建议零售价。进货价口径定版=批发价格
+      // （2026-09-19 道哥定版：定促销毛利基准），促销弹窗「进货¥」与该列同源同数
       ["wholesalePrice", "批发价格"],
       ["originalPrice", "建议零售价"],
       ["availableStock", "可售库存"],
@@ -3540,7 +3582,7 @@ const promotionConfig: SectionConfig = {
       PROMOTION_STATE_TABS.find((t) => t.key === statusFilter.value) ??
       PROMOTION_STATE_TABS[0];
     return api
-      .promotions(query, tab.statuses.length ? tab.key : undefined)
+      .promotions(categoryFilter.value ? { ...query, categoryId: categoryFilter.value } : query, tab.statuses.length ? tab.key : undefined)
       .then((res) => ({
         rows: res.items.map((p) => ({
           ...p,
@@ -3590,7 +3632,8 @@ const createLabels: Record<string, string> = {
   // IKAJSY：群码上传（users 为只读板块，无新建入口）
   "wechat-groups": "＋ 上传群码",
 };
-const section = computed(() => String(route.params.section)),
+const createPermissions: Record<string, string> = {"categories": "POST /admin/categories", "locations": "POST /admin/locations", "coupons": "POST /admin/coupons", "banners": "POST /admin/banners", "promotions": "POST /admin/promotions", "pay-ads": "POST /admin/banners", "campuses": "POST /admin/campuses", "buildings": "POST /admin/buildings", "staff": "POST /admin/staff", "dispatch": "POST /admin/dispatch-invitations", "rules": "POST /admin/commission-rules", "printers": "POST /admin/printers", "wechat-groups": "POST /admin/wechat-groups"};
+const section = computed(() => String(route.meta.section ?? route.params.section)),
   config = computed<SectionConfig>(() => {
     if (section.value === "dispatch")
       return dispTab.value === "leaves"
@@ -3619,7 +3662,11 @@ const section = computed(() => String(route.params.section)),
   canWriteSection = computed(() => canWrite(section.value)),
   /** 改价权限（RBAC 蛋词）：价格字段独立端点 PATCH /admin/products/:id/price，
    *  无权限时价格输入只读（主资料仍可编辑提交）。 */
-  canEditPrice = computed(() => hasPerm("PATCH /admin/products/:id/price")),
+  canEditProductStock = computed(() => hasPerm("POST /admin/inventory/stocktake")),
+  canEditProductDetails = computed(() => hasPerm("PATCH /admin/products/:id")),
+  canEditPrice = computed(() => hasPerm("PATCH /admin/products/:id/price") || (isHqView.value && canEditProductDetails.value)),
+  canEditProduct = computed(() => canEditProductDetails.value || canEditPrice.value),
+  canEditProductStatus = computed(() => hasPerm("POST /admin/products/batch-status")),
   /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
   createLabel = computed(() => {
     if (section.value === "marketing") {
@@ -3641,7 +3688,10 @@ const section = computed(() => String(route.params.section)),
   canCreate = computed(
     () =>
       Boolean(createLabel.value) &&
-      canWriteSection.value &&
+      (isProductsSection.value
+        ? hasPerm(section.value === 'official-products' && isHqView.value ? 'POST /admin/products' : 'POST /admin/products/import')
+        : hasPerm(createPermissions[section.value === 'marketing'
+          ? (mktTab.value === 'promotions' ? 'promotions' : 'coupons') : section.value] ?? '')) &&
       // IKC1AF：打印机编辑页形态——已有绑定时不再提供「再绑一台」入口
       (section.value !== "printers" || !rows.value.length),
   ),
@@ -3787,6 +3837,7 @@ async function load() {
  */
 const categories = ref<Category[]>([]);
 async function loadCategories() {
+  if (!hasPerm("GET /admin/categories")) return;
   try {
     categories.value = await api.adminCategories();
     // 商品表单/编辑里 categoryId 若已不在字典（历史数据），归一到第一项避免空选
@@ -3802,7 +3853,7 @@ watch(
   (s) => {
     // IKD6FG：分类筛选覆盖官方商品库/商品管理/库存，进页时备好类别字典；
     // 切板块重置三个筛选 ref，防跨板块选项串入（IKB5PA 同教训）
-    if (["products", "official-products", "inventory", "categories"].includes(s))
+    if (["products", "official-products", "inventory", "categories", "promotions"].includes(s))
       void loadCategories();
     // 库位字典（IKA0VG）：商品表单/库位管理共用
     if (s === "products" || s === "locations") void ensureLocations();
@@ -3822,6 +3873,7 @@ interface LocationItem {
 }
 const locationsCache = ref<LocationItem[]>([]);
 async function ensureLocations(): Promise<LocationItem[]> {
+  if (!hasPerm("GET /admin/locations")) return [];
   try {
     locationsCache.value = await api.adminLocations();
   } catch {
@@ -4027,6 +4079,15 @@ watch(
   () => route.query.q,
   (value) => {
     keyword.value = String(value ?? "");
+  },
+  { immediate: true },
+);
+/* 工作台「待处理异常 → 立即处理」直达：?status=exception 激活异常 Tab */
+watch(
+  () => route.query.status,
+  (value) => {
+    if (value === "exception" && (route.meta.section ?? route.params.section) === "orders")
+      statusFilter.value = "exception";
   },
   { immediate: true },
 );
@@ -4333,15 +4394,13 @@ async function act(action: string) {
       }
       const price = yuanToFen(productEdit.value.price);
       if (price !== record.price) priceBody.price = price;
-      if (Object.keys(priceBody).length) {
-        if (!canEditPrice.value) throw new Error("无改价权限，价格字段未保存");
-        await api.updateProductPrice(
-          selected.value.id,
-          priceBody,
-          productView.value,
-        );
-      }
-      await api.updateProduct(selected.value.id, {
+      if (Object.keys(priceBody).length && !canEditPrice.value)
+        throw new Error("无改价权限，价格字段未保存");
+      if (!canEditProductDetails.value) {
+        if (Object.keys(priceBody).length)
+          await api.updateProductPrice(selected.value.id, priceBody, productView.value);
+      } else await api.updateProduct(selected.value.id, {
+        ...priceBody,
         // 资料字段（IKAHAT）：副标题/标签可清空，重量/分类有值才提交
         name: productEdit.value.name.trim(),
         subtitle: productEdit.value.subtitle.trim(),
@@ -4361,10 +4420,13 @@ async function act(action: string) {
           ? { categoryId: productEdit.value.categoryId }
           : {}),
         // IKC1AB：上下架（hq 官方库放行/回收、校区自管本地上架）
-        status: productEdit.value.status,
+        ...(canEditProductStatus.value && productEdit.value.status !== record.status
+          ? { status: productEdit.value.status } : {}),
         // IKC1AB 修缺陷：官方库回填的 stock 是恒 0 的 availableStock，
         // 无条件提交会把官方行库存静默写 0——与库位同口径按视角排除
-        ...(isHqView.value ? {} : { stock: Number(productEdit.value.stock) }),
+        ...( !isHqView.value && canEditProductStock.value &&
+          Number(productEdit.value.stock) !== Number(record.availableStock ?? record.stock ?? 0)
+          ? { stock: Number(productEdit.value.stock) } : {}),
         // 头图仅在填了 URL 时提交（DTO 校验 http(s)，空串跳过 = 保持原图）
         ...(productEdit.value.image.trim()
           ? { image: productEdit.value.image.trim() }
@@ -4850,30 +4912,25 @@ const pickingItems = computed(() => {
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
   const items = order?.items;
   if (!order || !items?.length) return null;
-  const productAmount = Number(order.productAmount ?? 0);
-  const payable = Number(order.payableAmount ?? 0);
-  const deliveryFee = Number(order.deliveryFee ?? 0);
-  // 优惠券按行金额比例分摊（运费不计入商品收入）；无优惠时系数为 1
-  const factor =
-    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   let total = 0;
   for (const line of items) {
-    const cost = line.product?.unitPurchaseCost ?? line.product?.currentUnitPurchaseCost;
+    // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——
+    // 目录价差口径（优惠券属营销费用不摊进行）；无快照历史单显示 —
+    const cost = line.product?.unitWholesaleCost;
     if (cost == null) return null;
     const price = line.product?.price ?? 0;
-    total += Math.round(price * line.quantity * factor) - cost * line.quantity;
+    total += (price - cost) * line.quantity;
   }
   return total;
 }
 /** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转）。
- *  IKFTK7 第三轮：成本口径 = 进货价（快照 unitPurchaseCost 优先，历史单估算兜底） */
+ *  IKFTK7 第三轮 + 2026-09-20 定版：成本口径 = 批发价快照 unitWholesaleCost */
 interface MarginSource {
   items?: Array<{
     quantity: number;
     product?: {
       price?: number;
-      unitPurchaseCost?: number;
-      currentUnitPurchaseCost?: number;
+      unitWholesaleCost?: number;
     };
   }> | null;
   productAmount?: unknown;
@@ -4883,33 +4940,18 @@ interface MarginSource {
 const orderMarginItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "orders" || !order?.items) return [];
-  // IKFTK7 第二轮（道哥口径）：毛利 = 用户实付 − 成本。优惠券按行金额比例
-  // 分摊到行（运费不计入商品收入）；无优惠时系数为 1，退化为售价口径
-  const orderRec = order as unknown as Record<string, unknown>;
-  const productAmount = Number(orderRec.productAmount ?? 0);
-  const payable = Number(orderRec.payableAmount ?? 0);
-  const deliveryFee = Number(orderRec.deliveryFee ?? 0);
-  const factor =
-    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
+  // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——目录价差
+  // 口径，优惠券属营销费用不摊进行；无快照历史单显示 —（不做估算）
   return order.items.map((line) => {
-    // 快照优先（精确）；快照前历史单回落当前进货价（标注「估算」）
-    const snapshot = line.product?.unitPurchaseCost;
-    const cost = snapshot ?? line.product?.currentUnitPurchaseCost;
-    const estimated = snapshot == null && cost != null;
+    const cost = line.product?.unitWholesaleCost;
     const price = line.product?.price ?? 0;
-    // 行实收（分，四舍五入）＝售价×数量×实收系数
-    const netFen = Math.round(price * line.quantity * factor);
-    const marginFen = cost == null ? null : netFen - cost * line.quantity;
+    const marginFen = cost == null ? null : (price - cost) * line.quantity;
     return {
       name: line.product?.name ?? "未知商品",
       quantity: line.quantity,
       priceText: `¥${fenToYuan(price)}`,
-      marginText:
-        marginFen == null
-          ? "—"
-          : `¥${fenToYuan(marginFen)}${estimated ? "（估算）" : ""}`,
+      marginText: marginFen == null ? "—" : `¥${fenToYuan(marginFen)}`,
       hasMargin: cost != null,
-      estimated,
     };
   });
 });
@@ -5080,13 +5122,18 @@ const statusDialogOpen = ref(false),
   statusDialogValue = ref("paid"),
   statusDialogReason = ref(""),
   statusDialogSaving = ref(false);
-function openStatusDialog(row: AdminRow) {
+function openStatusDialog(row: AdminRow, target?: string) {
   const record = row as unknown as Record<string, unknown>;
   statusDialogRow.value = row;
-  statusDialogValue.value = String(record.status ?? "paid");
+  statusDialogValue.value = target ?? String(record.status ?? "paid");
   statusDialogReason.value = "";
   statusDialogOpen.value = true;
 }
+const statusDialogPlaceholder = computed(() => {
+  if (statusDialogValue.value === "exception") return "例如：用户反馈未收到货 / 客服兜底处理";
+  if (statusDialogValue.value === "cancelled") return "例如：误标异常，已人工核实处理";
+  return "例如：客服兜底改状态";
+});
 async function submitStatusDialog() {
   if (!statusDialogRow.value || statusDialogSaving.value) return;
   statusDialogSaving.value = true;
@@ -5195,7 +5242,7 @@ async function togglePromotionRow(row: AdminRow) {
 async function toggleProductStatusRow(row: Product) {
   const next = row.status === "on-sale" ? "off-sale" : "on-sale";
   try {
-    await api.updateProduct(row.id, { status: next }, productView.value);
+    await api.batchUpdateProductStatus([row.id], next, productView.value);
     await rowDone(next === "on-sale" ? "商品已上架" : "商品已下架");
   } catch (error) {
     notify(error instanceof Error ? error.message : "操作失败", true);
@@ -5206,7 +5253,7 @@ async function toggleProductStatusRow(row: Product) {
 const selectedProductIds = ref<string[]>([]);
 const batchWorking = ref(false);
 const productSelectable = computed(
-  () => isProductsSection.value && canWriteSection.value,
+  () => isProductsSection.value && canEditProductStatus.value,
 );
 const allPageChecked = computed(
   () =>
@@ -5369,7 +5416,7 @@ async function cancelInviteRow(row: AdminRow) {
         </button>
         <!-- IKB3K9：校区商品双入口——手动自建与官方库导入并存 -->
         <button
-          v-if="section === 'products' && !isHqView && canWriteSection"
+          v-if="section === 'products' && !isHqView && hasPerm('POST /admin/products')"
           class="btn ghost"
           @click="openProductCreate"
         >
@@ -5464,7 +5511,7 @@ async function cancelInviteRow(row: AdminRow) {
       <div
         v-if="
           ['products', 'official-products'].includes(section) ||
-          section === 'inventory'
+          section === 'inventory' || section === 'promotions'
         "
         class="category-combobox"
       >
@@ -5558,7 +5605,7 @@ async function cancelInviteRow(row: AdminRow) {
         class="filter-btn"
         aria-label="校区筛选"
       >
-        <option value="">全校区</option>
+        <option value="">{{ section === "inventory" ? "当前校区" : "全校区" }}</option>
         <option v-for="c in campusOptionsData" :key="c.id" :value="c.id">
           {{ c.shortName || c.name }}
         </option>
@@ -5586,10 +5633,10 @@ async function cancelInviteRow(row: AdminRow) {
       <template
         v-if="section === 'inventory' && canWrite('inventory')"
       >
-        <button class="btn primary" @click="openStockForm('stock-in')">
+        <button v-if="hasPerm('POST /admin/inventory/stock-in')" class="btn primary" @click="openStockForm('stock-in')">
           采购入库
         </button>
-        <button class="btn ghost" @click="openStockForm('stocktake')">
+        <button v-if="canEditProductStock" class="btn ghost" @click="openStockForm('stocktake')">
           盘点
         </button>
       </template>
@@ -5640,7 +5687,7 @@ async function cancelInviteRow(row: AdminRow) {
             本校区还未绑定小票打印机。绑定后支付成功自动出票，订单抽屉可补打。
           </p>
           <button
-            v-if="canWriteSection"
+            v-if="(canWriteSection) && hasPerm('POST /admin/printers')"
             class="btn primary"
             @click="openPrinterBind()"
           >
@@ -5694,19 +5741,19 @@ async function cancelInviteRow(row: AdminRow) {
             与校区为一对一绑定（一校区一台）；多校区账号请用顶栏切换后分别管理。
           </p>
           <div v-if="canWriteSection" class="printer-view__actions">
-            <button
+            <button v-if="hasPerm('POST /admin/printers/:id/test-print')"
               class="btn primary"
               @click="testPrintRow(filtered[0] as Printer)"
             >
               测试打印
             </button>
-            <button
+            <button v-if="hasPerm('POST /admin/printers')"
               class="btn ghost"
               @click="openPrinterBind(filtered[0] as Printer)"
             >
               换绑 / 改名
             </button>
-            <button
+            <button v-if="hasPerm('DELETE /admin/printers/:id')"
               class="btn danger-btn"
               @click="unbindPrinterRow(filtered[0] as Printer)"
             >
@@ -5794,7 +5841,7 @@ async function cancelInviteRow(row: AdminRow) {
                   @change="toggleAllProductChecks"
                 />
               </th>
-              <th v-for="col in config.columns" :key="col[0]">{{ col[1] }}</th>
+              <th v-for="col in cols(config)" :key="col[0]">{{ col[1] }}</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -5819,7 +5866,7 @@ async function cancelInviteRow(row: AdminRow) {
                     @change="toggleProductCheck(row.id, $event)"
                   />
                 </td>
-                <td v-for="col in config.columns" :key="col[0]">
+                <td v-for="col in cols(config)" :key="col[0]">
                   <span
                     v-if="col[0] === 'typeText' && section === 'wheel'"
                     class="wheel-type"
@@ -5877,18 +5924,17 @@ async function cancelInviteRow(row: AdminRow) {
                       (section === 'orders' || section === 'warehouse-orders')
                     "
                     class="order-no"
-                    ><span>{{
-                      String(display(row, "orderNo")).slice(0, -8)
-                    }}</span
-                    ><span class="order-no__tail">{{
+                    :title="String(display(row, 'orderNo'))"
+                    >…<span class="order-no__tail">{{
                       String(display(row, "orderNo")).slice(-8)
                     }}</span></strong
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
-                  ><!-- IKBW0C/D：商品列多商品每行一个 --><span
+                  ><!-- 2026-09-19 道哥：商品列单行摘要+悬停全部（IKBW0C/D 多行版退役） --><span
                     v-else-if="col[0] === 'itemsText'"
-                    class="cell-lines"
-                    >{{ display(row, col[0]) }}</span
+                    class="cell-ellipsis"
+                    :title="String(display(row, 'itemsText')).split('\n').join('、')"
+                    >{{ display(row, "itemsBrief") }}</span
                   ><!-- 订单用户列：主行手机号（tabular-nums 对读），次行楼栋房号 --><span
                     v-else-if="col[0] === 'userText'"
                     class="user-cell"
@@ -5922,14 +5968,17 @@ async function cancelInviteRow(row: AdminRow) {
                     "
                   >
                     <button
-                      v-if="['paid', 'picking'].includes(rowStatusOf(row))"
+                      v-if="(['paid', 'picking'].includes(rowStatusOf(row))) && hasPerm('POST /admin/orders/:id/actions/outbound')"
                       class="btn mini primary"
                       @click="outboundRow(row)"
                     >
                       出库
                     </button>
                     <button
-                      v-if="section === 'orders'"
+                      v-if="section === 'orders' && rowStatusOf(row) === 'exception' && hasPerm('POST /admin/orders/:id/status')"
+                      class="btn mini primary" @click="openStatusDialog(row, 'cancelled')">解除异常</button>
+                    <button
+                      v-if="(section === 'orders') && hasPerm('POST /admin/orders/:id/status')"
                       class="btn mini ghost"
                       @click="openStatusDialog(row)"
                     >
@@ -5937,7 +5986,7 @@ async function cancelInviteRow(row: AdminRow) {
                     </button>
                     <!-- IKCJ3M：补打小票行内直达（缺纸/卡纸兜底高频） -->
                     <button
-                      v-if="section === 'orders'"
+                      v-if="(section === 'orders') && hasPerm('POST /admin/orders/:id/print-receipt')"
                       class="btn mini ghost"
                       @click="reprintReceiptRow(row)"
                     >
@@ -5951,16 +6000,16 @@ async function cancelInviteRow(row: AdminRow) {
                       canWriteSection
                     "
                   >
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/banners/:id')"
                       class="btn mini primary"
                       @click="openBannerEdit(row)"
                     >
                       编辑
                     </button>
-                    <button class="btn mini ghost" @click="toggleBannerRow(row)">
+                    <button v-if="hasPerm('PATCH /admin/banners/:id')" class="btn mini ghost" @click="toggleBannerRow(row)">
                       {{ (row as Banner).status === "hidden" ? "启用" : "隐藏" }}
                     </button>
-                    <button
+                    <button v-if="hasPerm('DELETE /admin/banners/:id')"
                       class="btn mini danger-btn"
                       @click="removeBannerInline(row)"
                     >
@@ -5972,10 +6021,11 @@ async function cancelInviteRow(row: AdminRow) {
                     v-else-if="
                       (section === 'products' ||
                         section === 'official-products') &&
-                      canWriteSection
+                      (canEditProductStatus || hasPerm('POST /admin/products/:id/pull-upstream'))
                     "
                   >
                     <button
+                      v-if="canEditProductStatus"
                       class="btn mini ghost"
                       @click="toggleProductStatusRow(row as Product)"
                     >
@@ -5983,7 +6033,7 @@ async function cancelInviteRow(row: AdminRow) {
                     </button>
                     <button
                       v-if="
-                        !isHqView && (row as Product).upstreamChanged
+                        !isHqView && hasPerm('POST /admin/products/:id/pull-upstream') && (row as Product).upstreamChanged
                       "
                       class="btn mini primary"
                       @click="pullUpstreamRow(row)"
@@ -5997,12 +6047,14 @@ async function cancelInviteRow(row: AdminRow) {
                     v-else-if="section === 'inventory' && canWriteSection"
                   >
                     <button
+                      v-if="hasPerm('POST /admin/inventory/stock-in')"
                       class="btn mini primary"
                       @click="openStockForm('stock-in', (row as Product).id)"
                     >
                       入库
                     </button>
                     <button
+                      v-if="canEditProductStock"
                       class="btn mini ghost"
                       @click="openStockForm('stocktake', (row as Product).id)"
                     >
@@ -6017,13 +6069,13 @@ async function cancelInviteRow(row: AdminRow) {
                       canWriteSection
                     "
                   >
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/promotions/:id')"
                       class="btn mini primary"
                       @click="openPromotionEdit(row)"
                     >
                       编辑
                     </button>
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/promotions/:id')"
                       class="btn mini ghost"
                       @click="togglePromotionRow(row)"
                     >
@@ -6042,7 +6094,7 @@ async function cancelInviteRow(row: AdminRow) {
                       canWriteSection
                     "
                   >
-                    <button class="btn mini ghost" @click="toggleCouponRow(row)">
+                    <button v-if="hasPerm('PATCH /admin/coupons/:id')" class="btn mini ghost" @click="toggleCouponRow(row)">
                       {{
                         (row as Coupon).status === "paused" ? "启用" : "暂停"
                       }}
@@ -6055,14 +6107,14 @@ async function cancelInviteRow(row: AdminRow) {
                     >
                       编辑
                     </button>
-                    <button
+                    <button v-if="hasPerm('POST /admin/coupons/:id/issue')"
                       class="btn mini primary"
                       @click="openIssue(row as Coupon)"
                     >
                       定向发放
                     </button>
                     <button
-                      v-if="!(row as Coupon).claimed"
+                      v-if="(!(row as Coupon).claimed) && hasPerm('DELETE /admin/coupons/:id')"
                       class="btn mini danger-btn"
                       @click="removeCouponInline(row)"
                     >
@@ -6074,18 +6126,19 @@ async function cancelInviteRow(row: AdminRow) {
                     v-else-if="section === 'categories' && canWriteSection"
                   >
                     <button
+                      v-if="hasPerm('PATCH /admin/categories/:id')"
                       class="btn mini ghost"
                       @click="toggleCategoryVisible(row as Category)"
                     >
                       {{ (row as Category).hidden ? "显示" : "隐藏" }}
                     </button>
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/categories/:id')"
                       class="btn mini primary"
                       @click="openCategoryEdit(row)"
                     >
                       编辑
                     </button>
-                    <button
+                    <button v-if="hasPerm('DELETE /admin/categories/:id')"
                       class="btn mini danger-btn"
                       @click="removeCategoryInline(row)"
                     >
@@ -6109,19 +6162,19 @@ async function cancelInviteRow(row: AdminRow) {
                   <template
                     v-else-if="section === 'buildings' && canWriteSection"
                   >
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/buildings/:id')"
                       class="btn mini primary"
                       @click="openBuildingEdit(row as Building)"
                     >
                       编辑
                     </button>
-                    <button
+                    <button v-if="hasPerm('GET /admin/buildings/:id/rooms')"
                       class="btn mini ghost"
                       @click="openRooms(row as Building)"
                     >
                       寝室
                     </button>
-                    <button
+                    <button v-if="hasPerm('DELETE /admin/buildings/:id')"
                       class="btn mini danger-btn"
                       @click="removeBuildingInline(row)"
                     >
@@ -6130,13 +6183,13 @@ async function cancelInviteRow(row: AdminRow) {
                   </template>
                   <!-- IKCJ3M：员工——编辑/删除行内直达（实现为软删除，对用户只说删除） -->
                   <template v-else-if="section === 'staff' && canWriteSection">
-                    <button
+                    <button v-if="hasPerm('PATCH /admin/staff/:id')"
                       class="btn mini primary"
                       @click="openStaffEdit(row as Staff)"
                     >
                       编辑
                     </button>
-                    <button
+                    <button v-if="hasPerm('DELETE /admin/staff/:id')"
                       class="btn mini danger-btn"
                       @click="removeStaffInline(row)"
                     >
@@ -6146,14 +6199,14 @@ async function cancelInviteRow(row: AdminRow) {
                   <!-- IKCJ3M：账号板块已移交独立页 /accounts（RBAC V1） -->
                   <!-- IKCJ3M：财务账单——确认/打款状态机直达（未到状态禁用） -->
                   <template v-else-if="section === 'finance' && canWriteSection">
-                    <button
+                    <button v-if="hasPerm('POST /admin/settlements/:id/confirm')"
                       class="btn mini primary"
                       :disabled="rowStatusText(row) !== 'pending-review'"
                       @click="confirmSettlementRow(row)"
                     >
                       确认
                     </button>
-                    <button
+                    <button v-if="hasPerm('POST /admin/settlements/:id/pay')"
                       class="btn mini ghost"
                       :disabled="rowStatusText(row) !== 'confirmed'"
                       @click="paySettlementRow(row)"
@@ -6175,7 +6228,7 @@ async function cancelInviteRow(row: AdminRow) {
                   <template
                     v-else-if="section === 'wechat-groups' && canWriteSection"
                   >
-                    <button
+                    <button v-if="hasPerm('DELETE /admin/wechat-groups/:id')"
                       class="btn mini danger-btn"
                       @click="removeWechatGroupInline(row)"
                     >
@@ -6184,12 +6237,12 @@ async function cancelInviteRow(row: AdminRow) {
                   </template>
                   <!-- IKCJ3M：调配邀请取消直达（两击确认） -->
                   <button
-                    v-else-if="
+                    v-else-if="(
                       section === 'dispatch' &&
                       dispTab === 'invites' &&
                       canWriteSection &&
                       (row as unknown as DispatchRow).status === 'invited'
-                    "
+                    ) && hasPerm('POST /admin/dispatch-invitations/:id/cancel')"
                     class="btn mini danger-btn"
                     @click="cancelInviteRow(row)"
                   >
@@ -6474,7 +6527,6 @@ async function cancelInviteRow(row: AdminRow) {
               >
               <IdCardImagesField
                 v-model="recruitEdit.idCardImages"
-                folder="recruit"
               />
             </div>
             <div class="recruit-save-row">
@@ -6596,10 +6648,10 @@ async function cancelInviteRow(row: AdminRow) {
             </div>
           </div>
           <div v-if="canWriteSection" class="drawer-actions wrap">
-            <button class="btn primary" @click="openWechatGroupForm(selected!)">
+            <button v-if="hasPerm('POST /admin/wechat-groups')" class="btn primary" @click="openWechatGroupForm(selected!)">
               替换二维码
             </button>
-            <button class="btn danger" @click="removeWechatGroupRow">
+            <button v-if="hasPerm('DELETE /admin/wechat-groups/:id')" class="btn danger" @click="removeWechatGroupRow">
               {{ confirmDelete ? "确认删除？" : "删除" }}
             </button>
           </div>
@@ -6609,7 +6661,7 @@ async function cancelInviteRow(row: AdminRow) {
           class="drawer-fields"
           :class="{ 'drawer-fields--three': section === 'orders' || section === 'warehouse-orders' }"
         >
-          <template v-if="isProductsSection && canWriteSection"
+          <template v-if="isProductsSection && canEditProduct"
             ><!-- IKDEP0：商品图区——主图+详情多图，点击看大图；未配图给占位 -->
             <div class="product-hero">
               <img
@@ -6686,16 +6738,16 @@ async function cancelInviteRow(row: AdminRow) {
             <!-- 资料字段（IKAHAT）：名称/副标题/分类/原价/标签/重量可编辑，改完小程序即见 -->
             <label
               >商品名称<input
-                v-model.trim="productEdit.name"
+                v-model.trim="productEdit.name" :disabled="!canEditProductDetails"
                 type="text"
                 maxlength="80" /></label
             ><label
               >副标题<input
-                v-model.trim="productEdit.subtitle"
+                v-model.trim="productEdit.subtitle" :disabled="!canEditProductDetails"
                 type="text"
                 maxlength="120" /></label
             ><label
-              >分类<select v-model="productEdit.categoryId">
+              >分类<select v-model="productEdit.categoryId" :disabled="!canEditProductDetails">
                 <option v-for="c in categories" :key="c.id" :value="c.id">
                   {{ c.name }}
                 </option></select></label
@@ -6732,13 +6784,13 @@ async function cancelInviteRow(row: AdminRow) {
                 " /></label
             ><label
               >标签<input
-                v-model.trim="productEdit.tag"
+                v-model.trim="productEdit.tag" :disabled="!canEditProductDetails"
                 type="text"
                 maxlength="20"
                 placeholder="如：新品" /></label
             ><label
               >重量（kg）<input
-                v-model.number="productEdit.weight"
+                v-model.number="productEdit.weight" :disabled="!canEditProductDetails"
                 type="number"
                 min="0"
                 step="0.001" /></label
@@ -6751,7 +6803,7 @@ async function cancelInviteRow(row: AdminRow) {
                 type="text"
                 maxlength="6"
                 placeholder="听/瓶/包"
-                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+                :disabled="!canEditProductDetails || (!isHqView && !!(selected as Product)?.sourceProductId)"
             /></label
             ><label
               >批发单位<input
@@ -6759,7 +6811,7 @@ async function cancelInviteRow(row: AdminRow) {
                 type="text"
                 maxlength="6"
                 placeholder="件"
-                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+                :disabled="!canEditProductDetails || (!isHqView && !!(selected as Product)?.sourceProductId)"
             /></label
             ><label
               >每件含量<input
@@ -6768,7 +6820,7 @@ async function cancelInviteRow(row: AdminRow) {
                 min="1"
                 max="999"
                 step="1"
-                :disabled="!isHqView && !!(selected as Product)?.sourceProductId"
+                :disabled="!canEditProductDetails || (!isHqView && !!(selected as Product)?.sourceProductId)"
             /></label>
             <label
               >{{ isHqView ? "批发价格（元）" : "校园售价（元）" }}<input
@@ -6778,18 +6830,18 @@ async function cancelInviteRow(row: AdminRow) {
                 :disabled="!canEditPrice" /></label
             ><!-- IKC1AB：上下架（hq 官方库放行/回收，校区自管本地上架） -->
             <label
-              >状态<select v-model="productEdit.status">
+              >状态<select v-model="productEdit.status" :disabled="!canEditProductDetails || !canEditProductStatus">
                 <option value="on-sale">在售</option>
                 <option value="off-sale">已下架</option></select></label
             ><label v-if="!isHqView"
               >可售库存<input
-                v-model.number="productEdit.stock"
+                v-model.number="productEdit.stock" :disabled="!canEditProductDetails || !canEditProductStock"
                 type="number"
                 min="0" /></label
             ><!-- 库位（IKA0VG）：字典下拉选区域 + 编号手填 -->
             <div v-if="!isHqView" class="form-sec">库位</div>
             <label v-if="!isHqView"
-              >库位（字典选择）<select v-model="productEdit.location">
+              >库位（字典选择）<select v-model="productEdit.location" :disabled="!canEditProductDetails">
                 <option value="">未配置</option>
                 <option
                   v-for="opt in locationOptions(productEdit.location)"
@@ -6800,17 +6852,17 @@ async function cancelInviteRow(row: AdminRow) {
                 </option></select></label
             ><label v-if="!isHqView"
               >库位编号（选填）<input
-                v-model.trim="productEdit.locationCode"
+                v-model.trim="productEdit.locationCode" :disabled="!canEditProductDetails"
                 type="text"
                 maxlength="20"
                 placeholder="如：03（区域内具体位置）" /></label
             ><div class="form-sec">图片与介绍</div>
-            <div class="wide product-image-edit">
+            <div v-if="canEditProductDetails" class="wide product-image-edit">
               <span class="field-label">商品头图（换新图后小程序即见）</span>
               <ImageUploadField v-model="productEdit.image" folder="app/product" />
             </div>
             <!-- 详情多图（IK9SNS）：小程序商品详情页轮播，可排序，与头图同目录 -->
-            <div class="wide product-image-edit">
+            <div v-if="canEditProductDetails" class="wide product-image-edit">
               <span class="field-label">详情多图（用户端详情页轮播，可排序）</span>
               <ProductImagesField v-model="productEdit.images" folder="app/product" />
             </div>
@@ -6820,7 +6872,7 @@ async function cancelInviteRow(row: AdminRow) {
                 >商品介绍（小程序详情页展示，{{ productEdit.description.length }}/2000）</span
               >
               <textarea
-                v-model="productEdit.description"
+                v-model="productEdit.description" :disabled="!canEditProductDetails"
                 rows="5"
                 maxlength="2000"
                 placeholder="多行纯文本，换行在小程序详情页保留；留空则不展示介绍区块"
@@ -6832,7 +6884,10 @@ async function cancelInviteRow(row: AdminRow) {
           <template v-else
             ><div
               v-for="col in detailCols(config.columns, config.detailOrder).filter(
-                (c) => c[0] !== 'marginTotal',
+                (c) =>
+                  c[0] !== 'marginTotal' &&
+                  !(section === 'orders' && c[0] === 'userText') &&
+                  !(section === 'orders' && c[0] === 'itemsText'),
               )"
               :key="col[0]"
               :class="{
@@ -6854,7 +6909,7 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（实付按行分摊 − 支付时进货价快照；快照前历史单按当前进货价估算）</span
+              >订单明细毛利（（售价 − 批发价快照）× 数量；快照前历史单显示 —）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
@@ -6863,7 +6918,7 @@ async function cancelInviteRow(row: AdminRow) {
                 >
                 <span
                   class="margin-amount"
-                  :class="{ muted: !line.hasMargin || line.estimated }"
+                  :class="{ muted: !line.hasMargin }"
                 >
                   售价 {{ line.priceText }} · 毛利
                   <strong>{{ line.marginText }}</strong></span
@@ -6916,12 +6971,12 @@ async function cancelInviteRow(row: AdminRow) {
           "
           class="drawer-actions wrap"
         >
-          <template v-if="isProductsSection && canWriteSection">
+          <template v-if="isProductsSection && canEditProduct">
             <button class="btn primary" @click="act('save')">
               {{ isHqView ? "保存官方库资料" : "保存商品调整" }}</button
             ><!-- IKAJSO：上游有更新，抽屉内也可一键拉取 -->
             <button
-              v-if="!isHqView && (selected as Product).upstreamChanged"
+              v-if="!isHqView && hasPerm('POST /admin/products/:id/pull-upstream') && (selected as Product).upstreamChanged"
               class="btn ghost"
               @click="pullUpstreamRow(selected!)"
             >
@@ -6933,12 +6988,12 @@ async function cancelInviteRow(row: AdminRow) {
             v-else-if="
               section === 'orders' && canWriteSection && !orderInPicking
             "
-            ><button class="btn primary" @click="act('advance')">
+            ><button v-if="hasPerm('POST /admin/orders/:id/actions/advance')" class="btn primary" @click="act('advance')">
               推进履约</button
-            ><button class="btn danger-btn" @click="act('mark-exception')">
+            ><button v-if="hasPerm('POST /admin/orders/:id/status') && rowStatusOf(selected!) !== 'exception'" class="btn danger-btn" @click="openStatusDialog(selected!, 'exception')">
               标记异常</button
             ><!-- 补打小票（IKBT6N）：芯烨云重推，缺纸/卡纸兜底 -->
-            <button class="btn ghost" :disabled="printing" @click="reprintReceipt">
+            <button v-if="hasPerm('POST /admin/orders/:id/print-receipt')" class="btn ghost" :disabled="printing" @click="reprintReceipt">
               {{ printing ? "打印中..." : "补打小票" }}
             </button></template
           >
@@ -6948,9 +7003,9 @@ async function cancelInviteRow(row: AdminRow) {
               section === 'warehouse-orders' && canWriteSection
             "
           >
-            <button class="btn primary" @click="outbound">确认出库</button>
+            <button v-if="hasPerm('POST /admin/orders/:id/actions/outbound')" class="btn primary" @click="outbound">确认出库</button>
             <!-- 补打小票（IKBT6N） -->
-            <button class="btn ghost" :disabled="printing" @click="reprintReceipt">
+            <button v-if="hasPerm('POST /admin/orders/:id/print-receipt')" class="btn ghost" :disabled="printing" @click="reprintReceipt">
               {{ printing ? "打印中..." : "补打小票" }}
             </button>
           </template>
@@ -6965,13 +7020,13 @@ async function cancelInviteRow(row: AdminRow) {
             "
           >
             <!-- IKAJSL：Banner 独立板块；IKB5PB：支付广告位同入口（pay-success 子视图） -->
-            <button class="btn primary" @click="openBannerEdit(selected)">
+            <button v-if="hasPerm('PATCH /admin/banners/:id')" class="btn primary" @click="openBannerEdit(selected)">
               编辑 Banner
             </button>
-            <button class="btn ghost" @click="toggleBanner">
+            <button v-if="hasPerm('PATCH /admin/banners/:id')" class="btn ghost" @click="toggleBanner">
               {{ bannerHidden ? "启用 Banner" : "隐藏 Banner" }}
             </button>
-            <button class="btn danger-btn" @click="removeBannerRow">
+            <button v-if="hasPerm('DELETE /admin/banners/:id')" class="btn danger-btn" @click="removeBannerRow">
               {{ confirmDelete ? "确认删除" : "删除 Banner" }}
             </button>
           </template>
@@ -7000,13 +7055,13 @@ async function cancelInviteRow(row: AdminRow) {
               </div>
             </div>
             <div v-if="canWriteSection" class="drawer-actions wrap">
-              <button class="btn primary" @click="testPrintRow(selected as Printer)">
+              <button v-if="hasPerm('POST /admin/printers/:id/test-print')" class="btn primary" @click="testPrintRow(selected as Printer)">
                 测试打印
               </button>
-              <button class="btn ghost" @click="openPrinterBind(selected as Printer)">
+              <button v-if="hasPerm('POST /admin/printers')" class="btn ghost" @click="openPrinterBind(selected as Printer)">
                 换绑 / 改名
               </button>
-              <button
+              <button v-if="hasPerm('DELETE /admin/printers/:id')"
                 class="btn danger-btn"
                 @click="unbindPrinterRow(selected as Printer)"
               >
@@ -7026,20 +7081,20 @@ async function cancelInviteRow(row: AdminRow) {
             <template
               v-if="section === 'coupons' || mktTab === 'coupons'"
             >
-              <button class="btn primary" @click="toggleCoupon">
+              <button v-if="hasPerm('PATCH /admin/coupons/:id')" class="btn primary" @click="toggleCoupon">
                 {{ couponPaused ? "启用优惠券" : "暂停发放" }}
               </button>
-              <button class="btn ghost" @click="openIssue(selected as Coupon)">
+              <button v-if="hasPerm('POST /admin/coupons/:id/issue')" class="btn ghost" @click="openIssue(selected as Coupon)">
                 定向发放
               </button>
             </template>
             <!-- 促销（marketing promotions tab / IKB5PB 限时秒杀菜单）：
                  无删除留审计，停用立即回落原价 -->
             <template v-else>
-              <button class="btn primary" @click="openPromotionEdit(selected)">
+              <button v-if="hasPerm('PATCH /admin/promotions/:id')" class="btn primary" @click="openPromotionEdit(selected)">
                 编辑促销
               </button>
-              <button class="btn ghost" @click="togglePromotion">
+              <button v-if="hasPerm('PATCH /admin/promotions/:id')" class="btn ghost" @click="togglePromotion">
                 {{ (selected as unknown as Promotion).status === 'active'
                   ? '停用（立即回落原价）'
                   : '启用活动' }}
@@ -7047,9 +7102,9 @@ async function cancelInviteRow(row: AdminRow) {
             </template>
           </template>
           <template v-else-if="section === 'categories' && canWriteSection"
-            ><button class="btn primary" @click="openCategoryEdit(selected)">
+            ><button v-if="hasPerm('PATCH /admin/categories/:id')" class="btn primary" @click="openCategoryEdit(selected)">
               编辑类别</button
-            ><button class="btn danger-btn" @click="removeCategoryRow">
+            ><button v-if="hasPerm('DELETE /admin/categories/:id')" class="btn danger-btn" @click="removeCategoryRow">
               {{ confirmDelete ? "确认删除" : "删除类别" }}
             </button></template
           >
@@ -7065,33 +7120,33 @@ async function cancelInviteRow(row: AdminRow) {
             >
           </template>
           <template v-else-if="section === 'buildings' && canWriteSection">
-            <button
+            <button v-if="hasPerm('PATCH /admin/buildings/:id')"
               class="btn primary"
               @click="openBuildingEdit(selected as Building)"
             >
               编辑楼栋</button
-            ><button class="btn ghost" @click="openRooms(selected as Building)">
+            ><button v-if="hasPerm('GET /admin/buildings/:id/rooms')" class="btn ghost" @click="openRooms(selected as Building)">
               寝室管理
             </button
-            ><button class="btn danger-btn" @click="removeBuilding">
+            ><button v-if="hasPerm('DELETE /admin/buildings/:id')" class="btn danger-btn" @click="removeBuilding">
               {{ confirmDelete ? "确认删除" : "删除楼栋" }}
             </button>
           </template>
           <template v-else-if="section === 'staff' && canWriteSection">
-            <button class="btn primary" @click="openStaffEdit(selected as Staff)">
+            <button v-if="hasPerm('PATCH /admin/staff/:id')" class="btn primary" @click="openStaffEdit(selected as Staff)">
               编辑员工</button
-            ><button class="btn danger-btn" @click="removeStaff">
+            ><button v-if="hasPerm('DELETE /admin/staff/:id')" class="btn danger-btn" @click="removeStaff">
               {{ confirmDelete ? "确认删除" : "删除账号" }}
             </button>
           </template>
           <template v-else-if="section === 'finance' && canWriteSection">
-            <button
+            <button v-if="hasPerm('POST /admin/settlements/:id/confirm')"
               class="btn primary"
               :disabled="settlementStatus !== 'pending-review'"
               @click="act('confirm')"
             >
               确认账单</button
-            ><button
+            ><button v-if="hasPerm('POST /admin/settlements/:id/pay')"
               class="btn ghost"
               :disabled="settlementStatus !== 'confirmed'"
               @click="act('pay')"
@@ -7102,14 +7157,14 @@ async function cancelInviteRow(row: AdminRow) {
           <template
             v-else-if="section === 'dispatch' && dispTab === 'leaves' && canWriteSection"
           >
-            <button class="btn primary" @click="inviteFromSelected">
+            <button v-if="hasPerm('POST /admin/dispatch-invitations')" class="btn primary" @click="inviteFromSelected">
               邀请调配（代管该楼）
             </button>
           </template>
           <template
             v-else-if="section === 'dispatch' && dispTab === 'invites' && canWriteSection"
           >
-            <button
+            <button v-if="hasPerm('POST /admin/dispatch-invitations/:id/cancel')"
               class="btn danger-btn"
               :disabled="inviteStatus !== 'invited'"
               @click="cancelInvite"
@@ -7245,6 +7300,7 @@ async function cancelInviteRow(row: AdminRow) {
               <ProductPickerField
                 :items="field.ppItems ? field.ppItems() : productsCache"
                 :loading="ppLoading"
+                :show-cost="field.ppShowCost ?? false"
                 :model-value="String(formData[field.key] ?? '')"
                 @update:model-value="formData[field.key] = $event as string"
               />
@@ -7295,18 +7351,18 @@ async function cancelInviteRow(row: AdminRow) {
               v-model.trim="roomForm.roomNo"
               placeholder="例如：612"
               @keyup.enter="addRoom" /></label
-          ><button class="btn primary" @click="addRoom">添加寝室</button>
+          ><button v-if="hasPerm('POST /admin/buildings/:id/rooms')" class="btn primary" @click="addRoom">添加寝室</button>
         </div>
         <!-- IKD6FH：批量导入——模板下载 + xlsx 上传（楼栋内重复寝室自动跳过） -->
         <div class="room-import">
-          <button
+          <button v-if="hasPerm('GET /admin/buildings/:id/rooms/template')"
             class="btn ghost"
             :disabled="roomsImporting"
             @click="downloadRoomsTemplate"
           >
             下载模板
           </button>
-          <button
+          <button v-if="hasPerm('POST /admin/buildings/:id/rooms/import')"
             class="btn primary"
             :disabled="roomsImporting"
             @click="pickRoomsImportFile"
@@ -7330,7 +7386,7 @@ async function cancelInviteRow(row: AdminRow) {
           <!-- 2026-09-08 道哥：二维码令牌为死字段（扫码交接已下线），不再展示 -->
           <div v-for="room in rooms" :key="room.id" class="room-row">
             <strong :data-floor="room.floor">{{ room.roomNo }} 寝</strong>
-            <button class="text-btn danger-text" @click="removeRoom(room.id)">
+            <button v-if="hasPerm('DELETE /admin/buildings/:id/rooms/:roomId')" class="text-btn danger-text" @click="removeRoom(room.id)">
               {{ roomConfirmId === room.id ? "确认删除" : "删除" }}
             </button>
           </div>
@@ -7442,7 +7498,7 @@ async function cancelInviteRow(row: AdminRow) {
         </p>
         <div class="drawer-actions">
           <button class="btn ghost" @click="issueOpen = false">取消</button
-          ><button
+          ><button v-if="hasPerm('POST /admin/coupons/:id/issue')"
             class="btn primary"
             :disabled="!issueReady"
             @click="confirmIssue"
@@ -7497,10 +7553,10 @@ async function cancelInviteRow(row: AdminRow) {
               v-model.trim="statusDialogReason"
               type="text"
               maxlength="200"
-              placeholder="例如：测试链路 / 客服兜底改状态"
+              :placeholder="statusDialogPlaceholder"
           /></label>
           <p class="form-hint">
-            绕过流程改状态会留下操作人/时间/原因记录（审计日志），仅用于测试与上线初期兜底。
+            状态变更将记录操作人、时间与原因（审计日志），供运营留痕追溯。
           </p>
         </div>
         <div class="drawer-actions">

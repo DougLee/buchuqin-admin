@@ -453,6 +453,17 @@
 .checkbox-row .raw-checkbox:checked::before {
   transform: scale(1);
 }
+.checkbox-row .raw-checkbox:indeterminate {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.checkbox-row .raw-checkbox:indeterminate::before {
+  width: 12px;
+  height: 3px;
+  clip-path: none;
+  border-radius: 1px;
+  transform: scale(1);
+}
 .checkbox-row .raw-checkbox:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;

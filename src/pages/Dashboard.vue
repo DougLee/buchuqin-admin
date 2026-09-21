@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
-import { isPlatform } from "../session";
+import { isPlatform, menuPath } from "../session";
 import type {
   DashboardActivity,
   DashboardData,
@@ -143,7 +143,8 @@ const ACTIVITY_ROUTES: Record<string, string> = {
   "after-sale": "/after-sales",
 };
 function activityRoute(a: DashboardActivity) {
-  return ACTIVITY_ROUTES[a.entityType ?? a.type] ?? null;
+  const path = ACTIVITY_ROUTES[a.entityType ?? a.type];
+  return path ? menuPath(path.slice(1)) : undefined;
 }
 /* IKAJSS：水位节点下钻——作业人数/平均停留；超时节点列 Top5 单号直达 */
 const drillKey = ref<string | null>(null);
@@ -216,19 +217,19 @@ function exportReport() {
         }}</p>
       </div>
       <div v-if="isHqSummary" class="head-actions">
-        <button class="btn primary" @click="router.push('/campuses')">
+        <button class="btn primary" @click="router.push(menuPath('campuses') || '/access-denied')">
           <span>→</span> 管理校区
         </button>
       </div>
       <div v-else-if="drillCampus" class="head-actions">
         <button class="btn ghost" @click="backToSummary">← 返回汇总</button
-        ><button class="btn primary" @click="router.push('/orders')">
+        ><button class="btn primary" @click="router.push(menuPath('orders') || '/access-denied')">
           <span>→</span> 查看履约任务
         </button>
       </div>
       <div v-else class="head-actions">
         <button class="btn ghost" @click="exportReport">导出日报</button
-        ><button class="btn primary" @click="router.push('/orders')">
+        ><button class="btn primary" @click="router.push(menuPath('orders') || '/access-denied')">
           <span>→</span> 查看履约任务
         </button>
       </div>
@@ -261,7 +262,11 @@ function exportReport() {
         <article class="kpi alert-kpi">
           <p :title="hqData.caliber.exceptions">待处理异常</p>
           <strong>{{ hqData.kpis.exceptions }}<small> 项</small></strong>
-          <button @click="router.push('/orders')">立即处理 →</button>
+          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
+          <button
+            @click="router.push({ path: menuPath('orders') || '/access-denied', query: { status: 'exception' } })"
+            >立即处理 →</button
+          >
         </article>
         <article class="kpi">
           <p>在营校区</p>
@@ -381,9 +386,13 @@ function exportReport() {
           </div>
         </article>
         <article class="kpi alert-kpi">
-          <p :title="data.caliber.timeout">待处理异常</p>
+          <p :title="data.caliber.exceptions">待处理异常</p>
           <strong>{{ data.kpis.exceptions }}<small> 项</small></strong>
-          <button @click="router.push('/orders')">立即处理 →</button>
+          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
+          <button
+            @click="router.push({ path: menuPath('orders') || '/access-denied', query: { status: 'exception' } })"
+            >立即处理 →</button
+          >
         </article>
       </section>
       <section class="dashboard-grid">
@@ -444,7 +453,7 @@ function exportReport() {
             <div>
               <h2>实时订单统计</h2>
             </div>
-            <button class="text-btn" @click="router.push('/orders')">
+            <button class="text-btn" @click="router.push(menuPath('orders') || '/access-denied')">
               查看详情 →
             </button>
           </div>
@@ -498,7 +507,7 @@ function exportReport() {
                     >
                     <button
                       class="text-btn"
-                      @click.stop="router.push(`/orders?q=${o.orderNo}`)"
+                      @click.stop="router.push({ path: menuPath('orders') || '/access-denied', query: { q: o.orderNo } })"
                     >
                       立即处理 →
                     </button>
@@ -515,7 +524,7 @@ function exportReport() {
             <div>
               <h2>楼栋经营排行</h2>
             </div>
-            <button class="text-btn" @click="router.push('/orders')">
+            <button class="text-btn" @click="router.push(menuPath('orders') || '/access-denied')">
               完整数据 →
             </button>
           </div>

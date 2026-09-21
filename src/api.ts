@@ -1,4 +1,4 @@
-import { clearSession, type RbacMe, type SessionUser } from "./session";
+import { clearSession, getSessionGeneration, type RbacMe, type SessionUser } from "./session";
 import { compressToWebp } from "./utils/image";
 import type {
   AccountGrant,
@@ -72,6 +72,32 @@ export function clearToken() {
   token = "";
 }
 
+/** 请求只属于发起时的会话；旧响应不能清除新会话或返回旧校区数据。 */
+function requestSession() {
+  const generation = getSessionGeneration();
+  const requestToken = token;
+  const assertCurrent = () => {
+    if (generation !== getSessionGeneration() || requestToken !== token) {
+      throw new Error("会话已切换，请重新操作");
+    }
+  };
+  return {
+    headers: requestToken ? { Authorization: `Bearer ${requestToken}` } : undefined,
+    assertCurrent,
+    check(response: Response, loginRequest = false) {
+      assertCurrent();
+      if (response.status === 401 && !loginRequest) {
+        clearSession();
+        token = "";
+        window.location.hash = "#/login";
+        throw new Error("登录已失效，请重新登录");
+      }
+    },
+  };
+}
+
+let authenticationAttempt = 0;
+
 /**
  * 列表统一透传 page/pageSize/keyword query（IK8W5X 契约：所有列表响应
  * 为 { items, page, pageSize, total }，前端直接服务端分页）。
@@ -129,22 +155,18 @@ function withQuery(...parts: (string | undefined)[]): string {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const session = requestSession();
   const response = await fetch(`/api/v1${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...session.headers,
       ...options.headers,
     },
   });
-  // token 过期/失效：无静默重登（真实密码不在前端保存），清会话回登录页
-  if (response.status === 401 && !path.startsWith("/auth/")) {
-    clearSession();
-    token = "";
-    window.location.hash = "#/login";
-    throw new Error("登录已失效，请重新登录");
-  }
+  session.check(response, path === "/auth/admin-login");
   const body = (await response.json().catch(() => null)) as ApiResult<T> | null;
+  session.assertCurrent();
   if (!response.ok || !body)
     throw new Error(body?.message || `请求失败（${response.status}）`);
   return body.data;
@@ -155,10 +177,12 @@ export async function login(
   username: string,
   password: string,
 ): Promise<LoginResult> {
+  const attempt = ++authenticationAttempt;
   const result = await request<LoginResult>("/auth/admin-login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
+  if (attempt !== authenticationAttempt) throw new Error("登录或校区切换请求已更新");
   token = result.token;
   localStorage.setItem("adminToken", token);
   return result;
@@ -172,23 +196,21 @@ export async function login(
 /** folder=app：小程序静态素材（Banner 背景图）落 COS app/ 目录（IK9VBI）；缺省 uploads/。
  *  IKE9Q5：上传前统一压缩转 webp（gif/webp 原样、异常降级），全线展示图瘦身。 */
 export async function uploadImage(file: File, folder?: string): Promise<string> {
+  const session = requestSession();
   const form = new FormData();
   form.append("file", await compressToWebp(file));
+  session.assertCurrent();
   const response = await fetch(
     `/api/v1/files/images${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: session.headers,
     body: form,
   });
-  if (response.status === 401) {
-    clearSession();
-    token = "";
-    window.location.hash = "#/login";
-    throw new Error("登录已失效，请重新登录");
-  }
+  session.check(response);
   const body = (await response.json().catch(() => null)) as ApiResult<{
     url: string;
   }> | null;
+  session.assertCurrent();
   if (!response.ok || !body)
     throw new Error(body?.message || `上传失败（${response.status}）`);
   return body.data.url;
@@ -200,16 +222,12 @@ export async function uploadImage(file: File, folder?: string): Promise<string> 
  * 文件名优先取 Content-Disposition 的 UTF-8 filename*（后端附楼栋名）。
  */
 export async function downloadRoomTemplate(buildingId: string): Promise<void> {
+  const session = requestSession();
   const response = await fetch(
     `/api/v1/admin/buildings/${buildingId}/rooms/template`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+    { headers: session.headers },
   );
-  if (response.status === 401) {
-    clearSession();
-    token = "";
-    window.location.hash = "#/login";
-    throw new Error("登录已失效，请重新登录");
-  }
+  session.check(response);
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as
       | ApiResult<unknown>
@@ -224,7 +242,9 @@ export async function downloadRoomTemplate(buildingId: string): Promise<void> {
     : plain
       ? plain[1]
       : "rooms-template.xlsx";
-  const url = URL.createObjectURL(await response.blob());
+  const blob = await response.blob();
+  session.assertCurrent();
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -572,6 +592,12 @@ export const api = {
   battleMapRoom: (roomId: string) =>
     request<BattleRoomDetail>(`/admin/battle-map/rooms/${roomId}`),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
+  /** IKHFWV 新订单水位线（30s 轮询）：今日已支付累计+最新单摘要 */
+  newOrderWatch: () =>
+    request<{
+      todayPaid: number;
+      latest: { id: string; orderNo: string; payableAmount: number } | null;
+    }>("/admin/orders/new-order-watch"),
   orderStatusCounts: (campusId?: string) =>
     request<Record<string, number>>(
       `/admin/orders/status-counts${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
@@ -810,25 +836,22 @@ export const api = {
     buildingId: string,
     file: File,
   ): Promise<RoomImportResult> => {
+    const session = requestSession();
     const form = new FormData();
     form.append("file", file);
     const response = await fetch(
       `/api/v1/admin/buildings/${buildingId}/rooms/import`,
       {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: session.headers,
         body: form,
       },
     );
-    if (response.status === 401) {
-      clearSession();
-      token = "";
-      window.location.hash = "#/login";
-      throw new Error("登录已失效，请重新登录");
-    }
+    session.check(response);
     const body = (await response.json().catch(() => null)) as ApiResult<
       RoomImportResult
     > | null;
+    session.assertCurrent();
     if (!response.ok || !body)
       throw new Error(body?.message || `导入失败（${response.status}）`);
     return body.data;
@@ -1095,6 +1118,10 @@ export const api = {
         : [],
     })),
   /** 角色列表（行含 menuCodes：目录+菜单+按钮 code 混合集）。 */
+  rbacCatalog: () => request<{
+    views: { key: string; name: string }[];
+    permissions: { pattern: string; name: string }[];
+  }>("/admin/rbac/catalog"),
   rbacRoles: () => request<RbacRole[]>("/admin/rbac/roles"),
   rbacCreateRole: (data: {
     code: string;
@@ -1131,10 +1158,11 @@ export const api = {
   rbacCreateMenu: (data: {
     parentId: string | null;
     type: 0 | 1 | 2;
-    code: string;
+    code?: string;
     name: string;
     path?: string;
     viewPath?: string;
+    keepAlive?: boolean;
     icon?: string;
     /** 按钮行绑定的 URL 模式串。 */
     perms?: string[];
@@ -1147,7 +1175,7 @@ export const api = {
     }),
   rbacUpdateMenu: (
     id: string,
-    data: { name?: string; icon?: string; orderNum?: number; isShow?: boolean },
+    data: { name?: string; icon?: string; orderNum?: number; isShow?: boolean; type?: number; parentId?: string | null; path?: string; viewPath?: string; keepAlive?: boolean; perms?: string[] },
   ) =>
     request<RbacMenuRow>(`/admin/rbac/menus/${id}`, {
       method: "PATCH",
@@ -1203,16 +1231,18 @@ export const api = {
       body: JSON.stringify({ oldPassword, newPassword }),
     }),
   /** IKB3KG 方案A：我的可运营校区（>1 时顶栏出现切换下拉）。 */
-  adminCampuses: () =>
+  adminCampuses: (purpose?: "filter") =>
     request<
       { id: string; name: string; shortName: string; current: boolean }[]
-    >("/auth/admin/campuses"),
+    >(`/auth/admin/campuses${purpose ? "?purpose=filter" : ""}`),
   /** IKB3KG 方案A：切换运营校区（授权范围内），换发 token 后整页刷新。 */
   switchAdminCampus: async (campusId: string) => {
+    const attempt = ++authenticationAttempt;
     const result = await request<LoginResult>("/auth/admin/campuses/select", {
       method: "POST",
       body: JSON.stringify({ campusId }),
     });
+    if (attempt !== authenticationAttempt) throw new Error("登录或校区切换请求已更新");
     token = result.token;
     localStorage.setItem("adminToken", token);
     return result;

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
+import { superViews } from "./view-catalog";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
 import {
   applySession,
+  authorizationEpoch,
+  isSuper,
   canSee,
   clearSession,
   isPlatform,
@@ -72,6 +75,7 @@ async function submitPassword() {
     await api.changePassword(oldPassword.value, newPassword.value);
     pwdOpen.value = false;
     oldPassword.value = newPassword.value = "";
+    logout();
   } catch (error) {
     pwdError.value = error instanceof Error ? error.message : "修改失败";
   } finally {
@@ -95,27 +99,36 @@ interface SidebarGroup {
   items: SidebarItem[];
 }
 const visibleGroups = computed<SidebarGroup[]>(() => {
-  const rows = [...menuTree.value].sort(
-    (a, b) => (a.orderNum ?? 0) - (b.orderNum ?? 0),
-  );
-  const childrenOf = (parentCode: string | null) =>
-    rows.filter((r) => (r.parentId ?? null) === parentCode);
-  const toItem = (r: (typeof rows)[number]): SidebarItem => ({
-    path: r.path || "/",
-    code: r.code,
-    name: r.name,
-    icon: r.icon || r.code,
-  });
-  const groups: SidebarGroup[] = [];
-  // 根级菜单（无目录父级，如 dashboard）：归入「工作台」组置顶
-  const rootMenus = childrenOf(null).filter((r) => r.type === 1);
-  if (rootMenus.length)
-    groups.push({ label: "工作台", items: rootMenus.map(toItem) });
-  // 目录 → 分组（空组隐藏；组内只渲染菜单行）
-  for (const dir of childrenOf(null).filter((r) => r.type === 0)) {
-    const items = childrenOf(dir.code).filter((r) => r.type === 1);
-    if (items.length) groups.push({ label: dir.name, items: items.map(toItem) });
+  const rows = [...menuTree.value].sort((a,b) => (a.orderNum ?? 0) - (b.orderNum ?? 0));
+  const byCode = new Map(rows.map(m => [m.code, m]));
+  const grouped = new Map<string, { label: string; items: SidebarItem[]; order: number[] }>();
+  for (const m of rows) {
+    if (m.type !== 1 || m.authorized === false || m.isShow === false) continue;
+    if (superViews.has(m.viewPath || m.code) && !isSuper.value) continue;
+    const labels: string[] = [];
+    const ancestors: string[] = [];
+    const order = [m.orderNum ?? 0];
+    let parent = m.parentId;
+    const seen = new Set<string>();
+    let hidden = false;
+    while (parent && !seen.has(parent)) {
+      seen.add(parent); const ancestor = byCode.get(parent); if (!ancestor) break;
+      if (ancestor.isShow === false) hidden = true;
+      labels.unshift(ancestor.name); ancestors.unshift(ancestor.code);
+      order.unshift(ancestor.orderNum ?? 0); parent = ancestor.parentId;
+    }
+    if (hidden) continue;
+    const group = ancestors.join('/') || '__root';
+    if (!grouped.has(group)) grouped.set(group, { label: labels.join(' / ') || '工作台', items: [], order });
+    grouped.get(group)!.items.push({ path: m.path, code: m.code, name: m.name, icon: m.icon || m.code });
   }
+  const groups = [...grouped.values()].sort((a, b) => {
+    for (let i = 0; i < Math.max(a.order.length, b.order.length); i++) {
+      const diff = (a.order[i] ?? 0) - (b.order[i] ?? 0);
+      if (diff) return diff;
+    }
+    return a.label.localeCompare(b.label);
+  });
   return groups;
 });
 /* 分组开关（IK9RTU 手风琴 → IKAJT1 默认全展开）：各组独立开关，
@@ -159,6 +172,130 @@ const campusChoices = ref<
   { id: string; name: string; shortName: string; current: boolean }[]
 >([]);
 const campusName = ref("湖北工业大学");
+/* ---------- IKHFWV 新订单提醒：30s 轮询水位线（今日已支付累计）----------
+   受众=canSee('orders')（订单配送菜单可见者全收，道哥定版）；顶栏铃铛可关
+   （localStorage）；形态=右下浮窗+叮两声（WebAudio 合成免音频资产）+
+   页面后台时系统通知（已授权才发）。首次取基线，仅增量弹（累计口径防漏报）。 */
+const notifyOn = ref(localStorage.getItem("newOrderNotify") !== "off");
+function toggleNotify() {
+  notifyOn.value = !notifyOn.value;
+  localStorage.setItem("newOrderNotify", notifyOn.value ? "on" : "off");
+  if (notifyOn.value && "Notification" in window && Notification.permission === "default")
+    void Notification.requestPermission();
+}
+const notifyCards = ref<
+  { key: string; id: string; no: string; amount: number; extra: number }[]
+>([]);
+let orderWatermark: number | null = null;
+let audioCtx: AudioContext | null = null;
+function dingTwice() {
+  try {
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    [0, 0.35].forEach((delay) => {
+      const o = audioCtx!.createOscillator();
+      const g = audioCtx!.createGain();
+      o.frequency.value = 1244;
+      g.gain.setValueAtTime(0.001, t0 + delay);
+      g.gain.exponentialRampToValueAtTime(0.22, t0 + delay + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + delay + 0.3);
+      o.connect(g).connect(audioCtx!.destination);
+      o.start(t0 + delay);
+      o.stop(t0 + delay + 0.32);
+    });
+  } catch {
+    /* 无声环境（未交互/被策略拦）忽略——浮窗仍有效 */
+  }
+}
+/** IKHFWV 二轮（道哥）：叮叮后语音播报——浏览器本地 TTS（zh-CN），无音频资产 */
+function speakNewOrder() {
+  try {
+    const u = new SpeechSynthesisUtterance("您有新的订单，请注意查收");
+    u.lang = "zh-CN";
+    u.rate = 1;
+    speechSynthesis.speak(u);
+  } catch {
+    /* 无 TTS 环境忽略 */
+  }
+}
+/** IKHFWV 三轮：浏览器 autoplay 策略——页面刷新后需一次用户交互才允许出声。
+ *  任意首次点击/按键即解锁（resume AudioContext + TTS warm）；运营点过菜单即常响。
+ *  无声兜底：有未关浮窗时标题栏交替「🔔 新订单」，后台标签也醒目。 */
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch {
+    /* 无声环境忽略 */
+  }
+}
+window.addEventListener("pointerdown", unlockAudio, { once: true });
+window.addEventListener("keydown", unlockAudio, { once: true });
+let titleBlinkTimer: number | undefined;
+watch(
+  () => notifyCards.value.length,
+  (n) => {
+    const base = "不出寝食社管理后台";
+    if (titleBlinkTimer) {
+      clearInterval(titleBlinkTimer);
+      titleBlinkTimer = undefined;
+    }
+    if (n > 0) {
+      let on = false;
+      titleBlinkTimer = window.setInterval(() => {
+        on = !on;
+        document.title = on ? `🔔 新订单 ×${n}` : base;
+      }, 900);
+    } else document.title = base;
+  },
+);
+async function pollNewOrders() {
+  if (!notifyOn.value || !canSee("orders") || !localStorage.getItem("adminToken"))
+    return;
+  try {
+    const d = await api.newOrderWatch();
+    if (orderWatermark === null) {
+      orderWatermark = d.todayPaid; // 首次=基线，存量不弹
+      return;
+    }
+    if (d.todayPaid > orderWatermark && d.latest) {
+      const extra = d.todayPaid - orderWatermark;
+      const key = `${d.latest.id}-${Date.now()}`;
+      notifyCards.value.push({
+        key,
+        id: d.latest.id,
+        no: d.latest.orderNo.slice(-8),
+        amount: d.latest.payableAmount,
+        extra,
+      });
+      dingTwice();
+      speakNewOrder();
+      if (
+        document.hidden &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      )
+        new Notification("新订单", {
+          body: `¥${(d.latest.payableAmount / 100).toFixed(2)} · 尾号 ${d.latest.orderNo.slice(-8)}${extra > 1 ? ` 等 ${extra} 单` : ""}`,
+        });
+    }
+    orderWatermark = d.todayPaid;
+  } catch {
+    /* 轮询失败静默（登录过期由 request 层统一处理） */
+  }
+}
+onMounted(pollNewOrders);
+setInterval(pollNewOrders, 30_000);
+function dismissNotify(key: string) {
+  notifyCards.value = notifyCards.value.filter((c) => c.key !== key);
+}
 const campusSwitching = ref(false);
 /** 平台账号且无可切校区 = 跨校区汇总视角（无当前校区概念）。 */
 const isAllCampusView = computed(
@@ -198,6 +335,17 @@ async function switchCampus(event: Event) {
     alert(error instanceof Error ? error.message : "校区切换失败");
   }
 }
+// Refresh permission changes made in another session; never trust cached menus indefinitely.
+let permissionTimer: ReturnType<typeof setInterval> | undefined;
+const refreshPermissions = () => { if (sessionUser.value && !isLogin.value) void loadRbac(); };
+onMounted(() => {
+  permissionTimer = setInterval(refreshPermissions, 15000);
+  window.addEventListener('focus', refreshPermissions);
+});
+onBeforeUnmount(() => {
+  if (permissionTimer) clearInterval(permissionTimer);
+  window.removeEventListener('focus', refreshPermissions);
+});
 </script>
 <template>
   <RouterView v-if="isLogin" />
@@ -284,6 +432,16 @@ async function switchCampus(event: Event) {
           >
             <span></span>
           </button>
+          <!-- IKHFWV 新订单提醒开关（订单菜单可见者显示；关=偏好本地记） -->
+          <button
+            v-if="canSee('orders')"
+            class="notification notify-bell"
+            :class="{ 'notify-bell--off': !notifyOn }"
+            :aria-label="notifyOn ? '新订单提醒开（点击关闭）' : '新订单提醒关（点击开启）'"
+            @click="toggleNotify"
+          >
+            <span class="notify-bell-glyph">{{ notifyOn ? "🔔" : "🔕" }}</span>
+          </button>
           <div class="user-menu-wrap">
             <button
               class="user-chip"
@@ -326,7 +484,12 @@ async function switchCampus(event: Event) {
           </div>
         </div>
       </header>
-      <RouterView />
+      <RouterView v-slot="{ Component, route: pageRoute }">
+        <KeepAlive :key="authorizationEpoch">
+          <component :is="Component" v-if="pageRoute.meta.keepAlive" :key="pageRoute.path" />
+        </KeepAlive>
+        <component :is="Component" v-if="!pageRoute.meta.keepAlive" :key="`${authorizationEpoch}:${pageRoute.path}`" />
+      </RouterView>
     </main>
     <!-- 自助改密弹窗（IKCJ3L：独立样式，不再蹭 login-card/drawer-actions） -->
     <div v-if="pwdOpen" class="modal-mask" @click.self="pwdOpen = false">
@@ -376,5 +539,27 @@ async function switchCampus(event: Event) {
         </div>
       </form>
     </div>
+    <!-- IKHFWV 新订单浮窗栈：右下角，点击跳订单页 -->
+  <div v-if="!isLogin && notifyCards.length" class="new-order-toasts">
+    <div
+      v-for="c in notifyCards"
+      :key="c.key"
+      class="new-order-toast"
+      role="alert"
+      @click="router.push('/orders'); dismissNotify(c.key)"
+    >
+      <button
+        class="new-order-toast__close"
+        aria-label="关闭提醒"
+        @click.stop="dismissNotify(c.key)"
+      >
+        ×
+      </button>
+      <b>📦 新订单</b>
+      <span>¥{{ (c.amount / 100).toFixed(2) }} · 尾号 {{ c.no }}</span>
+      <small v-if="c.extra > 1">共 {{ c.extra }} 个新订单</small>
+      <small v-else>点击卡片去处理</small>
+    </div>
   </div>
+</div>
 </template>

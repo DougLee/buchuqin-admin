@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api } from "../api";
-import { canWrite } from "../session";
+import { hasPerm } from "../session";
 import type {
   PurchaseOrderDetail,
   PurchaseOrderRow,
@@ -16,7 +16,7 @@ import { fmtDateTime } from "../utils/datetime";
  *   快捷全收（预填欠收可改小）→ 部分到货/收齐推导；坏品入库再出库
  * - 关闭使欠收作废禁验收、可重开；金额=行单价×数量（IQ7）
  */
-const canManage = canWrite("purchase");
+
 
 const loading = ref(true);
 const error = ref("");
@@ -187,7 +187,7 @@ async function refreshDetail() {
                   {{ row.createdByName || "—" }}<br />{{ fmtDateTime(row.createdAt) }}
                 </td>
                 <td class="row-actions">
-                  <button class="btn mini primary" @click="openDetail(row)">详情</button>
+                  <button v-if="hasPerm('GET /admin/purchase/orders/:id')" class="btn mini primary" @click="openDetail(row)">详情</button>
                 </td>
               </tr>
             </template>
@@ -260,23 +260,23 @@ async function refreshDetail() {
           <button class="btn ghost" @click="detailDrawer = false; rxLines = []">关闭</button>
           <template v-if="detail.phase !== 'closed'">
             <button
-              v-if="!rxLines.length && detail.phase !== 'completed'"
+              v-if="hasPerm('POST /admin/purchase/orders/:id/close') && !rxLines.length && detail.phase !== 'completed'"
               class="btn ghost"
               @click="closeOrder"
             >
               关闭采购单
             </button>
-            <button v-if="!rxLines.length" class="btn primary" @click="openReceive">
+            <button v-if="hasPerm('POST /admin/purchase/orders/:id/receive') && !rxLines.length" class="btn primary" @click="openReceive">
               验收入库
             </button>
-            <template v-else>
+            <template v-else-if="rxLines.length && hasPerm('POST /admin/purchase/orders/:id/receive')">
               <button class="btn ghost" @click="rxLines = []">取消验收</button>
               <button class="btn primary" :disabled="rxBusy" @click="submitReceive">
                 {{ rxBusy ? "提交中…" : "确认验收" }}
               </button>
             </template>
           </template>
-          <button v-else class="btn primary" @click="reopenOrder">重开采购单</button>
+          <button v-else-if="hasPerm('POST /admin/purchase/orders/:id/reopen')" class="btn primary" @click="reopenOrder">重开采购单</button>
         </div>
       </div>
     </div>

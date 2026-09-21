@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
+import { hasPerm } from "../session";
 import { fenToYuan } from "../utils/money";
 import type { Product } from "../types";
 /**
@@ -20,6 +21,8 @@ const props = defineProps<{
   disabled?: boolean;
   /** IKH0EK 推荐位模式：隐藏多选行件数输入（纯勾选，无件数语义） */
   simple?: boolean;
+  /** IKH15V 单选行补显进货价（costPrice，未录不显示）：定促销价对照毛利用 */
+  showCost?: boolean;
   modelValue: string | Record<string, number>;
 }>();
 const emit = defineEmits<{
@@ -30,6 +33,7 @@ const catId = ref("all");
 const keyword = ref("");
 const adminCats = ref<{ id: string; name: string }[]>([]);
 onMounted(async () => {
+  if (!hasPerm("GET /admin/categories")) return;
   try {
     adminCats.value = (await api.adminCategories()).map((c) => ({
       id: c.id,
@@ -120,8 +124,10 @@ function unitText(p: Product): string {
           <span v-else class="pp-item__ph"></span>
           <span class="pp-item__name">{{ p.name }}</span>
           <span class="pp-item__meta"
-            >¥{{ fenToYuan(p.price) }} · 可售
-            {{ p.availableStock ?? p.stock ?? 0 }}</span
+            >现价 ¥{{ fenToYuan(p.price)
+            }}<template v-if="showCost && p.wholesalePrice"
+              > · 进货¥{{ fenToYuan(p.wholesalePrice) }}</template
+            > · 可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
           >
         </button>
         <div v-if="!filtered.length" class="pp-empty">
@@ -141,7 +147,7 @@ function unitText(p: Product): string {
           <span class="pp-item__main">
             <span class="pp-item__name">{{ p.name }}</span>
             <span class="pp-item__meta"
-              >批发价 {{ fenToYuan(p.price) }}/{{ p.wholesaleUnit || "件"
+              >单价 {{ fenToYuan(p.price) }}/{{ p.wholesaleUnit || "件"
               }}{{ unitText(p) }}</span
             >
           </span>

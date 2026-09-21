@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
+import { hasPerm } from "../session";
+const canEdit = computed(() => hasPerm("PUT /admin/featured"));
 import ProductPickerField from "../components/ProductPickerField.vue";
 import type { Product } from "../types";
 import { fenToYuan } from "../utils/money";
@@ -41,7 +43,9 @@ const model = computed<Record<string, number>>(() =>
 onMounted(async () => {
   try {
     const [prods, feat] = await Promise.all([
-      api.products({ page: 1, pageSize: 300, status: "on-sale" }, "campus"),
+      hasPerm("GET /admin/products")
+        ? api.products({ page: 1, pageSize: 300, status: "on-sale" }, "campus")
+        : Promise.resolve({ items: [] as Product[] }),
       api.featured(),
     ]);
     // IKH0EK 验收拍板：有库存才可进推荐位（件数语义不适用，纯勾选）
@@ -123,7 +127,7 @@ async function save() {
         </p>
       </div>
       <div class="head-actions">
-        <button class="btn primary" :disabled="!dirty || saving" @click="save">
+        <button v-if="canEdit" class="btn primary" :disabled="!dirty || saving" @click="save">
           {{ saving ? "保存中…" : "保存推荐位" }}
         </button>
       </div>
@@ -135,7 +139,7 @@ async function save() {
 
     <div class="feat-stack">
       <!-- 选择商品：表单内容面板（全局 .panel） -->
-      <div class="panel">
+      <div v-if="canEdit && hasPerm('GET /admin/products')" class="panel">
         <div class="panel-head">
           <h2>选择商品</h2>
         </div>
@@ -187,6 +191,7 @@ async function save() {
                   </td>
                   <td>¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</td>
                   <td class="row-actions">
+                    <template v-if="canEdit">
                     <button
                       class="btn mini ghost"
                       :disabled="i === 0"
@@ -204,6 +209,7 @@ async function save() {
                     <button class="btn mini danger" @click="remove(p.id)">
                       移除
                     </button>
+                    </template>
                   </td>
                 </tr>
               </template>
