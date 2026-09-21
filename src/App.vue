@@ -344,6 +344,43 @@ function speakNewOrder() {
     /* 无 TTS 环境忽略 */
   }
 }
+/** IKHFWV 三轮：浏览器 autoplay 策略——页面刷新后需一次用户交互才允许出声。
+ *  任意首次点击/按键即解锁（resume AudioContext + TTS warm）；运营点过菜单即常响。
+ *  无声兜底：有未关浮窗时标题栏交替「🔔 新订单」，后台标签也醒目。 */
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch {
+    /* 无声环境忽略 */
+  }
+}
+window.addEventListener("pointerdown", unlockAudio, { once: true });
+window.addEventListener("keydown", unlockAudio, { once: true });
+let titleBlinkTimer: number | undefined;
+watch(
+  () => notifyCards.value.length,
+  (n) => {
+    const base = "不出寝食社管理后台";
+    if (titleBlinkTimer) {
+      clearInterval(titleBlinkTimer);
+      titleBlinkTimer = undefined;
+    }
+    if (n > 0) {
+      let on = false;
+      titleBlinkTimer = window.setInterval(() => {
+        on = !on;
+        document.title = on ? `🔔 新订单 ×${n}` : base;
+      }, 900);
+    } else document.title = base;
+  },
+);
 async function pollNewOrders() {
   if (!notifyOn.value || !canSee("orders") || !localStorage.getItem("adminToken"))
     return;
