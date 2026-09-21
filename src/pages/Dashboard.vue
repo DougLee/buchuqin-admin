@@ -260,7 +260,11 @@ function exportReport() {
         <article class="kpi alert-kpi">
           <p :title="hqData.caliber.exceptions">待处理异常</p>
           <strong>{{ hqData.kpis.exceptions }}<small> 项</small></strong>
-          <button @click="router.push('/orders')">立即处理 →</button>
+          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
+          <button
+            @click="router.push({ path: '/orders', query: { status: 'exception' } })"
+            >立即处理 →</button
+          >
         </article>
         <article class="kpi">
           <p>在营校区</p>
@@ -380,9 +384,13 @@ function exportReport() {
           </div>
         </article>
         <article class="kpi alert-kpi">
-          <p :title="data.caliber.timeout">待处理异常</p>
+          <p :title="data.caliber.exceptions">待处理异常</p>
           <strong>{{ data.kpis.exceptions }}<small> 项</small></strong>
-          <button @click="router.push('/orders')">立即处理 →</button>
+          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
+          <button
+            @click="router.push({ path: '/orders', query: { status: 'exception' } })"
+            >立即处理 →</button
+          >
         </article>
       </section>
       <section class="dashboard-grid">

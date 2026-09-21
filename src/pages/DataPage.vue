@@ -2966,9 +2966,12 @@ const ORDER_STATUS_TABS: StatusTab[] = [
   { key: "completed", label: "已完成", statuses: ["completed"] },
   {
     key: "closed",
-    label: "取消/退款/异常",
-    statuses: ["cancelled", "refunded", "exception"],
+    label: "取消/退款",
+    statuses: ["cancelled", "refunded"],
   },
+  /* 异常独立成桶：工作台「待处理异常」直达定位（?status=exception），
+     混在取消/退款里按时间倒序翻不到 */
+  { key: "exception", label: "异常", statuses: ["exception"] },
 ];
 /* IKB3K9：商品状态 Tab（口径含售罄映射——在售但库存 0 = 售罄）。 */
 const PRODUCT_STATUS_TABS: StatusTab[] = [
@@ -4195,6 +4198,15 @@ watch(
   () => route.query.q,
   (value) => {
     keyword.value = String(value ?? "");
+  },
+  { immediate: true },
+);
+/* 工作台「待处理异常 → 立即处理」直达：?status=exception 激活异常 Tab */
+watch(
+  () => route.query.status,
+  (value) => {
+    if (value === "exception" && route.params.section === "orders")
+      statusFilter.value = "exception";
   },
   { immediate: true },
 );
