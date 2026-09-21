@@ -86,6 +86,7 @@ const profileForm = ref({
   shortName: "",
   warehouseName: "",
   address: "",
+  servicePhone: "",
   status: "active" as "active" | "inactive",
 });
 watch(bundle, (b) => {
@@ -95,6 +96,7 @@ watch(bundle, (b) => {
     shortName: b.campus.shortName,
     warehouseName: b.campus.warehouseName,
     address: b.campus.address ?? "",
+    servicePhone: (b.campus as { servicePhone?: string }).servicePhone ?? "",
     status: b.campus.status === "inactive" ? "inactive" : "active",
   };
 });
@@ -107,6 +109,8 @@ async function saveProfile() {
       shortName: profileForm.value.shortName.trim(),
       warehouseName: profileForm.value.warehouseName.trim(),
       address: profileForm.value.address.trim(),
+      // IKHMF1：客服电话（校区自定义，小程序拨号展示）
+      servicePhone: profileForm.value.servicePhone.trim(),
       status: profileForm.value.status,
     });
     notify("基础档案已保存");
@@ -373,6 +377,14 @@ const EMBED_SECTIONS = [
           <label
             >地址
             <input v-model.trim="profileForm.address" :disabled="!isPlatform" /></label>
+          <label
+            >客服电话（小程序拨号展示）
+            <input
+              v-model.trim="profileForm.servicePhone"
+              :disabled="!isPlatform"
+              maxlength="20"
+              placeholder="如 4008002026"
+          /></label>
           <label v-if="isPlatform"
             >状态
             <select v-model="profileForm.status">

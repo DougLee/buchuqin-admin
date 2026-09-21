@@ -728,6 +728,8 @@ export const api = {
       deliveryFeeScheduled: number;
       deliveryThreshold: number;
       buildingManagerBaseSalary?: number;
+      /** IKHMF1：客服电话（校区自定义） */
+      servicePhone?: string;
     }>,
   ) =>
     request<Campus>(`/admin/campuses/${id}`, {
