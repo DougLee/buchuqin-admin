@@ -333,6 +333,17 @@ function dingTwice() {
     /* 无声环境（未交互/被策略拦）忽略——浮窗仍有效 */
   }
 }
+/** IKHFWV 二轮（道哥）：叮叮后语音播报——浏览器本地 TTS（zh-CN），无音频资产 */
+function speakNewOrder() {
+  try {
+    const u = new SpeechSynthesisUtterance("您有新的订单，请注意查收");
+    u.lang = "zh-CN";
+    u.rate = 1;
+    speechSynthesis.speak(u);
+  } catch {
+    /* 无 TTS 环境忽略 */
+  }
+}
 async function pollNewOrders() {
   if (!notifyOn.value || !canSee("orders") || !localStorage.getItem("adminToken"))
     return;
@@ -353,6 +364,7 @@ async function pollNewOrders() {
         extra,
       });
       dingTwice();
+      speakNewOrder();
       if (
         document.hidden &&
         "Notification" in window &&
@@ -361,10 +373,6 @@ async function pollNewOrders() {
         new Notification("新订单", {
           body: `¥${(d.latest.payableAmount / 100).toFixed(2)} · 尾号 ${d.latest.orderNo.slice(-8)}${extra > 1 ? ` 等 ${extra} 单` : ""}`,
         });
-      setTimeout(
-        () => (notifyCards.value = notifyCards.value.filter((c) => c.key !== key)),
-        8000,
-      );
     }
     orderWatermark = d.todayPaid;
   } catch {
@@ -599,10 +607,17 @@ async function switchCampus(event: Event) {
       role="alert"
       @click="router.push('/orders'); dismissNotify(c.key)"
     >
+      <button
+        class="new-order-toast__close"
+        aria-label="关闭提醒"
+        @click.stop="dismissNotify(c.key)"
+      >
+        ×
+      </button>
       <b>📦 新订单</b>
       <span>¥{{ (c.amount / 100).toFixed(2) }} · 尾号 {{ c.no }}</span>
       <small v-if="c.extra > 1">共 {{ c.extra }} 个新订单</small>
-      <small v-else>点击去处理 · 8 秒后消失</small>
+      <small v-else>点击卡片去处理</small>
     </div>
   </div>
 </div>
