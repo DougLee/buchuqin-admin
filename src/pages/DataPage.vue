@@ -55,6 +55,7 @@ import type {
 } from "../types";
 // Each cached dynamic route owns its filters. A deactivated page must not follow
 // another page's global route and issue requests or reset its cached state.
+const props = defineProps<{ fixedSection?: string }>();
 const liveRoute = useRoute();
 const pagePath = liveRoute.path;
 const route = shallowReactive({ meta: liveRoute.meta, params: liveRoute.params, query: liveRoute.query });
@@ -3581,6 +3582,9 @@ const promotionConfig: SectionConfig = {
     const tab =
       PROMOTION_STATE_TABS.find((t) => t.key === statusFilter.value) ??
       PROMOTION_STATE_TABS[0];
+    // 类别筛选（2026-09-21 道哥）：复用 categoryFilter（与商品库同款可搜索下拉），
+    // listQuery 白名单已拼 categoryId，合并进 query 即可
+    const categoryId = categoryFilter.value || undefined;
     return api
       .promotions(categoryFilter.value ? { ...query, categoryId: categoryFilter.value } : query, tab.statuses.length ? tab.key : undefined)
       .then((res) => ({
@@ -3633,7 +3637,7 @@ const createLabels: Record<string, string> = {
   "wechat-groups": "＋ 上传群码",
 };
 const createPermissions: Record<string, string> = {"categories": "POST /admin/categories", "locations": "POST /admin/locations", "coupons": "POST /admin/coupons", "banners": "POST /admin/banners", "promotions": "POST /admin/promotions", "pay-ads": "POST /admin/banners", "campuses": "POST /admin/campuses", "buildings": "POST /admin/buildings", "staff": "POST /admin/staff", "dispatch": "POST /admin/dispatch-invitations", "rules": "POST /admin/commission-rules", "printers": "POST /admin/printers", "wechat-groups": "POST /admin/wechat-groups"};
-const section = computed(() => String(route.meta.section ?? route.params.section)),
+const section = computed(() => props.fixedSection ?? String(route.meta.section ?? route.params.section)),
   config = computed<SectionConfig>(() => {
     if (section.value === "dispatch")
       return dispTab.value === "leaves"
@@ -4104,7 +4108,8 @@ watch(keyword, () => {
 });
 watch(statusFilter, () => resetAndLoad());
 watch(
-  () => route.params.section,
+  // IKHM1O：内嵌模式（fixedSection）切换 Tab 同样走板块切换重置+重载
+  [() => route.params.section, () => props.fixedSection],
   () => {
     selected.value = undefined;
     selectedProductIds.value = [];
@@ -5396,13 +5401,7 @@ async function cancelInviteRow(row: AdminRow) {
         >
           {{ closeBadge.text }}
         </span>
-        <button
-          v-if="section === 'buildings' && canWriteSection"
-          class="btn ghost"
-          @click="openDeliveryConfig"
-        >
-          配送费配置
-        </button>
+        <!-- IKHM1O：配送费/打烊配置已迁「校区配置」聚合页（本页不再重复入口） -->
         <!-- IKD6FC：抽奖转盘单例配置入口 -->
         <button
           v-if="section === 'wheel' && canWriteSection"
@@ -5973,6 +5972,16 @@ async function cancelInviteRow(row: AdminRow) {
                       @click="outboundRow(row)"
                     >
                       出库
+                    </button>
+                    <!-- 异常闭环：解除异常预选「订单已取消」，弹窗内原因必填 -->
+                    <button
+                      v-if="
+                        section === 'orders' && rowStatusOf(row) === 'exception'
+                      "
+                      class="btn mini primary"
+                      @click="openStatusDialog(row, 'cancelled')"
+                    >
+                      解除异常
                     </button>
                     <button
                       v-if="section === 'orders' && rowStatusOf(row) === 'exception' && hasPerm('POST /admin/orders/:id/status')"

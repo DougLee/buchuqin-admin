@@ -1131,3 +1131,43 @@ export interface BatchMarginSummary {
   purchaseReceivedTotal?: number;
   grossEstimate?: number;
 }
+
+/* ---------- IKHM1O/IKHM1P 校区配置聚合页 ---------- */
+export interface CampusConfigCampus {
+  id: string;
+  name: string;
+  shortName: string;
+  warehouseName: string;
+  address?: string | null;
+  status: string;
+  type: string;
+  deliveryFeeInstant: number;
+  deliveryFeeScheduled: number;
+  deliveryThreshold: number;
+  closeStart: string;
+  closeEnd: string;
+  manualClosed: boolean;
+  buildingManagerBaseSalary: number;
+}
+export interface DeliverySlotRow {
+  id: string;
+  campusId: string;
+  label: string;
+  available: boolean;
+  capacity: number;
+}
+export interface NoticeRow {
+  id: string;
+  campusId: string;
+  content: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CampusConfigBundle {
+  campus: CampusConfigCampus;
+  slots: DeliverySlotRow[];
+  notices: NoticeRow[];
+}

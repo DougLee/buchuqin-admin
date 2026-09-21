@@ -267,7 +267,7 @@ function removeLabel(role: RbacRole): string {
 }
 </script>
 <template>
-  <div class="workspace">
+  <div class="workspace rbac-workspace">
     <!-- 用 div 不用 header：.shell header 是顶栏专用元素选择器，会误染白卡 -->
     <div class="page-head">
       <div>

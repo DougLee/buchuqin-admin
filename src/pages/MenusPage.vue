@@ -54,17 +54,17 @@ async function remove(row: RbacMenuRow) {
 }
 </script>
 <template>
-  <div class="workspace">
+  <div class="workspace rbac-workspace">
     <div class="page-head"><div><h1>菜单管理</h1><p>配置目录、页面和操作权限。保存后生效，隐藏导航不会撤销授权。</p></div><button class="btn primary" @click="open()">＋ 新建菜单</button></div>
     <p v-if="notice" role="status">{{ notice }}</p><p v-if="error && !opened" class="form-hint" role="alert">{{ error }}</p>
-    <input v-model="search" placeholder="搜索名称、路由" aria-label="搜索菜单" />
+    <div class="rbac-toolbar"><label class="rbac-search"><span>查找菜单</span><input v-model="search" placeholder="输入菜单名称、路由或编码" aria-label="搜索菜单" /></label><span class="rbac-count">{{ flat.length }} 个节点</span></div>
     <div class="data-panel table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>路由 / 页面</th><th>显示</th><th>操作</th></tr></thead><tbody>
-      <tr v-for="{row,depth} in flat" :key="row.id"><td :style="{paddingLeft: `${16 + depth * 20}px`}">{{ row.name }}</td><td>{{ types[row.type] }}</td><td>{{ row.path }}<small class="view-key">{{ row.viewPath }}</small></td><td>{{ row.isShow ? '显示' : '隐藏' }}</td><td>
+      <tr v-for="{row,depth} in flat" :key="row.id"><td :style="{paddingLeft: `${16 + depth * 20}px`}">{{ row.name }}</td><td><span class="rbac-node-kind" :data-kind="row.type">{{ types[row.type] }}</span></td><td>{{ row.path }}<small class="view-key">{{ row.viewPath }}</small></td><td>{{ row.isShow ? '显示' : '隐藏' }}</td><td>
         <button class="btn mini" @click="open(row)">编辑</button><button v-if="row.type !== 2" class="btn mini" @click="open(undefined, row.id)">添加子项</button><button v-if="!row.builtin" class="btn mini" @click="remove(row)">{{ deleting === row.id ? '确认删除整个子树？' : '删除' }}</button>
       </td></tr>
     </tbody></table></div>
     <div v-if="opened" class="modal-backdrop" @click.self="opened = false"><form class="menu-dialog" @submit.prevent="save">
-      <h2>{{ editing ? '编辑菜单' : '新建菜单' }}</h2>
+      <div class="rbac-dialog-heading"><div><p class="eyebrow">菜单与访问权限</p><h2>{{ editing ? '编辑菜单' : '新建菜单' }}</h2></div><button type="button" class="btn ghost" aria-label="关闭菜单编辑" @click="opened = false">关闭</button></div>
       <div class="menu-fields">
         <label>名称<input v-model.trim="form.name" required maxlength="30" /></label>
         <label>类型<select v-model="form.type"><option :value="0">目录</option><option :value="1">菜单</option><option :value="2">按钮</option></select></label>

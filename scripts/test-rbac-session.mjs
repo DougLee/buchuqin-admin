@@ -104,6 +104,19 @@ test('session response ordering', async t => {
     assert.equal(m.menuPath('purchase'), undefined);
     m.clearSession(); assert.equal(m.menuPath('orders'), undefined);
   });
+  await t.test('platform permission is operation-specific and scope-only changes clear cached pages', () => {
+    reset();
+    const perms = ['GET /admin/campus-config', 'PATCH /admin/notices/:id'];
+    m.applyRbac({ ...me(perms), platform: true, platformPerms: [perms[0]] });
+    assert.equal(m.hasPlatformPerm(perms[0]), true);
+    assert.equal(m.hasPerm('PATCH /admin/notices/123'), true);
+    assert.equal(m.hasPlatformPerm('PATCH /admin/notices/123'), false);
+    const epoch = m.authorizationEpoch.value;
+    m.applyRbac({ ...me(perms), platform: false, platformPerms: [] });
+    assert.ok(m.authorizationEpoch.value > epoch);
+    assert.equal(m.hasPlatformPerm(perms[0]), false);
+    m.clearSession(); assert.equal(m.hasPlatformPerm(perms[0]), false);
+  });
   await t.test('permission method and segment matching stays narrow', () => {
     reset(); m.applyRbac(me(['PATCH /admin/products/:id']));
     assert.equal(m.hasPerm('PATCH /admin/products/123/'), true);

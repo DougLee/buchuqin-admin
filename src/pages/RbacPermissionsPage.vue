@@ -1,21 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
-import type { AdminPermission } from "../types";
+type PermissionEntry = { pattern: string; name: string };
 
-/**
- * 权限目录（RBAC V1，2026-09-19）：只读登记表，按 group 分块展示；
- * 角色编辑的权限矩阵数据同源（GET /admin/rbac/permissions）。
- */
-const catalog = ref<AdminPermission[]>([]);
+/** 与菜单编辑器共用后端登记的接口权限目录。 */
+const catalog = ref<PermissionEntry[]>([]);
 const loading = ref(true);
+const search = ref("");
 const loadError = ref("");
 
 async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    catalog.value = await api.rbacPermissions();
+    catalog.value = (await api.rbacCatalog()).permissions;
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : "加载失败";
   } finally {
@@ -25,30 +23,31 @@ async function load() {
 onMounted(() => void load());
 
 const groups = computed(() => {
-  const map = new Map<string, AdminPermission[]>();
-  for (const p of [...catalog.value].sort((a, b) => a.sort - b.sort)) {
-    if (!map.has(p.group)) map.set(p.group, []);
-    map.get(p.group)!.push(p);
+  const map = new Map<string, PermissionEntry[]>();
+  for (const p of catalog.value) {
+    const group = p.name.split(" / ")[0] || "其他接口";
+    if (search.value && !`${p.name} ${p.pattern}`.toLowerCase().includes(search.value.toLowerCase())) continue;
+    if (!map.has(group)) map.set(group, []);
+    map.get(group)!.push(p);
   }
   return [...map.entries()].map(([group, perms]) => ({ group, perms }));
 });
-function scopeText(scope: string): string {
-  return scope === "platform" ? "平台/跨校区" : "校区业务";
-}
 </script>
 <template>
-  <div class="workspace">
+  <div class="workspace rbac-workspace">
     <!-- 用 div 不用 header：.shell header 是顶栏专用元素选择器，会误染白卡 -->
     <div class="page-head">
       <div>
         <h1>权限目录</h1>
         <p>
-          系统全部权限码登记（{{ catalog.length }} 项，按模块分组）；
-          角色管理里勾选的就是这些权限。
+          浏览系统已登记的接口权限（{{ catalog.length }} 项）。
+          通过菜单管理配置接口权限，再在角色管理中分配菜单和操作。
         </p>
       </div>
     </div>
 
+    <div class="rbac-toolbar"><label class="rbac-search"><span>查找权限</span><input v-model="search" placeholder="搜索功能名称、请求方法或接口路径" aria-label="搜索权限目录" /></label><span class="rbac-count">{{ groups.length }} 个模块</span></div>
+    <div v-if="!loading && !loadError && !groups.length" class="data-panel rbac-empty">没有匹配的权限，请尝试其他关键词。</div>
     <div v-if="loading" class="data-panel">
       <div class="table-wrap"><div class="row-skeleton"></div></div>
     </div>
@@ -71,23 +70,15 @@ function scopeText(scope: string): string {
             <thead>
               <tr>
                 <th>权限</th>
-                <th>权限码</th>
-                <th>作用域</th>
-                <th>说明</th>
+                <th>请求方法</th>
+                <th>接口路径</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="p in g.perms" :key="p.code">
+              <tr v-for="p in g.perms" :key="p.pattern">
                 <td><strong>{{ p.name }}</strong></td>
-                <td><code>{{ p.code }}</code></td>
-                <td>
-                  <span
-                    class="status"
-                    :class="p.scope === 'platform' ? 'info' : 'success'"
-                    >{{ scopeText(p.scope) }}</span
-                  >
-                </td>
-                <td>{{ p.remark || "—" }}</td>
+                <td><span class="rbac-node-kind">{{ p.pattern.split(" ")[0] }}</span></td>
+                <td><code>{{ p.pattern.slice(p.pattern.indexOf(" ") + 1) }}</code></td>
               </tr>
             </tbody>
           </table>

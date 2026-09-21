@@ -42,6 +42,7 @@ export interface MeMenu {
 export interface RbacMe {
   account: { id: string; username: string; nickname: string; status: string; campusId: string };
   platform: boolean;
+  platformPerms?: string[];
   super: boolean;
   contextCampusId: string;
   roles: { id: string; code: string; name: string; scope: "platform" | "campus"; campusId: string | null; status: string; builtin: boolean }[];
@@ -176,6 +177,7 @@ export const patterns = ref<Set<string>>(new Set());
 export const menuTree = ref<MeMenu[]>([]);
 export const isSuper = ref(false);
 export const isPlatform = ref(false);
+const platformPatterns = ref<Set<string>>(new Set());
 export const rbacRoles = ref<RbacMe["roles"]>([]);
 export const switchableCampuses = ref<string[]>([]);
 export const rbacVersion = ref(0);
@@ -190,13 +192,16 @@ export function getSessionGeneration(): number {
 }
 
 /** 与服务端相同：HTTP 方法一致、参数匹配单段、尾斜杠归一。 */
-export function hasPerm(pattern: string): boolean {
+export function hasPlatformPerm(pattern: string): boolean {
+  return hasPerm(pattern, platformPatterns.value);
+}
+export function hasPerm(pattern: string, grants = patterns.value): boolean {
   if (isSuper.value) return true;
   const separator = pattern.indexOf(" ");
   if (separator < 0) return false;
   const method = pattern.slice(0, separator);
   const path = pattern.slice(separator + 1).replace(/\/+$/, "").split("/");
-  return [...patterns.value].some(grant => {
+  return [...grants].some(grant => {
     const split = grant.indexOf(" ");
     if (split < 0 || grant.slice(0, split) !== method) return false;
     const parts = grant.slice(split + 1).replace(/\/+$/, "").split("/");
@@ -246,13 +251,14 @@ export function applySession(user: SessionUser) {
 
 /** 应用 /admin/rbac/permmenu 结果（登录/切校区/权限变更后调用）。 */
 export function applyRbac(me: RbacMe) {
-  const signature = JSON.stringify([me.account.id, me.contextCampusId, me.perms, me.menus, me.super]);
+  const signature = JSON.stringify([me.account.id, me.contextCampusId, me.perms, me.platformPerms, me.menus, me.super]);
   if (signature !== authorizationSignature) {
     authorizationSignature = signature;
     authorizationEpoch.value++;
   }
 
   patterns.value = new Set(me.perms ?? []);
+  platformPatterns.value = new Set(me.platformPerms ?? []);
   menuTree.value = Array.isArray(me.menus) ? me.menus : [];
   isSuper.value = me.super;
   isPlatform.value = me.platform;
@@ -284,6 +290,7 @@ export async function loadRbac(): Promise<boolean> {
     if (generation !== sessionGeneration) return false;
     authorizationEpoch.value++;
     patterns.value = new Set();
+    platformPatterns.value = new Set();
     menuTree.value = [];
     isSuper.value = false;
     isPlatform.value = false;
@@ -298,6 +305,7 @@ export function clearSession() {
   authorizationSignature = "";
   sessionUser.value = null;
   patterns.value = new Set();
+  platformPatterns.value = new Set();
   menuTree.value = [];
   isSuper.value = false;
   isPlatform.value = false;

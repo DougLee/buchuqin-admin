@@ -387,6 +387,12 @@ a {
 .user-chip[aria-expanded="true"] svg {
   transform: rotate(180deg);
 }
+@media (max-width: 600px) {
+  .header-actions { gap: 6px; }
+  .user-chip { padding: 4px; gap: 0; }
+  .user-chip b, .user-chip > svg { display: none; }
+  .campus-select select { max-width: 116px; }
+}
 .menu-backdrop {
   position: fixed;
   inset: 0;
