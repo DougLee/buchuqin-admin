@@ -47,6 +47,7 @@ import type {
   StocktakeResult,
   WheelConfig,
   WheelPrizeInput,
+  CampusConfigBundle,
 } from "./types";
 
 interface ApiResult<T> {
@@ -1138,4 +1139,50 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  /* ---------- IKHM1O/IKHM1P 校区配置聚合页 ---------- */
+  campusConfig: (campus?: string) =>
+    request<CampusConfigBundle>(
+      `/admin/campus-config${campus ? `?campus=${encodeURIComponent(campus)}` : ""}`,
+    ),
+  createSlot: (data: { campusId: string; label: string; capacity?: number }) =>
+    request("/admin/delivery-slots", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateSlot: (
+    id: string,
+    data: { label?: string; capacity?: number; available?: boolean },
+  ) =>
+    request(`/admin/delivery-slots/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteSlot: (id: string) =>
+    request(`/admin/delivery-slots/${id}`, { method: "DELETE" }),
+  createNotice: (data: {
+    campusId: string;
+    content: string;
+    startsAt: string;
+    endsAt: string;
+  }) =>
+    request("/admin/notices", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateNotice: (
+    id: string,
+    data: {
+      content?: string;
+      startsAt?: string;
+      endsAt?: string;
+      status?: "active" | "disabled";
+    },
+  ) =>
+    request(`/admin/notices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteNotice: (id: string) =>
+    request(`/admin/notices/${id}`, { method: "DELETE" }),
 };

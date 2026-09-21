@@ -53,6 +53,8 @@ import type {
   WheelPrizeInput,
   WheelRow,
 } from "../types";
+// IKHM1O 校区配置页内嵌复用：fixedSection 指定板块（不走路由参数）
+const props = defineProps<{ fixedSection?: string }>();
 const route = useRoute(),
   rows = ref<AdminRow[]>([]),
   loading = ref(true),
@@ -3770,7 +3772,11 @@ const createLabels: Record<string, string> = {
   // IKAJSY：群码上传（users 为只读板块，无新建入口）
   "wechat-groups": "＋ 上传群码",
 };
-const section = computed(() => String(route.params.section)),
+const section = computed(() =>
+  // IKHM1O 校区配置页内嵌复用：prop 覆盖路由 section（banners/printers/
+  // wechat-groups/wheel 四板块原样渲染，菜单入口已收编）
+  props.fixedSection ?? String(route.params.section),
+),
   config = computed<SectionConfig>(() => {
     if (section.value === "dispatch")
       return dispTab.value === "leaves"
@@ -4231,7 +4237,8 @@ watch(keyword, () => {
 });
 watch(statusFilter, () => resetAndLoad());
 watch(
-  () => route.params.section,
+  // IKHM1O：内嵌模式（fixedSection）切换 Tab 同样走板块切换重置+重载
+  [() => route.params.section, () => props.fixedSection],
   () => {
     selected.value = undefined;
     selectedProductIds.value = [];
@@ -5520,13 +5527,7 @@ async function cancelInviteRow(row: AdminRow) {
         >
           {{ closeBadge.text }}
         </span>
-        <button
-          v-if="section === 'buildings' && canWriteSection"
-          class="btn ghost"
-          @click="openDeliveryConfig"
-        >
-          配送费配置
-        </button>
+        <!-- IKHM1O：配送费/打烊配置已迁「校区配置」聚合页（本页不再重复入口） -->
         <!-- IKD6FC：抽奖转盘单例配置入口 -->
         <button
           v-if="section === 'wheel' && canWriteSection"

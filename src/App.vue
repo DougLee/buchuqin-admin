@@ -83,14 +83,11 @@ const isLogin = computed(() => route.path === "/login");
  *  权限矩阵不变——banners 类归 hq/admin，marketing 类（券/秒杀）归校区角色，
  *  visibleGroups 按 canSee 逐项过滤后各角色只看到自己的子集。 */
 const MARKETING_ITEMS: [string, string, string][] = [
-  ["/banners", "marketing", "Banner 配置"],
+  // IKHM1O：Banner 配置/支付广告位/抽奖转盘已收编进「校区配置」聚合页
   ["/coupons", "marketing", "优惠券配置"],
   ["/promotions", "marketing", "限时秒杀"],
-  ["/pay-ads", "marketing", "支付广告位"],
   // IKH0EK：首页推荐位（手动优先+销量补齐），营销板块
   ["/featured", "marketing", "推荐位管理"],
-  // IKD6FC：抽奖大转盘（首页入口显隐随活动开关）
-  ["/wheel", "wheel", "抽奖转盘"],
 ];
 const hqGroups = [
   {
@@ -126,6 +123,8 @@ const hqGroups = [
     label: "校区与账号",
     items: [
       ["/campuses", "campus", "校区管理"],
+      // IKHM1O：校区配置聚合页（档案/配送营业/结算/时段/公告/群码/打印机/Banner/抽奖）
+      ["/campus-config", "campus", "校区配置"],
       ["/accounts", "accounts", "账号管理"],
       ["/users", "staff", "C端用户"],
       ["/audit", "audit", "审计日志"],
@@ -182,7 +181,8 @@ const campusGroups = [
       ["/buildings", "buildings", "楼栋管理"],
       // IKAJSW/IKAJSY：C 端用户与微信群码进组织板块（运营域）
       ["/users", "staff", "C端用户"],
-      ["/wechat-groups", "campus", "微信群码"],
+      // IKHM1O：微信群码收编进「校区配置」；配置聚合页挂组织管理组
+      ["/campus-config", "campus", "校区配置"],
       ["/dispatch", "dispatch", "调配与请假"],
     ],
   },
@@ -200,8 +200,7 @@ const campusGroups = [
     label: "系统",
     items: [
       ["/accounts", "accounts", "账号管理"],
-      // IKBW0Q：校区自主绑定小票打印机
-      ["/printers", "printers", "打印机"],
+      // IKHM1O：打印机收编进「校区配置」，系统组只留账号管理
     ],
   },
 ];
@@ -230,7 +229,8 @@ const groups = computed(() => {
             ["/campuses", "campus", "校区管理"],
             ["/buildings", "buildings", "楼栋管理"],
             ["/users", "staff", "C端用户"],
-            ["/wechat-groups", "campus", "微信群码"],
+            // IKHM1O：微信群码收编进校区配置聚合页
+            ["/campus-config", "campus", "校区配置"],
             ["/dispatch", "dispatch", "调配与请假"],
           ],
         };

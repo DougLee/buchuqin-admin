@@ -1,0 +1,720 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue";
+import { api } from "../api";
+import { fenToYuan, yuanToFen } from "../utils/money";
+import { canSee, role } from "../session";
+import DataPage from "./DataPage.vue";
+import type {
+  CampusConfigBundle,
+  DeliverySlotRow,
+  NoticeRow,
+} from "../types";
+
+/**
+ * 校区配置聚合页（IKHM1O 道哥 2026-09-21 定版全收）：
+ * 顶部校区选择器（平台角色）+ Tab 分区，把原散在 6 处的校区维度配置收进一菜单。
+ * - 参数类 Tab（档案/配送营业/楼长结算/送达时段/公告）走聚合接口，支持 ?campus=
+ * - 内容类 Tab（群码/打印机/Banner/抽奖）内嵌 DataPage 板块复用——按当前登录
+ *   校区取数（平台角色配其他校区请先在顶栏切换校区）
+ * - Tab 按原权限键过滤（marketing/wheel/printers/campus），权限模型不变
+ */
+const isPlatform = computed(() => role.value === "hq" || role.value === "admin");
+
+const TABS = computed(() => {
+  const list: Array<{ key: string; label: string }> = [
+    { key: "profile", label: "基础档案" },
+    { key: "delivery", label: "配送与营业" },
+    { key: "salary", label: "楼长结算" },
+    { key: "slots", label: "送达时段" },
+    { key: "notices", label: "公告" },
+    { key: "wechat-groups", label: "微信群码" },
+  ];
+  if (canSee("printers")) list.push({ key: "printers", label: "打印机" });
+  if (canSee("marketing"))
+    list.push({ key: "banners", label: "Banner" }, { key: "pay-ads", label: "支付广告位" });
+  if (canSee("wheel")) list.push({ key: "wheel", label: "抽奖转盘" });
+  return list;
+});
+const activeTab = ref("profile");
+const campusOptions = ref<Pick<
+  import("../types").Campus,
+  "id" | "name" | "shortName"
+>[]>([]);
+const selectedCampus = ref("");
+const bundle = ref<CampusConfigBundle | null>(null);
+const loading = ref(false);
+const message = ref("");
+const messageError = ref(false);
+const saving = ref(false);
+
+function notify(text: string, error = false) {
+  message.value = text;
+  messageError.value = error;
+  if (text) setTimeout(() => (message.value = ""), 2600);
+}
+
+async function load() {
+  loading.value = true;
+  try {
+    bundle.value = await api.campusConfig(
+      selectedCampus.value || undefined,
+    );
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "加载失败", true);
+  } finally {
+    loading.value = false;
+  }
+}
+onMounted(async () => {
+  if (isPlatform.value) {
+    try {
+      campusOptions.value = (await api.campuses()).filter(
+        (c) => (c as { status?: string }).status !== "official",
+      );
+      selectedCampus.value = campusOptions.value[0]?.id ?? "";
+    } catch {
+      /* 校区列表失败不阻塞：留空走操作者本校区 */
+    }
+  }
+  await load();
+});
+watch(selectedCampus, () => void load());
+
+/* ---------- 基础档案（平台角色可编辑；校区角色只读） ---------- */
+const profileForm = ref({
+  name: "",
+  shortName: "",
+  warehouseName: "",
+  address: "",
+  status: "active" as "active" | "inactive",
+});
+watch(bundle, (b) => {
+  if (!b) return;
+  profileForm.value = {
+    name: b.campus.name,
+    shortName: b.campus.shortName,
+    warehouseName: b.campus.warehouseName,
+    address: b.campus.address ?? "",
+    status: b.campus.status === "inactive" ? "inactive" : "active",
+  };
+});
+async function saveProfile() {
+  if (!bundle.value || saving.value) return;
+  saving.value = true;
+  try {
+    await api.updateCampus(bundle.value.campus.id, {
+      name: profileForm.value.name.trim(),
+      shortName: profileForm.value.shortName.trim(),
+      warehouseName: profileForm.value.warehouseName.trim(),
+      address: profileForm.value.address.trim(),
+      status: profileForm.value.status,
+    });
+    notify("基础档案已保存");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/* ---------- 配送与营业（平台+校区角色均可：平台走 campuses/:id，
+ *  校区角色走 delivery-config 本校区端点） ---------- */
+const closeMode = computed({
+  get: () =>
+    deliveryForm.value.manualClosed
+      ? "now"
+      : deliveryForm.value.closeStart === deliveryForm.value.closeEnd
+        ? "always"
+        : "on-time",
+  set: (mode) => {
+    if (mode === "now") deliveryForm.value.manualClosed = true;
+    else {
+      deliveryForm.value.manualClosed = false;
+      if (mode === "always") {
+        deliveryForm.value.closeStart = "00:00";
+        deliveryForm.value.closeEnd = "00:00";
+      }
+    }
+  },
+});
+const deliveryForm = ref({
+  instant: 0,
+  scheduled: 0,
+  threshold: 0,
+  closeStart: "00:00",
+  closeEnd: "00:00",
+  manualClosed: false,
+});
+watch(bundle, (b) => {
+  if (!b) return;
+  deliveryForm.value = {
+    instant: Number(fenToYuan(b.campus.deliveryFeeInstant)),
+    scheduled: Number(fenToYuan(b.campus.deliveryFeeScheduled)),
+    threshold: Number(fenToYuan(b.campus.deliveryThreshold)),
+    closeStart: b.campus.closeStart,
+    closeEnd: b.campus.closeEnd,
+    manualClosed: b.campus.manualClosed,
+  };
+});
+async function saveDelivery() {
+  if (!bundle.value || saving.value) return;
+  saving.value = true;
+  try {
+    const payload = {
+      deliveryFeeInstant: yuanToFen(deliveryForm.value.instant),
+      deliveryFeeScheduled: yuanToFen(deliveryForm.value.scheduled),
+      deliveryThreshold: yuanToFen(deliveryForm.value.threshold),
+      closeStart: deliveryForm.value.closeStart,
+      closeEnd: deliveryForm.value.closeEnd,
+      manualClosed: deliveryForm.value.manualClosed,
+    };
+    if (isPlatform.value) {
+      // 平台角色可保存任意选中校区（含打烊窗与手动闭店）
+      await api.updateCampus(bundle.value.campus.id, payload);
+    } else {
+      await api.updateDeliveryConfig(payload);
+    }
+    notify("配送与营业配置已保存");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/* ---------- 楼长结算（底薪，平台角色） ---------- */
+const salaryForm = ref({ baseSalary: 0 });
+watch(bundle, (b) => {
+  if (b)
+    salaryForm.value = {
+      baseSalary: Number(fenToYuan(b.campus.buildingManagerBaseSalary)),
+    };
+});
+async function saveSalary() {
+  if (!bundle.value || saving.value) return;
+  saving.value = true;
+  try {
+    await api.updateCampus(bundle.value.campus.id, {
+      buildingManagerBaseSalary: yuanToFen(salaryForm.value.baseSalary),
+    });
+    notify("楼长底薪已保存");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/* ---------- 送达时段 CRUD（IKHM1O 补后台管理入口） ---------- */
+const slots = computed<DeliverySlotRow[]>(() => bundle.value?.slots ?? []);
+const slotForm = ref({ label: "", capacity: 100 });
+async function addSlot() {
+  if (!bundle.value || !slotForm.value.label.trim()) return;
+  try {
+    await api.createSlot({
+      campusId: bundle.value.campus.id,
+      label: slotForm.value.label.trim(),
+      capacity: slotForm.value.capacity,
+    });
+    slotForm.value = { label: "", capacity: 100 };
+    notify("时段已创建");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "创建失败", true);
+  }
+}
+async function toggleSlot(row: DeliverySlotRow) {
+  try {
+    await api.updateSlot(row.id, { available: !row.available });
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "更新失败", true);
+  }
+}
+async function removeSlot(row: DeliverySlotRow) {
+  if (!confirm(`删除时段「${row.label}」？`)) return;
+  try {
+    await api.deleteSlot(row.id);
+    notify("时段已删除");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+
+/* ---------- 公告 CRUD（IKHM1P） ---------- */
+const notices = computed<NoticeRow[]>(() => bundle.value?.notices ?? []);
+const noticeForm = ref({
+  content: "",
+  startsAt: localInput(new Date()),
+  endsAt: localInput(new Date(Date.now() + 7 * 86400_000)),
+});
+/** datetime-local 值（本地时区，提交转 ISO） */
+function localInput(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function noticeState(n: NoticeRow) {
+  const now = Date.now();
+  if (n.status === "disabled") return { text: "已停用", tone: "muted" };
+  if (new Date(n.startsAt).getTime() > now)
+    return { text: "未开始", tone: "info" };
+  if (new Date(n.endsAt).getTime() <= now)
+    return { text: "已结束", tone: "muted" };
+  return { text: "生效中", tone: "ok" };
+}
+async function addNotice() {
+  if (!bundle.value || !noticeForm.value.content.trim()) return;
+  try {
+    await api.createNotice({
+      campusId: bundle.value.campus.id,
+      content: noticeForm.value.content.trim(),
+      startsAt: new Date(noticeForm.value.startsAt).toISOString(),
+      endsAt: new Date(noticeForm.value.endsAt).toISOString(),
+    });
+    noticeForm.value.content = "";
+    notify("公告已发布");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "发布失败", true);
+  }
+}
+async function toggleNotice(n: NoticeRow) {
+  try {
+    await api.updateNotice(n.id, {
+      status: n.status === "active" ? "disabled" : "active",
+    });
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "更新失败", true);
+  }
+}
+async function removeNotice(n: NoticeRow) {
+  if (!confirm(`删除公告「${n.content.slice(0, 20)}…」？`)) return;
+  try {
+    await api.deleteNotice(n.id);
+    notify("公告已删除");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "删除失败", true);
+  }
+}
+
+/** 内容类 Tab：内嵌 DataPage 板块（按当前登录校区取数） */
+const EMBED_SECTIONS = [
+  "wechat-groups",
+  "printers",
+  "banners",
+  "pay-ads",
+  "wheel",
+];
+</script>
+<template>
+  <div class="workspace">
+    <div class="page-head">
+      <div>
+        <p class="eyebrow">CAMPUS SETTINGS</p>
+        <h1>校区配置</h1>
+        <p>档案、配送营业、结算、时段、公告与营销内容——一个校区的全部配置。</p>
+      </div>
+      <select
+        v-if="isPlatform"
+        v-model="selectedCampus"
+        class="filter-btn"
+        aria-label="校区选择"
+      >
+        <option
+          v-for="c in campusOptions"
+          :key="c.id"
+          :value="c.id"
+        >
+          {{ c.shortName || c.name }}
+        </option>
+      </select>
+    </div>
+    <p v-if="message" class="form-hint" :class="{ danger: messageError }">
+      {{ message }}
+    </p>
+    <nav class="cc-tabs" aria-label="配置分区">
+      <button
+        v-for="t in TABS"
+        :key="t.key"
+        :class="{ active: activeTab === t.key }"
+        @click="activeTab = t.key"
+      >
+        {{ t.label }}
+      </button>
+    </nav>
+
+    <p v-if="loading" class="form-hint">加载中…</p>
+
+    <!-- 基础档案 -->
+    <section v-else-if="activeTab === 'profile'" class="cc-panel">
+      <template v-if="bundle">
+        <div class="cc-form">
+          <label
+            >校区全称
+            <input v-model.trim="profileForm.name" :disabled="!isPlatform" /></label>
+          <label
+            >简称
+            <input
+              v-model.trim="profileForm.shortName"
+              :disabled="!isPlatform"
+          /></label>
+          <label
+            >仓库名
+            <input
+              v-model.trim="profileForm.warehouseName"
+              :disabled="!isPlatform"
+          /></label>
+          <label
+            >地址
+            <input v-model.trim="profileForm.address" :disabled="!isPlatform" /></label>
+          <label v-if="isPlatform"
+            >状态
+            <select v-model="profileForm.status">
+              <option value="active">营业中</option>
+              <option value="inactive">已停用</option>
+            </select></label
+          >
+        </div>
+        <p v-if="!isPlatform" class="form-hint"
+          >基础档案仅总部/平台账号可修改</p
+        >
+        <button
+          v-if="isPlatform"
+          class="btn primary"
+          :disabled="saving"
+          @click="saveProfile"
+        >
+          保存档案</button
+        >
+      </template>
+    </section>
+
+    <!-- 配送与营业 -->
+    <section v-else-if="activeTab === 'delivery'" class="cc-panel">
+      <template v-if="bundle">
+        <div class="cc-form">
+          <label
+            >即时达配送费（元）
+            <input
+              v-model.number="deliveryForm.instant"
+              type="number"
+              min="0"
+              step="0.01" /></label>
+          <label
+            >预约达配送费（元）
+            <input
+              v-model.number="deliveryForm.scheduled"
+              type="number"
+              min="0"
+              step="0.01" /></label>
+          <label
+            >起送门槛（元）
+            <input
+              v-model.number="deliveryForm.threshold"
+              type="number"
+              min="0"
+              step="0.01" /></label>
+          <label
+            >闭店方式
+            <select v-model="closeMode">
+              <option value="always">24 小时营业</option>
+              <option value="on-time">按时间打烊</option>
+              <option value="now">立即闭店（手动）</option>
+            </select></label
+          >
+          <template v-if="closeMode === 'on-time'">
+            <label
+              >打烊开始
+              <input
+                v-model="deliveryForm.closeStart"
+                type="time" /></label>
+            <label
+              >打烊结束
+              <input v-model="deliveryForm.closeEnd" type="time" /></label>
+          </template>
+        </div>
+        <p class="form-hint"
+          >打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。</p
+        >
+        <button class="btn primary" :disabled="saving" @click="saveDelivery">
+          保存配送与营业配置</button
+        >
+      </template>
+    </section>
+
+    <!-- 楼长结算 -->
+    <section v-else-if="activeTab === 'salary'" class="cc-panel">
+      <template v-if="bundle">
+        <div class="cc-form">
+          <label
+            >楼长月度底薪（元，0 = 无底薪纯提成）
+            <input
+              v-model.number="salaryForm.baseSalary"
+              type="number"
+              min="0"
+              step="1"
+              :disabled="!isPlatform" /></label>
+        </div>
+        <p v-if="!isPlatform" class="form-hint"
+          >底薪仅总部/平台账号可修改</p
+        >
+        <button
+          v-if="isPlatform"
+          class="btn primary"
+          :disabled="saving"
+          @click="saveSalary"
+        >
+          保存底薪</button
+        >
+      </template>
+    </section>
+
+    <!-- 送达时段 -->
+    <section v-else-if="activeTab === 'slots'" class="cc-panel">
+      <template v-if="bundle">
+        <div class="cc-add-row">
+          <input
+            v-model.trim="slotForm.label"
+            placeholder="时段文案，如 12:00-14:00"
+            maxlength="20"
+          />
+          <input
+            v-model.number="slotForm.capacity"
+            type="number"
+            min="0"
+            placeholder="容量"
+            style="width: 110px"
+          />
+          <button class="btn primary" @click="addSlot">新增时段</button>
+        </div>
+        <table class="cc-table">
+          <thead>
+            <tr>
+              <th>时段</th>
+              <th>容量</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in slots" :key="s.id">
+              <td>{{ s.label }}</td>
+              <td>{{ s.capacity }}</td>
+              <td
+                ><span class="status" :class="s.available ? 'ok' : 'muted'">{{
+                  s.available ? "可用" : "停用"
+                }}</span></td
+              >
+              <td class="cc-actions">
+                <button class="btn mini ghost" @click="toggleSlot(s)">
+                  {{ s.available ? "停用" : "启用" }}</button
+                ><button class="btn mini danger-btn" @click="removeSlot(s)">
+                  删除</button
+                ></td
+              >
+            </tr>
+            <tr v-if="!slots.length"
+              ><td colspan="4" class="cc-empty">暂无送达时段（预约达下单需要）</td></tr
+            >
+          </tbody>
+        </table>
+      </template>
+    </section>
+
+    <!-- 公告 -->
+    <section v-else-if="activeTab === 'notices'" class="cc-panel">
+      <template v-if="bundle">
+        <div class="cc-add-col">
+          <textarea
+            v-model.trim="noticeForm.content"
+            rows="2"
+            maxlength="200"
+            placeholder="公告内容（小程序首页跑马灯显示，多条自动用「｜」拼接）"
+          ></textarea>
+          <div class="cc-add-row">
+            <label
+              >生效起
+              <input v-model="noticeForm.startsAt" type="datetime-local" /></label>
+            <label
+              >生效止
+              <input v-model="noticeForm.endsAt" type="datetime-local" /></label>
+            <button class="btn primary" @click="addNotice">发布公告</button>
+          </div>
+        </div>
+        <table class="cc-table">
+          <thead>
+            <tr>
+              <th>内容</th>
+              <th>生效窗</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="n in notices" :key="n.id">
+              <td style="max-width: 320px">{{ n.content }}</td>
+              <td class="cc-mono"
+                >{{
+                  new Date(n.startsAt).toLocaleString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                }}
+                ~
+               {{
+                  new Date(n.endsAt).toLocaleString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                }}</td
+              >
+              <td>
+                <span class="status" :class="noticeState(n).tone">{{
+                  noticeState(n).text
+                }}</span></td
+              >
+              <td class="cc-actions">
+                <button class="btn mini ghost" @click="toggleNotice(n)">
+                  {{ n.status === "active" ? "停用" : "启用" }}</button
+                ><button class="btn mini danger-btn" @click="removeNotice(n)">
+                  删除</button
+                ></td
+              >
+            </tr>
+            <tr v-if="!notices.length"
+              ><td colspan="4" class="cc-empty"
+                >暂无公告——发布后小程序首页顶部跑马灯显示</td
+              ></tr
+            >
+          </tbody>
+        </table>
+      </template>
+    </section>
+
+    <!-- 内容类 Tab：内嵌 DataPage 板块（按当前登录校区） -->
+    <template v-else-if="EMBED_SECTIONS.includes(activeTab)">
+      <p class="form-hint"
+        >此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。</p
+      >
+      <DataPage :fixed-section="activeTab" />
+    </template>
+  </div>
+</template>
+
+<style scoped>
+.cc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.cc-tabs button {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.cc-tabs button.active {
+  background: #07883b;
+  border-color: #07883b;
+  color: #fff;
+}
+.cc-panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+}
+.cc-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.cc-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+.cc-form input,
+.cc-form select {
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.cc-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cc-add-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+.cc-add-row input,
+.cc-add-col textarea {
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.cc-add-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cc-add-col textarea {
+  resize: vertical;
+}
+.cc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.cc-table th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.cc-table td {
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.cc-actions {
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+}
+.cc-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px 0 !important;
+}
+.cc-mono {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+</style>

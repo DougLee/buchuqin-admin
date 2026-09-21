@@ -196,6 +196,8 @@ const SECTION_ALIAS: Record<string, string> = {
   "battle-map": "buildings",
   // IKFOPR：总部经营日报独立菜单（权限复用 purchase 板块——对齐路由守卫）
   reports: "purchase",
+  // IKHM1O：校区配置聚合页（权限复用 campuses 板块，同校区管理）
+  "campus-config": "campuses",
 };
 
 export function canSee(section: string): boolean {

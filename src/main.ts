@@ -4,6 +4,8 @@ import App from "./App.vue";
 import Dashboard from "./pages/Dashboard.vue";
 import DataPage from "./pages/DataPage.vue";
 import Login from "./pages/Login.vue";
+// IKHM1O 校区配置聚合页：全量校区维度配置收编（档案/配送营业/结算/时段/公告/群码/打印机/Banner/抽奖）
+import CampusConfigPage from "./pages/CampusConfigPage.vue";
 import RestockPage from "./pages/RestockPage.vue";
 import PurchasePage from "./pages/PurchasePage.vue";
 import DailyReportPage from "./pages/DailyReportPage.vue";
@@ -29,6 +31,8 @@ const routes = [
   { path: "/battle-map", component: BattleMapPage },
   // IKH0EK：首页推荐位管理（营销板块）
   { path: "/featured", component: FeaturedPage },
+  // IKHM1O：校区配置聚合页（campus 键，同校区管理）
+  { path: "/campus-config", component: CampusConfigPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -46,6 +50,8 @@ router.beforeEach((to) => {
   if (to.path === "/campus-report") return canSee("campus-report") ? true : "/";
   if (to.path === "/battle-map") return canSee("buildings") ? true : "/";
   if (to.path === "/featured") return canSee("marketing") ? true : "/";
+  // IKHM1O：校区配置页（campuses 键，同校区管理；页面内 Tab 再按 marketing/wheel/printers 细分）
+  if (to.path === "/campus-config") return canSee("campuses") ? true : "/";
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });
