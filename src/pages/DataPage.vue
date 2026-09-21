@@ -5000,20 +5000,14 @@ const pickingItems = computed(() => {
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
   const items = order?.items;
   if (!order || !items?.length) return null;
-  const productAmount = Number(order.productAmount ?? 0);
-  const payable = Number(order.payableAmount ?? 0);
-  const deliveryFee = Number(order.deliveryFee ?? 0);
-  // 优惠券按行金额比例分摊（运费不计入商品收入）；无优惠时系数为 1
-  const factor =
-    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   let total = 0;
   for (const line of items) {
-    // 2026-09-20 道哥定版：成本口径=批发价快照（校区从总部拿货价），与概览/
-    // 日报/促销「进货=批发」全站一致；无快照历史单显示 —（不做估算）
+    // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——
+    // 目录价差口径（优惠券属营销费用不摊进行）；无快照历史单显示 —
     const cost = line.product?.unitWholesaleCost;
     if (cost == null) return null;
     const price = line.product?.price ?? 0;
-    total += Math.round(price * line.quantity * factor) - cost * line.quantity;
+    total += (price - cost) * line.quantity;
   }
   return total;
 }
@@ -5034,32 +5028,18 @@ interface MarginSource {
 const orderMarginItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "orders" || !order?.items) return [];
-  // IKFTK7 第二轮（道哥口径）：毛利 = 用户实付 − 成本。优惠券按行金额比例
-  // 分摊到行（运费不计入商品收入）；无优惠时系数为 1，退化为售价口径
-  const orderRec = order as unknown as Record<string, unknown>;
-  const productAmount = Number(orderRec.productAmount ?? 0);
-  const payable = Number(orderRec.payableAmount ?? 0);
-  const deliveryFee = Number(orderRec.deliveryFee ?? 0);
-  const factor =
-    productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
+  // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——目录价差
+  // 口径，优惠券属营销费用不摊进行；无快照历史单显示 —（不做估算）
   return order.items.map((line) => {
-    // 2026-09-20 定版：批发价快照（无快照历史单显示 —，不做估算）
     const cost = line.product?.unitWholesaleCost;
-    const estimated = false;
     const price = line.product?.price ?? 0;
-    // 行实收（分，四舍五入）＝售价×数量×实收系数
-    const netFen = Math.round(price * line.quantity * factor);
-    const marginFen = cost == null ? null : netFen - cost * line.quantity;
+    const marginFen = cost == null ? null : (price - cost) * line.quantity;
     return {
       name: line.product?.name ?? "未知商品",
       quantity: line.quantity,
       priceText: `¥${fenToYuan(price)}`,
-      marginText:
-        marginFen == null
-          ? "—"
-          : `¥${fenToYuan(marginFen)}${estimated ? "（估算）" : ""}`,
+      marginText: marginFen == null ? "—" : `¥${fenToYuan(marginFen)}`,
       hasMargin: cost != null,
-      estimated,
     };
   });
 });
@@ -7018,7 +6998,7 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（实付按行分摊 − 支付时批发价快照；口径=校区拿货成本，与概览/日报一致；快照前历史单显示 —）</span
+              >订单明细毛利（（售价 − 批发价快照）× 数量；快照前历史单显示 —）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
@@ -7027,7 +7007,7 @@ async function cancelInviteRow(row: AdminRow) {
                 >
                 <span
                   class="margin-amount"
-                  :class="{ muted: !line.hasMargin || line.estimated }"
+                  :class="{ muted: !line.hasMargin }"
                 >
                   售价 {{ line.priceText }} · 毛利
                   <strong>{{ line.marginText }}</strong></span
