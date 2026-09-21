@@ -339,9 +339,15 @@ const EMBED_SECTIONS = [
         </option>
       </select>
     </div>
-    <p v-if="message" class="form-hint" :class="{ danger: messageError }">
+    <!-- 保存反馈走全局 .toast（DataPage 同款 fixed 居中），不再行内文本条 -->
+    <div
+      v-if="message"
+      class="toast"
+      :class="{ error: messageError }"
+      role="status"
+    >
       {{ message }}
-    </p>
+    </div>
     <nav class="cc-tabs" aria-label="配置分区">
       <button
         v-for="t in TABS"
