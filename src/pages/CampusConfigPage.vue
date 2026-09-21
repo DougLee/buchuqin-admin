@@ -149,6 +149,7 @@ const deliveryForm = ref({
   closeStart: "00:00",
   closeEnd: "00:00",
   manualClosed: false,
+  noManagerTip: "",
 });
 watch(bundle, (b) => {
   if (!b) return;
@@ -159,6 +160,7 @@ watch(bundle, (b) => {
     closeStart: b.campus.closeStart,
     closeEnd: b.campus.closeEnd,
     manualClosed: b.campus.manualClosed,
+    noManagerTip: (b.campus as { noManagerTip?: string }).noManagerTip ?? "",
   };
 });
 async function saveDelivery() {
@@ -174,10 +176,17 @@ async function saveDelivery() {
       manualClosed: deliveryForm.value.manualClosed,
     };
     if (isPlatform.value) {
-      // 平台角色可保存任意选中校区（含打烊窗与手动闭店）
-      await api.updateCampus(bundle.value.campus.id, payload);
+      // 平台角色可保存任意选中校区（含打烊窗/手动闭店/无楼长提示 IKHMKR）
+      await api.updateCampus(bundle.value.campus.id, {
+        ...payload,
+        noManagerTip: deliveryForm.value.noManagerTip.trim(),
+      });
     } else {
-      await api.updateDeliveryConfig(payload);
+      // 校区角色走本校区 delivery-config（无楼长提示一并带，服务端 DTO 均收）
+      await api.updateDeliveryConfig({
+        ...payload,
+        noManagerTip: deliveryForm.value.noManagerTip.trim(),
+      } as Parameters<typeof api.updateDeliveryConfig>[0]);
     }
     notify("配送与营业配置已保存");
     await load();
@@ -456,6 +465,15 @@ const EMBED_SECTIONS = [
               >打烊结束
               <input v-model="deliveryForm.closeEnd" type="time" /></label>
           </template>
+          <label class="cc-form--wide"
+            >无楼长提示（下单结算弹窗，空=默认文案）
+            <textarea
+              v-model.trim="deliveryForm.noManagerTip"
+              rows="2"
+              maxlength="60"
+              placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～"
+            ></textarea
+          ></label>
         </div>
         <p class="form-hint"
           >打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。</p
@@ -669,11 +687,16 @@ const EMBED_SECTIONS = [
   color: #475569;
 }
 .cc-form input,
-.cc-form select {
+.cc-form select,
+.cc-form textarea {
   border: 1px solid #d8e0ea;
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 14px;
+  font-family: inherit;
+}
+.cc-form--wide {
+  grid-column: 1 / -1;
 }
 .cc-add-row {
   display: flex;
