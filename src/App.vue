@@ -297,6 +297,85 @@ const campusChoices = ref<
   { id: string; name: string; shortName: string; current: boolean }[]
 >([]);
 const campusName = ref("湖北工业大学");
+/* ---------- IKHFWV 新订单提醒：30s 轮询水位线（今日已支付累计）----------
+   受众=canSee('orders')（订单配送菜单可见者全收，道哥定版）；顶栏铃铛可关
+   （localStorage）；形态=右下浮窗+叮两声（WebAudio 合成免音频资产）+
+   页面后台时系统通知（已授权才发）。首次取基线，仅增量弹（累计口径防漏报）。 */
+const notifyOn = ref(localStorage.getItem("newOrderNotify") !== "off");
+function toggleNotify() {
+  notifyOn.value = !notifyOn.value;
+  localStorage.setItem("newOrderNotify", notifyOn.value ? "on" : "off");
+  if (notifyOn.value && "Notification" in window && Notification.permission === "default")
+    void Notification.requestPermission();
+}
+const notifyCards = ref<
+  { key: string; id: string; no: string; amount: number; extra: number }[]
+>([]);
+let orderWatermark: number | null = null;
+let audioCtx: AudioContext | null = null;
+function dingTwice() {
+  try {
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    [0, 0.35].forEach((delay) => {
+      const o = audioCtx!.createOscillator();
+      const g = audioCtx!.createGain();
+      o.frequency.value = 1244;
+      g.gain.setValueAtTime(0.001, t0 + delay);
+      g.gain.exponentialRampToValueAtTime(0.22, t0 + delay + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + delay + 0.3);
+      o.connect(g).connect(audioCtx!.destination);
+      o.start(t0 + delay);
+      o.stop(t0 + delay + 0.32);
+    });
+  } catch {
+    /* 无声环境（未交互/被策略拦）忽略——浮窗仍有效 */
+  }
+}
+async function pollNewOrders() {
+  if (!notifyOn.value || !canSee("orders") || !localStorage.getItem("adminToken"))
+    return;
+  try {
+    const d = await api.newOrderWatch();
+    if (orderWatermark === null) {
+      orderWatermark = d.todayPaid; // 首次=基线，存量不弹
+      return;
+    }
+    if (d.todayPaid > orderWatermark && d.latest) {
+      const extra = d.todayPaid - orderWatermark;
+      const key = `${d.latest.id}-${Date.now()}`;
+      notifyCards.value.push({
+        key,
+        id: d.latest.id,
+        no: d.latest.orderNo.slice(-8),
+        amount: d.latest.payableAmount,
+        extra,
+      });
+      dingTwice();
+      if (
+        document.hidden &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      )
+        new Notification("新订单", {
+          body: `¥${(d.latest.payableAmount / 100).toFixed(2)} · 尾号 ${d.latest.orderNo.slice(-8)}${extra > 1 ? ` 等 ${extra} 单` : ""}`,
+        });
+      setTimeout(
+        () => (notifyCards.value = notifyCards.value.filter((c) => c.key !== key)),
+        8000,
+      );
+    }
+    orderWatermark = d.todayPaid;
+  } catch {
+    /* 轮询失败静默（登录过期由 request 层统一处理） */
+  }
+}
+onMounted(pollNewOrders);
+setInterval(pollNewOrders, 30_000);
+function dismissNotify(key: string) {
+  notifyCards.value = notifyCards.value.filter((c) => c.key !== key);
+}
 const campusSwitching = ref(false);
 onMounted(async () => {
   if (!role.value || role.value === "hq") return;
@@ -409,6 +488,16 @@ async function switchCampus(event: Event) {
           >
             <span></span>
           </button>
+          <!-- IKHFWV 新订单提醒开关（订单菜单可见者显示；关=偏好本地记） -->
+          <button
+            v-if="canSee('orders')"
+            class="notification notify-bell"
+            :class="{ 'notify-bell--off': !notifyOn }"
+            :aria-label="notifyOn ? '新订单提醒开（点击关闭）' : '新订单提醒关（点击开启）'"
+            @click="toggleNotify"
+          >
+            <span class="notify-bell-glyph">{{ notifyOn ? "🔔" : "🔕" }}</span>
+          </button>
           <div class="user-menu-wrap">
             <button
               class="user-chip"
@@ -501,5 +590,77 @@ async function switchCampus(event: Event) {
         </div>
       </form>
     </div>
+    <!-- IKHFWV 新订单浮窗栈：右下角，点击跳订单页 -->
+  <div v-if="!isLogin && notifyCards.length" class="new-order-toasts">
+    <div
+      v-for="c in notifyCards"
+      :key="c.key"
+      class="new-order-toast"
+      role="alert"
+      @click="router.push('/orders'); dismissNotify(c.key)"
+    >
+      <b>📦 新订单</b>
+      <span>¥{{ (c.amount / 100).toFixed(2) }} · 尾号 {{ c.no }}</span>
+      <small v-if="c.extra > 1">共 {{ c.extra }} 个新订单</small>
+      <small v-else>点击去处理 · 8 秒后消失</small>
+    </div>
   </div>
+</div>
 </template>
+
+/* ---------- IKHFWV 新订单提醒：顶栏铃铛 + 右下浮窗栈 ---------- */
+.notify-bell-glyph {
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  font-size: 17px;
+  line-height: 1;
+  background: none;
+}
+.notify-bell--off {
+  opacity: 0.45;
+}
+.new-order-toasts {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.new-order-toast {
+  background: #fff;
+  border: 1px solid #25b95a;
+  border-left: 4px solid #25b95a;
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-width: 240px;
+  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: toast-in 0.25s ease;
+}
+.new-order-toast b {
+  font-size: 14px;
+  color: #07883b;
+}
+.new-order-toast span {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+}
+.new-order-toast small {
+  color: #64748b;
+  font-size: 12px;
+}
+@keyframes toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}

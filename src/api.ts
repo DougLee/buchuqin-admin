@@ -546,6 +546,12 @@ export const api = {
   battleMapRoom: (roomId: string) =>
     request<BattleRoomDetail>(`/admin/battle-map/rooms/${roomId}`),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
+  /** IKHFWV 新订单水位线（30s 轮询）：今日已支付累计+最新单摘要 */
+  newOrderWatch: () =>
+    request<{
+      todayPaid: number;
+      latest: { id: string; orderNo: string; payableAmount: number } | null;
+    }>("/admin/orders/new-order-watch"),
   orderStatusCounts: (campusId?: string) =>
     request<Record<string, number>>(
       `/admin/orders/status-counts${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
