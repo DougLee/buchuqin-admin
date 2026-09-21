@@ -1759,3 +1759,61 @@ td.row-actions {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+/* ---------- IKHFWV 新订单提醒：顶栏铃铛 + 右下浮窗栈 ---------- */
+.notify-bell-glyph {
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  font-size: 17px;
+  line-height: 1;
+  background: none;
+}
+.notify-bell--off {
+  opacity: 0.45;
+}
+.new-order-toasts {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.new-order-toast {
+  background: #fff;
+  border: 1px solid #25b95a;
+  border-left: 4px solid #25b95a;
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-width: 240px;
+  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: toast-in 0.25s ease;
+}
+.new-order-toast b {
+  font-size: 14px;
+  color: #07883b;
+}
+.new-order-toast span {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+}
+.new-order-toast small {
+  color: #64748b;
+  font-size: 12px;
+}
+@keyframes toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
