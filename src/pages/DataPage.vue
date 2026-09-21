@@ -5008,7 +5008,9 @@ function orderMarginTotalOf(order: MarginSource | undefined | null): number | nu
     productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   let total = 0;
   for (const line of items) {
-    const cost = line.product?.unitPurchaseCost ?? line.product?.currentUnitPurchaseCost;
+    // 2026-09-20 道哥定版：成本口径=批发价快照（校区从总部拿货价），与概览/
+    // 日报/促销「进货=批发」全站一致；无快照历史单显示 —（不做估算）
+    const cost = line.product?.unitWholesaleCost;
     if (cost == null) return null;
     const price = line.product?.price ?? 0;
     total += Math.round(price * line.quantity * factor) - cost * line.quantity;
@@ -5016,14 +5018,13 @@ function orderMarginTotalOf(order: MarginSource | undefined | null): number | nu
   return total;
 }
 /** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转）。
- *  IKFTK7 第三轮：成本口径 = 进货价（快照 unitPurchaseCost 优先，历史单估算兜底） */
+ *  IKFTK7 第三轮 + 2026-09-20 定版：成本口径 = 批发价快照 unitWholesaleCost */
 interface MarginSource {
   items?: Array<{
     quantity: number;
     product?: {
       price?: number;
-      unitPurchaseCost?: number;
-      currentUnitPurchaseCost?: number;
+      unitWholesaleCost?: number;
     };
   }> | null;
   productAmount?: unknown;
@@ -5042,10 +5043,9 @@ const orderMarginItems = computed(() => {
   const factor =
     productAmount > 0 ? (payable - deliveryFee) / productAmount : 1;
   return order.items.map((line) => {
-    // 快照优先（精确）；快照前历史单回落当前进货价（标注「估算」）
-    const snapshot = line.product?.unitPurchaseCost;
-    const cost = snapshot ?? line.product?.currentUnitPurchaseCost;
-    const estimated = snapshot == null && cost != null;
+    // 2026-09-20 定版：批发价快照（无快照历史单显示 —，不做估算）
+    const cost = line.product?.unitWholesaleCost;
+    const estimated = false;
     const price = line.product?.price ?? 0;
     // 行实收（分，四舍五入）＝售价×数量×实收系数
     const netFen = Math.round(price * line.quantity * factor);
@@ -7018,7 +7018,7 @@ async function cancelInviteRow(row: AdminRow) {
             class="wide pick-list-wrap"
           >
             <span class="field-label"
-              >订单明细毛利（实付按行分摊 − 支付时进货价快照；快照前历史单按当前进货价估算）</span
+              >订单明细毛利（实付按行分摊 − 支付时批发价快照；口径=校区拿货成本，与概览/日报一致；快照前历史单显示 —）</span
             >
             <ul class="margin-list">
               <li v-for="(line, i) in orderMarginItems" :key="i">
