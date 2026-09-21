@@ -5224,13 +5224,23 @@ const statusDialogOpen = ref(false),
   statusDialogValue = ref("paid"),
   statusDialogReason = ref(""),
   statusDialogSaving = ref(false);
-function openStatusDialog(row: AdminRow) {
+function openStatusDialog(row: AdminRow, target?: string) {
   const record = row as unknown as Record<string, unknown>;
   statusDialogRow.value = row;
-  statusDialogValue.value = String(record.status ?? "paid");
+  // target：快捷入口预选目标状态（解除异常→cancelled / 标记异常→exception），
+  // 确认仍走同一弹窗（原因必填 + 审计留痕），不再有无原因的静默改状态
+  statusDialogValue.value = target ?? String(record.status ?? "paid");
   statusDialogReason.value = "";
   statusDialogOpen.value = true;
 }
+/* 原因输入语境化：按目标状态给示例（早期「测试链路」文案随正式化清理） */
+const statusDialogPlaceholder = computed(() => {
+  if (statusDialogValue.value === "exception")
+    return "例如：用户反馈未收到货 / 客服兜底处理";
+  if (statusDialogValue.value === "cancelled")
+    return "例如：误标异常，已人工核实处理";
+  return "例如：客服兜底改状态";
+});
 async function submitStatusDialog() {
   if (!statusDialogRow.value || statusDialogSaving.value) return;
   statusDialogSaving.value = true;
@@ -6077,6 +6087,16 @@ async function cancelInviteRow(row: AdminRow) {
                       @click="outboundRow(row)"
                     >
                       出库
+                    </button>
+                    <!-- 异常闭环：解除异常预选「订单已取消」，弹窗内原因必填 -->
+                    <button
+                      v-if="
+                        section === 'orders' && rowStatusOf(row) === 'exception'
+                      "
+                      class="btn mini primary"
+                      @click="openStatusDialog(row, 'cancelled')"
+                    >
+                      解除异常
                     </button>
                     <button
                       v-if="section === 'orders'"
@@ -7094,7 +7114,13 @@ async function cancelInviteRow(row: AdminRow) {
             "
             ><button class="btn primary" @click="act('advance')">
               推进履约</button
-            ><button class="btn danger-btn" @click="act('mark-exception')">
+            ><!-- 异常闭环：标记异常走改状态弹窗（预选异常+原因必填），
+                 已是异常的单不重复显示，改用行内「解除异常」 -->
+            <button
+              v-if="rowStatusOf(selected!) !== 'exception'"
+              class="btn danger-btn"
+              @click="openStatusDialog(selected!, 'exception')"
+            >
               标记异常</button
             ><!-- 补打小票（IKBT6N）：芯烨云重推，缺纸/卡纸兜底 -->
             <button class="btn ghost" :disabled="printing" @click="reprintReceipt">
@@ -7637,10 +7663,10 @@ async function cancelInviteRow(row: AdminRow) {
               v-model.trim="statusDialogReason"
               type="text"
               maxlength="200"
-              placeholder="例如：测试链路 / 客服兜底改状态"
+              :placeholder="statusDialogPlaceholder"
           /></label>
           <p class="form-hint">
-            绕过流程改状态会留下操作人/时间/原因记录（审计日志），仅用于测试与上线初期兜底。
+            状态变更将记录操作人、时间与原因（审计日志），供运营留痕追溯。
           </p>
         </div>
         <div class="drawer-actions">
