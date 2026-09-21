@@ -3174,6 +3174,8 @@ const configs: Record<string, SectionConfig> = {
       "payableAmount",
       "createdAt",
     ],
+    // 2026-09-21 道哥：详情去「商品」卡——毛利详情已含逐商品+数量（渲染处
+    // 过滤防 detailCols rest 追加回显，同 userText 手法）
   },
   users: usersConfig,
   "wechat-groups": wechatGroupsConfig,
@@ -6976,7 +6978,8 @@ async function cancelInviteRow(row: AdminRow) {
               v-for="col in detailCols(config.columns, config.detailOrder).filter(
                 (c) =>
                   c[0] !== 'marginTotal' &&
-                  !(section === 'orders' && c[0] === 'userText'),
+                  !(section === 'orders' && c[0] === 'userText') &&
+                  !(section === 'orders' && c[0] === 'itemsText'),
               )"
               :key="col[0]"
               :class="{
