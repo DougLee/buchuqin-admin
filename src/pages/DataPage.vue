@@ -3713,8 +3713,14 @@ const promotionConfig: SectionConfig = {
     const tab =
       PROMOTION_STATE_TABS.find((t) => t.key === statusFilter.value) ??
       PROMOTION_STATE_TABS[0];
+    // 类别筛选（2026-09-21 道哥）：复用 categoryFilter（与商品库同款可搜索下拉），
+    // listQuery 白名单已拼 categoryId，合并进 query 即可
+    const categoryId = categoryFilter.value || undefined;
     return api
-      .promotions(query, tab.statuses.length ? tab.key : undefined)
+      .promotions(
+        categoryId ? { ...query, categoryId } : query,
+        tab.statuses.length ? tab.key : undefined,
+      )
       .then((res) => ({
         rows: res.items.map((p) => ({
           ...p,
@@ -3973,7 +3979,9 @@ watch(
   (s) => {
     // IKD6FG：分类筛选覆盖官方商品库/商品管理/库存，进页时备好类别字典；
     // 切板块重置三个筛选 ref，防跨板块选项串入（IKB5PA 同教训）
-    if (["products", "official-products", "inventory", "categories"].includes(s))
+    if (
+      ["products", "official-products", "inventory", "categories", "promotions"].includes(s)
+    )
       void loadCategories();
     // 库位字典（IKA0VG）：商品表单/库位管理共用
     if (s === "products" || s === "locations") void ensureLocations();
@@ -5627,7 +5635,8 @@ async function cancelInviteRow(row: AdminRow) {
       <div
         v-if="
           ['products', 'official-products'].includes(section) ||
-          section === 'inventory'
+          section === 'inventory' ||
+          section === 'promotions'
         "
         class="category-combobox"
       >
