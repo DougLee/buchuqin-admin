@@ -687,6 +687,11 @@ const EMBED_SECTIONS = [
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   margin-bottom: 16px;
+  /* 表单容器是 fieldset（借其 :disabled 整组禁用做权限收口）——
+     去掉 rbac.css 给 fieldset 的默认边框/内边距，视觉与基础档案一致 */
+  border: none;
+  padding: 0;
+  min-width: 0;
 }
 .cc-form label {
   display: flex;
