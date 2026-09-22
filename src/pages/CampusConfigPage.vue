@@ -120,7 +120,7 @@ async function saveProfile() {
       address: profileForm.value.address.trim(),
       // IKHMF1：客服电话（校区自定义，小程序拨号展示）
       servicePhone: profileForm.value.servicePhone.trim(),
-      status: profileForm.value.status,
+      // status 不在此提交：防误改校区启停（归校区管理页）
     });
     notify("基础档案已保存");
     await load();
@@ -413,13 +413,8 @@ const EMBED_SECTIONS = [
               maxlength="20"
               placeholder="如 4008002026"
           /></label>
-          <label v-if="canEditProfile"
-            >状态
-            <select v-model="profileForm.status">
-              <option value="active">营业中</option>
-              <option value="inactive">已停用</option>
-            </select></label
-          >
+          <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
+               与「配送与营业」的打烊/闭店是两回事，界面上不做在一起防误触 -->
         </div>
         <p v-if="!canEditProfile" class="form-hint"
           >基础档案仅总部/平台账号可修改</p
