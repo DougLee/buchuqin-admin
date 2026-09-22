@@ -365,7 +365,8 @@ async function removeRow(row: AdminAccount) {
                 <button class="btn mini ghost" @click="openPreview(row)">
                   预览权限
                 </button>
-                <template v-if="isSuper">
+                <!-- 内置超管（道哥 2026-09-22）：系统唯一身份，不可编辑/删除 -->
+                <template v-if="isSuper && row.username !== 'admin'">
                   <button class="btn mini primary" @click="openEdit(row)">
                     编辑
                   </button>
