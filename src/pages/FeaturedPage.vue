@@ -47,14 +47,20 @@ let lastFilter: { categoryId: string; keyword: string } = {
   categoryId: "all",
   keyword: "",
 };
-async function loadCandidates() {
-  loadingCands.value = true;
+const page = ref(1);
+const total = ref(0);
+const hasMore = computed(() => candidates.value.length < total.value);
+const loadingMore = ref(false);
+/** 分页拉取：首页覆盖 / loadMore 追加（后端 pageSize 封顶 100，翻页搜全） */
+async function loadCandidates(append = false) {
+  if (!append) loadingCands.value = true;
+  else loadingMore.value = true;
   try {
     const f = lastFilter;
     const prods = await api.products(
       {
-        page: 1,
-        pageSize: 500,
+        page: page.value,
+        pageSize: 100,
         status: "on-sale",
         categoryId: f.categoryId !== "all" ? f.categoryId : undefined,
         keyword: f.keyword || undefined,
@@ -62,15 +68,24 @@ async function loadCandidates() {
       "campus",
     );
     // IKH0EK 验收拍板：有库存才可进推荐位（件数语义不适用，纯勾选）
-    candidates.value = prods.items.filter((p) => p.stock > 0);
+    const fresh = prods.items.filter((p) => p.stock > 0);
+    candidates.value = append ? [...candidates.value, ...fresh] : fresh;
+    total.value = prods.total;
   } catch (e) {
     toast.value = "加载失败，请刷新重试";
   } finally {
     loadingCands.value = false;
+    loadingMore.value = false;
   }
+}
+function loadMore() {
+  if (loadingMore.value || !hasMore.value) return;
+  page.value += 1;
+  void loadCandidates(true);
 }
 function onFilterChange(f: { categoryId: string; keyword: string }) {
   lastFilter = f;
+  page.value = 1;
   void loadCandidates();
 }
 onMounted(async () => {
@@ -173,9 +188,12 @@ async function save() {
           multiple
           simple
           remote
+          :has-more="hasMore"
+          :loading-more="loadingMore"
           :model-value="model"
           @update:model-value="onPick"
           @filter-change="onFilterChange"
+          @load-more="loadMore"
         />
       </div>
 

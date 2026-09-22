@@ -25,12 +25,18 @@ const props = defineProps<{
   showCost?: boolean;
   /** 服务端过滤模式：本地 filtered 不再裁剪，搜索词上抛 filter-change */
   remote?: boolean;
+  /** remote 分页：还有更多（显示「加载更多」） */
+  hasMore?: boolean;
+  /** remote 分页：加载中 */
+  loadingMore?: boolean;
   modelValue: string | Record<string, number>;
 }>();
 const emit = defineEmits<{
   "update:modelValue": [value: string | Record<string, number>];
   /** remote 模式：类别/关键词变化（防抖后）通知调用方做服务端过滤 */
   "filter-change": [filter: { categoryId: string; keyword: string }];
+  /** remote 分页：请求下一页（调用方 append） */
+  "load-more": [];
 }>();
 
 /** 服务端过滤模式（道哥 2026-09-22 推荐位候选池）：商品总量超过本地候选集
@@ -151,6 +157,15 @@ function unitText(p: Product): string {
         <div v-if="!filtered.length" class="pp-empty">
           没有匹配的商品——换个类别或关键词试试。
         </div>
+        <button
+          v-if="remote && hasMore"
+          type="button"
+          class="pp-more"
+          :disabled="loadingMore"
+          @click="emit('load-more')"
+        >
+          {{ loadingMore ? "加载中…" : "加载更多" }}
+        </button>
       </template>
       <template v-else>
         <div
@@ -185,6 +200,15 @@ function unitText(p: Product): string {
         <div v-if="!filtered.length" class="pp-empty">
           没有匹配的商品——换个类别或关键词试试。
         </div>
+        <button
+          v-if="remote && hasMore"
+          type="button"
+          class="pp-more"
+          :disabled="loadingMore"
+          @click="emit('load-more')"
+        >
+          {{ loadingMore ? "加载中…" : "加载更多" }}
+        </button>
       </template>
     </div>
   </div>
@@ -331,6 +355,19 @@ button.pp-item {
 }
 .skeleton-line--short {
   flex: 0 0 88px;
+}
+.pp-more {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pp-more:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand);
 }
 .pp-empty {
   padding: 18px 0;
