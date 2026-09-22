@@ -706,6 +706,17 @@ const EMBED_SECTIONS = [
   padding: 8px 10px;
   font-size: 14px;
   font-family: inherit;
+  background: #fff;
+}
+/* 聚焦态统一品牌绿（替换浏览器默认蓝框，道哥反馈样式不搭） */
+.cc-form input:focus,
+.cc-form select:focus,
+.cc-form textarea:focus,
+.cc-add-row input:focus,
+.cc-add-col textarea:focus {
+  outline: none;
+  border-color: #07883b;
+  box-shadow: 0 0 0 3px rgba(7, 136, 59, 0.12);
 }
 .cc-form--wide {
   grid-column: 1 / -1;
