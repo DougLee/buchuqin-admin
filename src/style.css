@@ -1847,3 +1847,14 @@ td.row-actions {
   background: #f1f5f9;
   color: #475569;
 }
+
+/* 更新日志菜单红点（道哥 2026-09-22：有新发版即亮，进入日志页即消） */
+aside .cl-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  margin-left: 6px;
+  flex-shrink: 0;
+}

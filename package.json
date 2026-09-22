@@ -10,6 +10,8 @@
     "test:rbac-session": "node --test scripts/test-rbac-session.mjs"
   },
   "dependencies": {
+    "dompurify": "^3.4.15",
+    "marked": "^18.0.13",
     "vue": "^3.5.41",
     "vue-router": "^4.4.4"
   },
