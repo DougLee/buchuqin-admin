@@ -689,6 +689,9 @@ const EMBED_SECTIONS = [
 .cc-form input,
 .cc-form select,
 .cc-form textarea {
+  /* 数字/时间原生框宽度由浏览器决定（窄、参差）——拉满列宽与档案文本框一致 */
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
   padding: 8px 10px;
@@ -725,8 +728,9 @@ const EMBED_SECTIONS = [
   gap: 10px;
   margin-bottom: 14px;
 }
-.cc-add-col textarea {
-  resize: vertical;
+.cc-add-col textarea,
+.cc-form textarea {
+  resize: none;
 }
 .cc-table {
   width: 100%;
