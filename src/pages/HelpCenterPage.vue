@@ -17,15 +17,28 @@ const cleanedHtml = computed(() => {
   return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
 });
 
-/** 目录：解析 `## xxx` 行（与 anchorId 同一算法） */
-const toc = computed(() =>
-  HELP_MANUAL.split("\n")
-    .filter((l) => l.startsWith("## "))
-    .map((l) => {
-      const text = l.slice(3).trim();
-      return { text, id: anchorId(text) };
-    }),
-);
+/** 两级目录（道哥三轮定稿）：`##` 分组（一级）/ `###` 菜单（二级） */
+interface TocItem {
+  text: string;
+  id: string;
+  children: { text: string; id: string }[];
+}
+const toc = computed<TocItem[]>(() => {
+  const groups: TocItem[] = [];
+  for (const line of HELP_MANUAL.split("\n")) {
+    if (line.startsWith("## ")) {
+      const text = line.slice(3).trim();
+      groups.push({ text, id: anchorId(text), children: [] });
+    } else if (line.startsWith("### ") && groups.length) {
+      const text = line.slice(4).trim();
+      groups[groups.length - 1].children.push({
+        text,
+        id: anchorId(text),
+      });
+    }
+  }
+  return groups;
+});
 function anchorId(text: string) {
   return (
     "h-" +
@@ -38,11 +51,11 @@ function anchorId(text: string) {
   );
 }
 
-/** 渲染后处理：h2 挂锚点；外链统一新窗+防钓鱼 */
+/** 渲染后处理：h2/h3 挂锚点；外链统一新窗+防钓鱼 */
 function enhance() {
   const el = bodyEl.value;
   if (!el) return;
-  for (const h of Array.from(el.querySelectorAll("h2")))
+  for (const h of Array.from(el.querySelectorAll("h2, h3")))
     h.id = anchorId(h.textContent ?? "");
   for (const a of Array.from(el.querySelectorAll("a"))) {
     a.setAttribute("target", "_blank");
@@ -67,13 +80,22 @@ watch(cleanedHtml, () => nextTick(enhance));
     <div class="help-layout">
       <nav class="help-toc" aria-label="手册目录">
         <p class="help-toc__title">目录</p>
-        <a
-          v-for="t in toc"
-          :key="t.id"
-          :href="'#' + t.id"
-          @click.prevent="jump(t.id)"
-          >{{ t.text }}</a
-        >
+        <template v-for="g in toc" :key="g.id">
+          <a
+            class="help-toc__group"
+            :href="'#' + g.id"
+            @click.prevent="jump(g.id)"
+            >{{ g.text }}</a
+          >
+          <a
+            v-for="c in g.children"
+            :key="c.id"
+            class="help-toc__sub"
+            :href="'#' + c.id"
+            @click.prevent="jump(c.id)"
+            >{{ c.text }}</a
+          >
+        </template>
       </nav>
       <!-- v-html 来源=内置常量且经 DOMPurify 清洗，安全可控 -->
       <!-- eslint-disable-next-line vue/no-v-html -->
@@ -115,6 +137,17 @@ watch(cleanedHtml, () => nextTick(enhance));
 .help-toc a:hover {
   background: #f1f5f9;
   color: #07883b;
+}
+/* 三轮定稿：两级目录——分组加粗、子项缩进 */
+.help-toc__group {
+  font-weight: 600;
+  color: #1e293b !important;
+  margin-top: 4px;
+}
+.help-toc__sub {
+  padding-left: 22px !important;
+  font-size: 12.5px !important;
+  color: #64748b !important;
 }
 .help-body {
   flex: 1;
