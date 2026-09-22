@@ -133,23 +133,16 @@ async function saveProfile() {
 
 /* ---------- 配送与营业（平台+校区角色均可：平台走 campuses/:id，
  *  校区角色走 delivery-config 本校区端点） ---------- */
-const closeMode = computed({
-  get: () =>
-    deliveryForm.value.manualClosed
-      ? "now"
-      : deliveryForm.value.closeStart === deliveryForm.value.closeEnd
-        ? "always"
-        : "on-time",
-  set: (mode) => {
-    if (mode === "now") deliveryForm.value.manualClosed = true;
-    else {
-      deliveryForm.value.manualClosed = false;
-      if (mode === "always") {
-        deliveryForm.value.closeStart = "00:00";
-        deliveryForm.value.closeEnd = "00:00";
-      }
-    }
-  },
+/* 闭店方式独立状态（道哥 2026-09-22 bug 修复）：不再从 start/end 反推——
+   初始 00:00/00:00 相等会被回算成「24 小时营业」，导致「按时间打烊」选不上、
+   时间输入框永远不出现。初始化从数据算一次，之后用户选什么就是什么。 */
+const closeMode = ref<"always" | "on-time" | "now">("always");
+watch(closeMode, (mode) => {
+  deliveryForm.value.manualClosed = mode === "now";
+  if (mode === "always") {
+    deliveryForm.value.closeStart = "00:00";
+    deliveryForm.value.closeEnd = "00:00";
+  }
 });
 const deliveryForm = ref({
   instant: 0,
@@ -171,6 +164,11 @@ watch(bundle, (b) => {
     manualClosed: b.campus.manualClosed,
     noManagerTip: (b.campus as { noManagerTip?: string }).noManagerTip ?? "",
   };
+  closeMode.value = b.campus.manualClosed
+    ? "now"
+    : b.campus.closeStart === b.campus.closeEnd
+      ? "always"
+      : "on-time";
 });
 async function saveDelivery() {
   if (!canEditDelivery.value || !bundle.value || saving.value) return;
@@ -690,7 +688,8 @@ const EMBED_SECTIONS = [
 }
 .cc-form {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  /* 固定 3 列与基础档案节奏一致（auto-fill 会随窗口宽度漂移列数） */
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   margin-bottom: 16px;
 }
