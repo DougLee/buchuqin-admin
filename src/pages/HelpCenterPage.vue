@@ -1,19 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { HELP_MANUAL } from "../helpManual";
-import { canSee } from "../session";
 
 /**
- * 帮助中心（道哥 2026-09-22）：内置 markdown 手册只读渲染。
+ * 帮助中心（道哥 2026-09-22 二轮定稿）：内置 markdown 手册只读渲染。
  * - marked 转 HTML + DOMPurify 白名单清洗（防脚本注入）
  * - 左侧目录取 `##` 标题锚点跳转
- * - 内链权限适配（道哥拍板）：`[菜单](/path)` 按登录权限过滤——
- *   有权限保留可点（router 跳转），无权限降级纯文本，避免点过去被守卫踢回首页的困惑
+ * - 二轮：去掉菜单联动跳转；每菜单详解 + 截图（COS 外链）
  */
-const router = useRouter();
 const bodyEl = ref<HTMLElement>();
 
 const cleanedHtml = computed(() => {
@@ -42,31 +38,15 @@ function anchorId(text: string) {
   );
 }
 
-/** 渲染后处理：h2 挂锚点 + 内链权限降级/拦截原生跳转改 router */
+/** 渲染后处理：h2 挂锚点；外链统一新窗+防钓鱼 */
 function enhance() {
   const el = bodyEl.value;
   if (!el) return;
   for (const h of Array.from(el.querySelectorAll("h2")))
     h.id = anchorId(h.textContent ?? "");
   for (const a of Array.from(el.querySelectorAll("a"))) {
-    const href = a.getAttribute("href") ?? "";
-    if (href.startsWith("/")) {
-      // 站内链接：按登录权限决定保留或降级为纯文本
-      if (!canSee(href.slice(1))) {
-        const span = document.createElement("span");
-        span.textContent = a.textContent;
-        a.replaceWith(span);
-        continue;
-      }
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        router.push(href);
-      });
-    } else {
-      // 外链新窗打开 + 防钓鱼 rel
-      a.setAttribute("target", "_blank");
-      a.setAttribute("rel", "noopener noreferrer");
-    }
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
   }
 }
 function jump(id: string) {
