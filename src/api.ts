@@ -279,14 +279,14 @@ export const api = {
       body: JSON.stringify({ productIds }),
     }),
   /** view（IKCHEW 商品双视角）：仅 admin 生效——official 官方库 / campus 本校区 */
-  products: (query?: ListQuery, view?: string) =>
+  products: (query?: ListQuery, view?: string, campus?: string) =>
     request<PagedResponse<Product>>(
-      `/admin/products${withQuery(listQuery(query), view ? `view=${view}` : undefined)}`,
+      `/admin/products${withQuery(listQuery(query), view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
     ),
   /** 商品状态计数（IKB3K9 列表 Tab 角标）：口径同列表（含售罄映射）。 */
-  productStatusCounts: (view?: string) =>
+  productStatusCounts: (view?: string, campus?: string) =>
     request<Record<string, number>>(
-      `/admin/products/status-counts${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products/status-counts${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
     ),
   /** 官方库浏览（IKAJSO 导入弹窗）：只读官方库行，校区角色可查。 */
   officialProducts: (query?: ListQuery) =>
@@ -308,17 +308,17 @@ export const api = {
     request<Product>(`/admin/products/${id}/pull-upstream`, {
       method: "POST",
     }),
-  lookupBarcode: (barcode: string, view?: string) =>
+  lookupBarcode: (barcode: string, view?: string, campus?: string) =>
     request<BarcodeLookup>(
-      `/admin/products/barcode/lookup${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products/barcode/lookup${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
       {
         method: "POST",
         body: JSON.stringify({ barcode }),
       },
     ),
-  createProduct: (data: Record<string, unknown>, view?: string) =>
+  createProduct: (data: Record<string, unknown>, view?: string, campus?: string) =>
     request<Product>(
-      `/admin/products${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -337,9 +337,10 @@ export const api = {
     }>,
     /** 同 updateProduct：仅 admin 生效（official 官方库 / campus 本校区） */
     view?: string,
+    campus?: string,
   ) =>
     request<Product>(
-      `/admin/products/${id}/price${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products/${id}/price${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
       {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -374,9 +375,10 @@ export const api = {
     },
     /** IKCHEW 商品双视角：仅 admin 生效（official 官方库 / campus 本校区） */
     view?: string,
+    campus?: string,
   ) =>
     request<Product>(
-      `/admin/products/${id}${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products/${id}${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
       {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -387,9 +389,10 @@ export const api = {
     ids: string[],
     status: "on-sale" | "off-sale",
     view?: string,
+    campus?: string,
   ) =>
     request<{ count: number }>(
-      `/admin/products/batch-status${withQuery(view ? `view=${view}` : undefined)}`,
+      `/admin/products/batch-status${withQuery(view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
       {
         method: "POST",
         body: JSON.stringify({ ids, status }),

@@ -1764,6 +1764,10 @@ const productView = computed<"official" | "campus">(() => {
     return isOfficialProducts.value ? "official" : "campus";
   return "campus";
 });
+/** 校区商品跨校区管理（道哥 2026-09-22）：平台视角选中的校区参数（官方库视角为空） */
+const productCampusParam = computed(() =>
+  productView.value === "campus" ? campusFilter.value || undefined : undefined,
+);
 // IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
 // IKDFIN：去 immediate——初值已在 mktTab 声明处读取；immediate 会在 setup 期
 // （section 尚未声明）触发回调，dev 模式直接 TDZ 崩掉整页
@@ -2910,7 +2914,7 @@ const hqProductsConfig: SectionConfig = {
           categoryId: categoryFilter.value || undefined,
         },
         // IKCHEW：admin 双视角透传（hq/校区角色后端忽略 view）
-        productView.value,
+        productView.value, productCampusParam.value,
       )
       .then((res) => ({
         rows: res.items.map((p) => ({
@@ -3106,7 +3110,7 @@ const configs: Record<string, SectionConfig> = {
             categoryId: categoryFilter.value || undefined,
           },
           // IKCHEW：admin 本校区视角透传 view（校区角色后端忽略）
-          productView.value,
+          productView.value, productCampusParam.value,
         )
         .then((res) => ({
           rows: res.items.map((p) => ({
@@ -3731,6 +3735,10 @@ const campusFilterVisible = computed(() => {
   // IKFOPY：库存板块全视图（总览/流水/采购申请）校区可筛选——聚焦总部仓复用仓储页
   if (section.value === "inventory") return true;
   if (section.value === "marketing") return mktTab.value === "map";
+  // 校区商品跨校区管理（道哥 2026-09-22）：平台账号选校区改该校区的商品，
+  // 官方库视角不显示（官方档案全网共享无校区维度）
+  if (section.value === "products" && productView.value === "campus")
+    return true;
   return false;
 });
 /** 2026-09-05 道哥：多页时展开页码序列（全站分页器共用）。
@@ -4403,7 +4411,7 @@ async function act(action: string) {
         throw new Error("无改价权限，价格字段未保存");
       if (!canEditProductDetails.value) {
         if (Object.keys(priceBody).length)
-          await api.updateProductPrice(selected.value.id, priceBody, productView.value);
+          await api.updateProductPrice(selected.value.id, priceBody, productView.value, productCampusParam.value);
       } else await api.updateProduct(selected.value.id, {
         ...priceBody,
         // 资料字段（IKAHAT）：副标题/标签可清空，重量/分类有值才提交
@@ -4447,7 +4455,7 @@ async function act(action: string) {
         images: productEdit.value.images.filter(Boolean),
         // 商品介绍（IKAHAU）：整段覆盖，空串清空；trim 只去首尾空白保内换行
         description: productEdit.value.description.trim(),
-      }, productView.value);
+      }, productView.value, productCampusParam.value);
     } else if (section.value === "orders")
       await api.orderAction(selected.value.id, action);
     else if (section.value === "finance") {
@@ -4730,7 +4738,7 @@ async function lookup() {
   try {
     const result: BarcodeLookup = await api.lookupBarcode(
       code,
-      productView.value,
+      productView.value, productCampusParam.value,
     );
     if (result.found && result.exists !== false) {
       scanError.value = "该商品已存在，可直接编辑库存与价格";
@@ -4842,7 +4850,7 @@ async function saveProduct() {
       originalPrice: yuanToFen(productForm.value.originalPrice),
       costPrice: yuanToFen(productForm.value.costPrice),
       wholesalePrice: yuanToFen(productForm.value.wholesalePrice),
-    }, productView.value);
+    }, productView.value, productCampusParam.value);
     notify("SKU 已录入，商品数据已同步");
     closeCreate();
     await load();
@@ -5247,7 +5255,7 @@ async function togglePromotionRow(row: AdminRow) {
 async function toggleProductStatusRow(row: Product) {
   const next = row.status === "on-sale" ? "off-sale" : "on-sale";
   try {
-    await api.batchUpdateProductStatus([row.id], next, productView.value);
+    await api.batchUpdateProductStatus([row.id], next, productView.value, productCampusParam.value);
     await rowDone(next === "on-sale" ? "商品已上架" : "商品已下架");
   } catch (error) {
     notify(error instanceof Error ? error.message : "操作失败", true);
@@ -5290,7 +5298,7 @@ async function batchApplyProductStatus(status: "on-sale" | "off-sale") {
     const result = await api.batchUpdateProductStatus(
       selectedProductIds.value,
       status,
-      productView.value,
+      productView.value, productCampusParam.value,
     );
     const skipped = selectedProductIds.value.length - result.count;
     selectedProductIds.value = [];
