@@ -6,6 +6,9 @@ import DataPage from "./pages/DataPage.vue";
 import Login from "./pages/Login.vue";
 // IKHM1O 校区配置聚合页：全量校区维度配置收编（档案/配送营业/结算/时段/公告/群码/打印机/Banner/抽奖）
 import CampusConfigPage from "./pages/CampusConfigPage.vue";
+// 帮助中心+更新日志（道哥 2026-09-22）：内容随代码内置、后台只读
+import HelpCenterPage from "./pages/HelpCenterPage.vue";
+import ChangelogPage from "./pages/ChangelogPage.vue";
 import RestockPage from "./pages/RestockPage.vue";
 import PurchasePage from "./pages/PurchasePage.vue";
 import DailyReportPage from "./pages/DailyReportPage.vue";
@@ -33,6 +36,9 @@ const routes = [
   { path: "/featured", component: FeaturedPage },
   // IKHM1O：校区配置聚合页（campus 键，同校区管理）
   { path: "/campus-config", component: CampusConfigPage },
+  // 帮助中心/更新日志：全员可见（不看权限，登录即可）
+  { path: "/help", component: HelpCenterPage },
+  { path: "/changelog", component: ChangelogPage },
   { path: "/:section", component: DataPage },
 ];
 const router = createRouter({ history: createWebHashHistory(), routes });
@@ -52,6 +58,8 @@ router.beforeEach((to) => {
   if (to.path === "/featured") return canSee("marketing") ? true : "/";
   // IKHM1O：校区配置页（campuses 键，同校区管理；页面内 Tab 再按 marketing/wheel/printers 细分）
   if (to.path === "/campus-config") return canSee("campuses") ? true : "/";
+  // 帮助中心/更新日志全员可见
+  if (to.path === "/help" || to.path === "/changelog") return true;
   if (to.path !== "/" && !canSee(String(to.params.section))) return "/";
   return true;
 });

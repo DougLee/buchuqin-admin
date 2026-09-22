@@ -11,6 +11,7 @@ import {
   roleLabel,
   sessionUser,
 } from "./session";
+import { isUnread as changelogUnread } from "./changelog";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
@@ -200,7 +201,10 @@ const campusGroups = [
     label: "系统",
     items: [
       ["/accounts", "accounts", "账号管理"],
-      // IKHM1O：打印机收编进「校区配置」，系统组只留账号管理
+      // IKHM1O：打印机收编进「校区配置」
+      // 帮助中心/更新日志（道哥 2026-09-22）：全员可见，内容随发版更新
+      ["/help", "help", "帮助中心"],
+      ["/changelog", "help", "更新日志"],
     ],
   },
 ];
@@ -364,10 +368,17 @@ function unlockAudio() {
 window.addEventListener("pointerdown", unlockAudio, { once: true });
 window.addEventListener("keydown", unlockAudio, { once: true });
 let titleBlinkTimer: number | undefined;
+/* 更新日志红点：进入日志页（或任意路由变化）后刷新未读态 */
+const clUnread = ref(changelogUnread());
+watch(
+  () => route.path,
+  () => {
+    clUnread.value = changelogUnread();
+  },
+);
 watch(
   () => notifyCards.value.length,
-  (n) => {
-    const base = "不出寝食社管理后台";
+  (n) => {    const base = "不出寝食社管理后台";
     if (titleBlinkTimer) {
       clearInterval(titleBlinkTimer);
       titleBlinkTimer = undefined;
@@ -475,7 +486,13 @@ async function switchCampus(event: Event) {
             :key="item[0]"
             :to="item[0]"
             :class="{ active: route.path === item[0] }"
-            ><AppIcon :name="item[1]" /><span>{{ item[2] }}</span></RouterLink
+            ><AppIcon :name="item[1]" /><span>{{ item[2] }}</span
+            ><!-- 更新日志红点：有未读发版即亮，进入日志页即消 -->
+            <i
+              v-if="item[0] === '/changelog' && clUnread"
+              class="cl-dot"
+              aria-label="有新更新"
+            /></RouterLink
           >
         </section>
       </nav>
