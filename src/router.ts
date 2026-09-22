@@ -1,6 +1,8 @@
 import { watch } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import Login from "./pages/Login.vue";
+import HelpCenter from "./pages/HelpCenterPage.vue";
+import Changelog from "./pages/ChangelogPage.vue";
 import AccessPage from "./pages/AccessPage.vue";
 import FramePage from "./pages/FramePage.vue";
 import { views, superViews } from "./view-catalog";
@@ -8,6 +10,9 @@ import { menuTree, sessionUser, loadRbac, isSuper, rbacLoaded } from "./session"
 export const router = createRouter({ history: createWebHashHistory(), routes: [
   { path: '/login', name: 'login', component: Login },
   { path: '/access-denied', name: 'access-denied', component: AccessPage },
+  // 帮助中心/更新日志（道哥 2026-09-22）：全员只读页，静态注册不走菜单权限
+  { path: '/help', name: 'help', component: HelpCenter },
+  { path: '/changelog', name: 'changelog', component: Changelog },
   { path: '/:pathMatch(.*)*', name: 'unregistered', component: AccessPage },
 ] });
 let signature = '';
@@ -50,6 +55,8 @@ router.beforeEach(async to => {
   if (!(await loadRbac())) return to.path === '/access-denied' ? true : '/access-denied';
   synchronize();
   if (to.path === '/access-denied') return true;
+  // 全员只读页：帮助中心/更新日志（静态注册，非数据库菜单）
+  if (to.name === 'help' || to.name === 'changelog') return true;
   const resolved = router.resolve(to.fullPath);
   if (resolved.name !== 'unregistered') return resolved.name === to.name ? true : { path: to.fullPath, replace: true };
   if (to.path === '/') return permittedMenus()[0]?.path || '/access-denied';

@@ -17,10 +17,21 @@ import {
   sessionUser,
   switchableCampuses,
 } from "./session";
+import { isUnread as changelogUnread } from "./changelog";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
   globalKeyword = ref("");
+/* 更新日志红点：有未读发版即亮；进入日志页（onMounted 标已读后）刷新——
+   flush post 保证在页面组件 mounted 之后执行 */
+const clUnread = ref(changelogUnread());
+watch(
+  () => route.path,
+  () => {
+    clUnread.value = changelogUnread();
+  },
+  { flush: "post" },
+);
 function search() {
   const value = globalKeyword.value.trim();
   if (!value) return;
@@ -374,7 +385,13 @@ onBeforeUnmount(() => {
             :key="item.path"
             :to="item.path"
             :class="{ active: route.path === item.path }"
-            ><AppIcon :name="item.icon" /><span>{{ item.name }}</span></RouterLink
+            ><AppIcon :name="item.icon" /><span>{{ item.name }}</span
+            ><!-- 更新日志红点：有未读发版即亮 -->
+            <i
+              v-if="item.path === '/changelog' && clUnread"
+              class="cl-dot"
+              aria-label="有新更新"
+            /></RouterLink
           >
         </section>
       </nav>
