@@ -3817,6 +3817,8 @@ async function load() {
       "inventory",
       "marketing",
       "recruit",
+      // 校区商品跨校区管理（道哥 2026-09-22）：同样需要校区下拉选项
+      "products",
     ].includes(section.value)
   )
     void ensureCampusOptions().catch(() => {});
