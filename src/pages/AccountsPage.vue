@@ -39,11 +39,12 @@ const roleOptions = ref<RbacRole[]>([]);
 const campusOptions = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 async function ensureOptions() {
   try {
-    const [roles, campuses] = await Promise.all([
+    const [rolesRaw, campuses] = await Promise.all([
       isSuper.value ? api.rbacRoles() : Promise.resolve([]),
       api.adminCampuses("filter"),
     ]);
-    roleOptions.value = roles;
+    // 超级管理员为系统内置唯一身份（道哥 2026-09-22）：授权下拉不显示、不可选
+    roleOptions.value = rolesRaw.filter((r) => r.code !== "super-admin");
     campusOptions.value = campuses;
   } catch {
     /* 表单打开时再兜底提示 */
