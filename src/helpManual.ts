@@ -163,7 +163,9 @@ export const HELP_MANUAL = `# 不出寝食社 · 运营手册
 - **公告**：小程序首页跑马灯，多条自动「｜」拼接，支持生效起止与启停。
 - **微信群码 / 打印机 / Banner / 支付广告位 / 抽奖转盘**：各内容板块在同一页内维护。
 
-![校区配置](https://static.buchuqin.com/uploads/2026/09/cb476a85-4743-435d-9087-2fc95c7e0290.png)
+![校区配置 · 基础档案](https://static.buchuqin.com/uploads/2026/09/cb476a85-4743-435d-9087-2fc95c7e0290.png)
+
+![校区配置 · 配送与营业](https://static.buchuqin.com/uploads/2026/09/96622162-e94d-43f6-8bd1-37e5c32f1a60.png)
 
 ## C端用户
 
