@@ -28,9 +28,25 @@ onMounted(() => {
           <span class="cl-date">{{ e.date }}</span>
           <strong>{{ e.title }}</strong>
         </header>
-        <ul>
-          <li v-for="it in e.items" :key="it">{{ it }}</li>
-        </ul>
+        <!-- 二轮定稿：按端拆分（管理后台/用户小程序/楼长小程序），无改动的端不显示 -->
+        <section v-if="e.admin?.length">
+          <h3 class="cl-seg">管理后台</h3>
+          <ul>
+            <li v-for="it in e.admin" :key="it">{{ it }}</li>
+          </ul>
+        </section>
+        <section v-if="e.user?.length">
+          <h3 class="cl-seg">用户小程序</h3>
+          <ul>
+            <li v-for="it in e.user" :key="it">{{ it }}</li>
+          </ul>
+        </section>
+        <section v-if="e.manager?.length">
+          <h3 class="cl-seg">楼长小程序</h3>
+          <ul>
+            <li v-for="it in e.manager" :key="it">{{ it }}</li>
+          </ul>
+        </section>
       </article>
     </div>
   </div>
@@ -53,6 +69,11 @@ onMounted(() => {
   align-items: baseline;
   gap: 12px;
   margin-bottom: 8px;
+}
+.cl-seg {
+  font-size: 13px;
+  color: #07883b;
+  margin: 10px 0 2px;
 }
 .cl-date {
   font-size: 13px;
