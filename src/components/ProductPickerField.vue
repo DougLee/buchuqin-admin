@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api";
 import { hasPerm } from "../session";
 import { fenToYuan } from "../utils/money";
@@ -23,11 +23,20 @@ const props = defineProps<{
   simple?: boolean;
   /** IKH15V 单选行补显进货价（costPrice，未录不显示）：定促销价对照毛利用 */
   showCost?: boolean;
+  /** 服务端过滤模式：本地 filtered 不再裁剪，搜索词上抛 filter-change */
+  remote?: boolean;
   modelValue: string | Record<string, number>;
 }>();
 const emit = defineEmits<{
   "update:modelValue": [value: string | Record<string, number>];
+  /** remote 模式：类别/关键词变化（防抖后）通知调用方做服务端过滤 */
+  "filter-change": [filter: { categoryId: string; keyword: string }];
 }>();
+
+/** 服务端过滤模式（道哥 2026-09-22 推荐位候选池）：商品总量超过本地候选集
+ *  pageSize 后，本地过滤会永远搜不到池外商品——remote 模式把类别/关键词
+ *  上抛由调用方服务端查询，组件只渲染传入的 items。 */
+
 
 const catId = ref("all");
 const keyword = ref("");
@@ -57,6 +66,7 @@ const categories = computed(() => {
   return [{ id: "all", name: "全部类别" }, ...base];
 });
 const filtered = computed(() => {
+  if (props.remote) return props.items; // remote：过滤已上抛服务端
   const kw = keyword.value.trim().toLowerCase();
   return props.items.filter((p) => {
     if (catId.value !== "all" && p.categoryId !== catId.value) return false;
@@ -65,6 +75,14 @@ const filtered = computed(() => {
       p.name.toLowerCase().includes(kw) || (p.barcode ?? "").includes(kw)
     );
   });
+});
+let filterTimer: ReturnType<typeof setTimeout> | undefined;
+watch([catId, keyword], ([cat, kw]) => {
+  if (!props.remote) return;
+  if (filterTimer) clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    emit("filter-change", { categoryId: cat, keyword: kw.trim() });
+  }, 300);
 });
 
 function selectOne(id: string) {

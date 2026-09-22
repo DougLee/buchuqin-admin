@@ -40,22 +40,46 @@ const model = computed<Record<string, number>>(() =>
   Object.fromEntries(picked.value.map((p) => [p.id, 1])),
 );
 
-onMounted(async () => {
+/** 候选池服务端过滤（道哥 2026-09-22 修复）：在售商品已超 300，
+ *  原 pageSize:300 截断 + 本地过滤导致新品/低销量商品（如销量 0 的蛋挞）
+ *  永远搜不到——改为类别/关键词上抛服务端查询，pageSize 500 兜底 */
+let lastFilter: { categoryId: string; keyword: string } = {
+  categoryId: "all",
+  keyword: "",
+};
+async function loadCandidates() {
+  loadingCands.value = true;
   try {
-    const [prods, feat] = await Promise.all([
-      hasPerm("GET /admin/products")
-        ? api.products({ page: 1, pageSize: 300, status: "on-sale" }, "campus")
-        : Promise.resolve({ items: [] as Product[] }),
-      api.featured(),
-    ]);
+    const f = lastFilter;
+    const prods = await api.products(
+      {
+        page: 1,
+        pageSize: 500,
+        status: "on-sale",
+        categoryId: f.categoryId !== "all" ? f.categoryId : undefined,
+        keyword: f.keyword || undefined,
+      },
+      "campus",
+    );
     // IKH0EK 验收拍板：有库存才可进推荐位（件数语义不适用，纯勾选）
     candidates.value = prods.items.filter((p) => p.stock > 0);
-    picked.value = feat;
-    savedIds.value = feat.map((f) => f.id);
   } catch (e) {
     toast.value = "加载失败，请刷新重试";
   } finally {
     loadingCands.value = false;
+  }
+}
+function onFilterChange(f: { categoryId: string; keyword: string }) {
+  lastFilter = f;
+  void loadCandidates();
+}
+onMounted(async () => {
+  try {
+    const [, feat] = await Promise.all([loadCandidates(), api.featured()]);
+    picked.value = feat;
+    savedIds.value = feat.map((f) => f.id);
+  } catch (e) {
+    toast.value = "加载失败，请刷新重试";
   }
 });
 
@@ -148,8 +172,10 @@ async function save() {
           :loading="loadingCands"
           multiple
           simple
+          remote
           :model-value="model"
           @update:model-value="onPick"
+          @filter-change="onFilterChange"
         />
       </div>
 
