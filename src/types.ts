@@ -570,7 +570,7 @@ export interface WechatGroup {
   updatedAt: string;
 }
 
-/** 退款申请（IKHZKA Refund 统一主表）：售后+悔单共用。 */
+/** 退款申请（IKHZKA Refund 统一主表）：售后+未发货退款共用。 */
 export interface RefundApplication {
   id: string;
   orderId: string;

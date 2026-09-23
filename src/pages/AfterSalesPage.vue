@@ -7,7 +7,7 @@ import { fenToYuan } from "../utils/money";
 
 /**
  * 售后退款工作台（IKHZKA）：
- * - Refund 统一申请主表（送达后售后 + 未发货悔单），后台人工审核
+ * - Refund 统一申请主表（送达后售后 + 未发货退款），后台人工审核
  * - 批准 = 微信原路退回（金额=实付−配送费，申请时锁定）
  * - 拒绝 = 订单回滚申请前状态，用户可重新申请
  * - 审核权 after-sales.audit（默认校区运营）；其余角色只读
@@ -22,7 +22,7 @@ const TABS = [
 
 const SOURCE_TEXT: Record<string, string> = {
   "after-sale": "送达后售后",
-  "pre-delivery": "未发货悔单",
+  "pre-delivery": "未发货",
 };
 const TYPE_TEXT: Record<string, string> = {
   quality: "质量问题",
@@ -172,7 +172,7 @@ onMounted(() => {
       <div>
         <h1>售后退款</h1>
         <p>
-          售后与悔单退款统一审核：批准后微信原路退回（配送费不退）；拒绝后订单回滚、用户可重新申请。
+          售后与未发货退款统一审核：批准后微信原路退回（配送费不退）；拒绝后订单回滚、用户可重新申请。
         </p>
       </div>
       <div class="head-actions">
@@ -201,7 +201,7 @@ onMounted(() => {
       <div class="as-filters">
         <select v-model="source" class="as-select" @change="switchSource">
           <option value="all">全部来源</option>
-          <option value="pre-delivery">未发货悔单</option>
+          <option value="pre-delivery">未发货</option>
           <option value="after-sale">送达后售后</option>
         </select>
         <input
@@ -300,7 +300,7 @@ onMounted(() => {
           <div><dt>申请时间</dt><dd>{{ new Date(detail.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</dd></div>
           <div><dt>订单实付</dt><dd>¥{{ fenToYuan(detail.payableAmount) }}（含配送费 ¥{{ fenToYuan(detail.deliveryFee) }}）</dd></div>
           <div><dt>退款金额</dt><dd class="as-amount">¥{{ fenToYuan(detail.amount) }}</dd></div>
-          <div v-if="detail.reason"><dt>悔单原因</dt><dd>{{ detail.reason }}</dd></div>
+          <div v-if="detail.reason"><dt>退款原因</dt><dd>{{ detail.reason }}</dd></div>
           <div v-if="detail.description"><dt>问题描述</dt><dd>{{ detail.description }}</dd></div>
           <div v-if="detail.images.length" class="as-imgs-row">
             <dt>凭证</dt>
