@@ -1685,6 +1685,53 @@ td.row-actions {
   border-radius: 4px;
   padding: 1px 4px;
 }
+/* 道哥 2026-09-23：列表省略号可点复制完整单号 */
+.order-no__dots {
+  cursor: pointer;
+  color: #64748b;
+  padding: 0 2px;
+}
+.order-no__dots:hover {
+  color: #1d6b40;
+  text-decoration: underline;
+}
+.order-no__dots.copied {
+  color: #1d6b40;
+  font-size: 12px;
+}
+/* 订单详情：完整单号通栏 + 复制按钮 */
+.order-no-full.wide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.order-no-full.wide > span {
+  flex-shrink: 0;
+}
+.order-no-full__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+.copy-btn {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 2px 12px;
+  cursor: pointer;
+  color: #475569;
+  transition: border-color 0.15s, color 0.15s;
+}
+.copy-btn:hover {
+  border-color: #1d6b40;
+  color: #1d6b40;
+}
+.copy-btn.copied {
+  border-color: #1d6b40;
+  color: #1d6b40;
+  background: #e6f5ec;
+}
 /* IKBW0C/D：商品列多商品每行一个（itemsText 以 \n 连接） */
 .cell-lines {
   white-space: pre-line;
