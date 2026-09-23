@@ -5955,17 +5955,34 @@ async function cancelInviteRow(row: AdminRow) {
                       (section === 'orders' || section === 'warehouse-orders')
                     "
                     class="order-no"
-                    :title="`${display(row, 'orderNo')}（点击省略号复制完整单号）`"
-                    ><!-- 道哥 2026-09-23：省略号可点=复制完整单号（末 8 位对读保留） --><span
+                    :title="`${display(row, 'orderNo')}（点图标复制完整单号）`"
+                    ><!-- 道哥 2026-09-23：末 8 位对读保留，复制 icon 一键取完整单号 --><span
                       class="order-no__dots"
+                      aria-hidden="true"
+                      >…</span
+                    ><span class="order-no__tail">{{
+                      String(display(row, "orderNo")).slice(-8)
+                    }}</span><button
+                      class="order-no-copy"
                       :class="{ copied: copiedKey === String(row.id) }"
+                      :aria-label="`复制订单编号 ${display(row, 'orderNo')}`"
+                      title="复制完整单号"
                       @click.stop="
                         copyText(String(display(row, 'orderNo')), String(row.id))
                       "
-                      >{{ copiedKey === String(row.id) ? "已复制" : "…" }}</span
-                    ><span class="order-no__tail">{{
-                      String(display(row, "orderNo")).slice(-8)
-                    }}</span></strong
+                    ><svg
+                        v-if="copiedKey !== String(row.id)"
+                        viewBox="0 0 24 24"
+                        width="13"
+                        height="13"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      ><rect x="9" y="9" width="13" height="13" rx="2" /><path
+                          d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                        /></svg><span v-else class="order-no-copy__ok">已复制</span></button></strong
                   ><strong v-else-if="['name', 'orderNo', 'staffName'].includes(col[0])"
                     >{{ display(row, col[0]) }}</strong
                   ><!-- 2026-09-19 道哥：商品列单行摘要+悬停全部（IKBW0C/D 多行版退役） --><span
@@ -6709,7 +6726,8 @@ async function cancelInviteRow(row: AdminRow) {
           class="drawer-fields"
           :class="{ 'drawer-fields--three': section === 'orders' || section === 'warehouse-orders' }"
         >
-          <!-- 道哥 2026-09-23：订单详情完整单号通栏（三列网格挤截断）+ 一键复制；
+          <!-- 道哥 2026-09-23：订单详情完整单号通栏（三列网格挤截断）；
+               全号已完整可见，不再放复制钮（列表处已有复制 icon）。
                网格其余字段照常渲染，orderNo 在下方 filter 中排除防重复 -->
           <div
             v-if="
@@ -6722,18 +6740,6 @@ async function cancelInviteRow(row: AdminRow) {
             <strong class="order-no-full__value">{{
               display(selected, "orderNo")
             }}</strong>
-            <button
-              class="copy-btn"
-              :class="{ copied: copiedKey === 'detail-orderNo' }"
-              @click="
-                copyText(
-                  String(display(selected, 'orderNo')),
-                  'detail-orderNo',
-                )
-              "
-            >
-              {{ copiedKey === "detail-orderNo" ? "已复制" : "复制" }}
-            </button>
           </div>
           <template v-if="isProductsSection && canEditProduct"
             ><!-- IKDEP0：商品图区——主图+详情多图，点击看大图；未配图给占位 -->
@@ -7598,27 +7604,12 @@ async function cancelInviteRow(row: AdminRow) {
           <button aria-label="关闭" @click="statusDialogOpen = false">×</button>
         </div>
         <div class="drawer-fields">
-          <!-- 道哥 2026-09-23：完整单号 + 复制（原两列网格挤截断） -->
+          <!-- 道哥 2026-09-23：完整单号通栏（原两列网格挤截断）；全号可见不加复制钮 -->
           <div class="wide order-no-full">
             <span>订单编号</span
             ><strong class="order-no-full__value">{{
               (statusDialogRow as unknown as Record<string, unknown>)?.orderNo
             }}</strong>
-            <button
-              class="copy-btn"
-              :class="{ copied: copiedKey === 'status-orderNo' }"
-              @click="
-                copyText(
-                  String(
-                    (statusDialogRow as unknown as Record<string, unknown>)
-                      ?.orderNo ?? '',
-                  ),
-                  'status-orderNo',
-                )
-              "
-            >
-              {{ copiedKey === "status-orderNo" ? "已复制" : "复制" }}
-            </button>
           </div>
           <div>
             <span>当前状态</span

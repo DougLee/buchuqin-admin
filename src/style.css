@@ -1685,21 +1685,38 @@ td.row-actions {
   border-radius: 4px;
   padding: 1px 4px;
 }
-/* 道哥 2026-09-23：列表省略号可点复制完整单号 */
+/* 道哥 2026-09-23：列表订单号复制 icon（末 8 位对读保留，icon 取完整单号） */
 .order-no__dots {
-  cursor: pointer;
   color: #64748b;
-  padding: 0 2px;
+  padding: 0 1px;
 }
-.order-no__dots:hover {
+.order-no-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 2px;
+  margin-left: 4px;
+  border-radius: 4px;
+  vertical-align: middle;
+  transition: color 0.15s;
+}
+.order-no-copy:hover {
   color: #1d6b40;
-  text-decoration: underline;
+  background: #e6f5ec;
 }
-.order-no__dots.copied {
+.order-no-copy.copied {
   color: #1d6b40;
-  font-size: 12px;
 }
-/* 订单详情：完整单号通栏 + 复制按钮 */
+.order-no-copy__ok {
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* 订单详情/改状态弹窗：完整单号通栏（全号可见，无复制钮） */
 .order-no-full.wide {
   display: flex;
   align-items: center;
@@ -1712,25 +1729,6 @@ td.row-actions {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 14px;
   letter-spacing: 0.3px;
-}
-.copy-btn {
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 2px 12px;
-  cursor: pointer;
-  color: #475569;
-  transition: border-color 0.15s, color 0.15s;
-}
-.copy-btn:hover {
-  border-color: #1d6b40;
-  color: #1d6b40;
-}
-.copy-btn.copied {
-  border-color: #1d6b40;
-  color: #1d6b40;
-  background: #e6f5ec;
 }
 /* IKBW0C/D：商品列多商品每行一个（itemsText 以 \n 连接） */
 .cell-lines {
