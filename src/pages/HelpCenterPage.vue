@@ -114,6 +114,9 @@ watch(cleanedHtml, () => nextTick(enhance));
   flex-shrink: 0;
   position: sticky;
   top: 24px;
+  /* 33 菜单两级目录高于视口：限高 + 内部滚动，否则底部条目永远停在视口外 */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -121,6 +124,17 @@ watch(cleanedHtml, () => nextTick(enhance));
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+/* 目录细滚动条（不挤 200px 宽度） */
+.help-toc::-webkit-scrollbar {
+  width: 4px;
+}
+.help-toc::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+.help-toc::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 .help-toc__title {
   font-size: 12px;
