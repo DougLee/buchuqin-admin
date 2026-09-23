@@ -137,6 +137,12 @@ async function saveProfile() {
    初始 00:00/00:00 相等会被回算成「24 小时营业」，导致「按时间打烊」选不上、
    时间输入框永远不出现。初始化从数据算一次，之后用户选什么就是什么。 */
 const closeMode = ref<"always" | "on-time" | "now">("always");
+/** 打烊时间 30 分钟档（00:00~23:30）：下拉天然 24 小时制（原生 time 控件显示格式跟浏览器走）。 */
+const TIME_OPTIONS = Array.from(
+  { length: 48 },
+  (_, i) =>
+    `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`,
+);
 watch(closeMode, (mode) => {
   deliveryForm.value.manualClosed = mode === "now";
   if (mode === "always") {
@@ -464,14 +470,20 @@ const EMBED_SECTIONS = [
             </select></label
           >
           <template v-if="closeMode === 'on-time'">
+            <!-- 原生 time 控件显示格式跟浏览器语言走（英文环境 12 小时制、属性不可控），
+                 改 30 分钟档下拉：天然 24 小时制，跨浏览器一致 -->
             <label
               >打烊开始
-              <input
-                v-model="deliveryForm.closeStart"
-                type="time" /></label>
+              <select v-model="deliveryForm.closeStart">
+                <option v-for="t in TIME_OPTIONS" :key="t" :value="t">{{ t }}</option>
+              </select></label
+            >
             <label
               >打烊结束
-              <input v-model="deliveryForm.closeEnd" type="time" /></label>
+              <select v-model="deliveryForm.closeEnd">
+                <option v-for="t in TIME_OPTIONS" :key="t" :value="t">{{ t }}</option>
+              </select></label
+            >
           </template>
           <label class="cc-form--wide"
             >无楼长提示（下单结算弹窗，空=默认文案）
