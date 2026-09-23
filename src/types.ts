@@ -570,6 +570,36 @@ export interface WechatGroup {
   updatedAt: string;
 }
 
+/** 退款申请（IKHZKA Refund 统一主表）：售后+悔单共用。 */
+export interface RefundApplication {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  campusId: string;
+  orderStatus: string;
+  userName: string;
+  userPhone: string;
+  source: string;
+  type: string | null;
+  description: string;
+  images: string[];
+  reason: string;
+  amount: number;
+  payableAmount: number;
+  deliveryFee: number;
+  status: string;
+  statusText: string;
+  beforeStatus: string;
+  auditBy: string | null;
+  auditAt: string | null;
+  auditRemark: string;
+  refundError: string;
+  rejectCount: number;
+  wxRefundId: string | null;
+  createdAt: string;
+  orderCreatedAt: string;
+}
+
 export interface AfterSale {
   id: string;
   userId: string;

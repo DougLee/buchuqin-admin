@@ -74,7 +74,11 @@ export const ROLE_LABELS: Record<string, string> = {
 export const ROUTE_PERM: Record<string, string[]> = {
   // 只读板块
   dashboard: [],
-  "after-sales": [],
+  // IKHZKA：审核权独立（after-sales.audit），列表本身只读
+  "after-sales": [
+    "POST /admin/refunds/:id/audit",
+    "POST /admin/refunds/:id/sync",
+  ],
   "inventory-txns": [],
   "campus-report": [],
   "battle-map": [],

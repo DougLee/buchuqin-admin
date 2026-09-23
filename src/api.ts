@@ -12,6 +12,7 @@ import type {
   UserStats,
   WechatGroup,
   AfterSale,
+  RefundApplication,
   AuditLog,
   Banner,
   BarcodeLookup,
@@ -670,6 +671,26 @@ export const api = {
         listQuery(query),
       )}`,
     ),
+  /** IKHZKA 退款申请列表（Refund 统一主表；status/source 服务端过滤）。 */
+  refunds: (query?: ListQuery, status?: string, source?: string) =>
+    request<PagedResponse<RefundApplication>>(
+      `/admin/refunds${withQuery(
+        status ? `status=${status}` : "",
+        source ? `source=${source}` : "",
+        listQuery(query),
+      )}`,
+    ),
+  /** IKHZKA 审核：approve=批准并发起微信原路退回；reject=拒绝回滚订单。 */
+  auditRefund: (id: string, action: "approve" | "reject", remark?: string) =>
+    request<{ id: string; status: string }>(`/admin/refunds/${id}/audit`, {
+      method: "POST",
+      body: JSON.stringify({ action, remark }),
+    }),
+  /** IKHZKA 退款状态同步：受理中的单向微信查终态并落账。 */
+  syncRefund: (id: string) =>
+    request<{ id: string; status: string }>(`/admin/refunds/${id}/sync`, {
+      method: "POST",
+    }),
   /** IKB5PA：status 过滤（pending-review/confirmed/paid，状态 Tab 用）。 */
   settlements: (month?: string, query?: ListQuery, status?: string) =>
     request<PagedResponse<Settlement>>(
