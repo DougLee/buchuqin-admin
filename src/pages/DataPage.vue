@@ -4914,7 +4914,12 @@ const orderInPicking = computed(
     section.value === "orders" &&
     ["paid", "picking"].includes(selectedStatus()),
 );
-/** 履约凭证（IKA57U）：交接拍照 + 送达凭证，订单/仓库订单抽屉就地展示。 */
+/**
+ * 履约凭证（IKA57U）：交接拍照 + 送达凭证，订单/仓库订单抽屉分组展示。
+ * IKI 道哥 2026-09-24：送达凭证实际字段是 package.proof（此前前端误读
+ * deliveredProof 导致楼长到寝照片永远不显示）；并按「骑手交接/楼长送达」
+ * 分组标注，避免两张照片无语义平铺。
+ */
 const orderProofs = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (
@@ -4922,10 +4927,21 @@ const orderProofs = computed(() => {
     (section.value !== "orders" && section.value !== "warehouse-orders")
   )
     return [];
+  const pkg = (order.package ?? {}) as {
+    handoverProof?: { images?: string[] };
+    proof?: { images?: string[] };
+  };
   return [
-    ...(order.package?.handoverProof?.images ?? []),
-    ...(order.package?.deliveredProof?.images ?? []),
-  ].filter(Boolean);
+    { label: "骑手交接（楼下）", images: pkg.handoverProof?.images ?? [] },
+    { label: "楼长送达（寝室）", images: pkg.proof?.images ?? [] },
+  ]
+    .map((g) => ({
+      label: g.label,
+      images: (g.images ?? []).filter(Boolean).map((src) =>
+        resolveImageUrl(src),
+      ),
+    }))
+    .filter((g) => g.images.length);
 });
 /** 仓库订单抽屉的拣货清单（含商品库位指引，IK9U40/IKA0VG 区域-编号）。 */
 const pickingItems = computed(() => {
@@ -7027,21 +7043,28 @@ async function cancelInviteRow(row: AdminRow) {
               </li>
             </ul>
           </div>
-          <!-- 履约凭证（IKA57U）：交接拍照/送达凭证此前只落库不展示，PM 无法核对 -->
+          <!-- 履约凭证（IKA57U）：交接/送达分组展示（道哥 2026-09-24 修复送达照片不显示） -->
           <div
             v-if="orderProofs.length"
             class="wide proof-block drawer-proofs"
           >
-            <span class="proof-label">履约凭证（交接/送达，点击放大）</span>
-            <div class="proof-grid">
-              <img
-                v-for="(src, i) in orderProofs"
-                :key="i"
-                :src="resolveImageUrl(src)"
-                :alt="`凭证 ${i + 1}`"
-                loading="lazy"
-                @click="previewImage = resolveImageUrl(src)"
-              />
+            <span class="proof-label">履约凭证（点击放大）</span>
+            <div
+              v-for="group in orderProofs"
+              :key="group.label"
+              class="proof-group"
+            >
+              <span class="proof-group__label">{{ group.label }}</span>
+              <div class="proof-grid">
+                <img
+                  v-for="(src, i) in group.images"
+                  :key="i"
+                  :src="src"
+                  :alt="`${group.label} ${i + 1}`"
+                  loading="lazy"
+                  @click="previewImage = src"
+                />
+              </div>
             </div>
           </div>
         </div>

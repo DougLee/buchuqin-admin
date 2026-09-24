@@ -1903,3 +1903,18 @@ aside .cl-dot {
   margin-left: 6px;
   flex-shrink: 0;
 }
+
+/* 道哥 2026-09-24：履约凭证分组（骑手交接/楼长送达） */
+.proof-group {
+  margin-bottom: 10px;
+}
+.proof-group__label {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.proof-group:last-child {
+  margin-bottom: 0;
+}
