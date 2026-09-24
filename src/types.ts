@@ -598,6 +598,15 @@ export interface RefundApplication {
   wxRefundId: string | null;
   createdAt: string;
   orderCreatedAt: string;
+  /** v2 部分退款：商品行（整单退为空） */
+  items: Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    unitPrice: number;
+    quantity: number;
+    amount: number;
+  }>;
 }
 
 export interface AfterSale {

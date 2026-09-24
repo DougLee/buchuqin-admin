@@ -680,11 +680,30 @@ export const api = {
         listQuery(query),
       )}`,
     ),
-  /** IKHZKA 审核：approve=批准并发起微信原路退回；reject=拒绝回滚订单。 */
-  auditRefund: (id: string, action: "approve" | "reject", remark?: string) =>
+  /** IKHZKA 审核：approve=批准并发起微信原路退回；reject=拒绝回滚订单。
+   *  v2：amounts=部分退款各行核定金额（分）。 */
+  auditRefund: (
+    id: string,
+    action: "approve" | "reject",
+    remark?: string,
+    amounts?: Array<{ itemId: string; amount: number }>,
+  ) =>
     request<{ id: string; status: string }>(`/admin/refunds/${id}/audit`, {
       method: "POST",
-      body: JSON.stringify({ action, remark }),
+      body: JSON.stringify({ action, remark, amounts }),
+    }),
+  /** IKHZKA v2：客服按商品发起部分退款并即时批准（金额可核定，单位分）。 */
+  createOrderRefund: (
+    orderId: string,
+    input: {
+      productIds: string[];
+      amounts?: Array<{ productId: string; amount: number }>;
+      remark?: string;
+    },
+  ) =>
+    request<{ id: string; status: string }>(`/admin/orders/${orderId}/refunds`, {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
   /** IKHZKA 退款状态同步：受理中的单向微信查终态并落账。 */
   syncRefund: (id: string) =>

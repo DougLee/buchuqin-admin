@@ -106,15 +106,22 @@ const detail = ref<RefundApplication | null>(null);
 const auditMode = ref<"approve" | "reject" | null>(null);
 const remark = ref("");
 const submitting = ref(false);
+/** v2 部分退款：审核核定的各行金额（itemId → 元字符串，提交时转分） */
+const itemAmounts = ref<Record<string, string>>({});
 
 function openDetail(row: RefundApplication) {
   detail.value = row;
   auditMode.value = null;
   remark.value = "";
+  itemAmounts.value = {};
 }
 function startAudit(mode: "approve" | "reject") {
   auditMode.value = mode;
   remark.value = "";
+  if (mode === "approve" && detail.value?.items.length)
+    itemAmounts.value = Object.fromEntries(
+      detail.value.items.map((i) => [i.id, (i.amount / 100).toFixed(2)]),
+    );
 }
 async function submitAudit() {
   if (!detail.value || !auditMode.value) return;
@@ -124,10 +131,17 @@ async function submitAudit() {
   }
   submitting.value = true;
   try {
+    const amounts = detail.value.items.length
+      ? detail.value.items.map((i) => ({
+          itemId: i.id,
+          amount: Math.round(Number(itemAmounts.value[i.id] ?? i.amount) * 100),
+        }))
+      : undefined;
     const after = await api.auditRefund(
       detail.value.id,
       auditMode.value,
       remark.value.trim(),
+      amounts,
     );
     toast.value =
       auditMode.value === "approve"
@@ -159,6 +173,89 @@ async function sync(row: RefundApplication) {
   }
 }
 
+/* ---------- v2 按商品退款（客服主动发起，一次提交即退款） ---------- */
+const createOpen = ref(false);
+const createOrderNo = ref("");
+const createOrder = ref<{
+  id: string;
+  orderNo: string;
+  payableAmount: number;
+  deliveryFee?: number;
+  items: Array<{ product: { id: string; name: string; price: number }; quantity: number }>;
+} | null>(null);
+const createSelected = ref<string[]>([]);
+const createAmounts = ref<Record<string, string>>({});
+const createSearching = ref(false);
+
+function openCreate() {
+  createOpen.value = true;
+  createOrder.value = null;
+  createOrderNo.value = "";
+  createSelected.value = [];
+  createAmounts.value = {};
+}
+async function searchOrder() {
+  const no = createOrderNo.value.trim();
+  if (!no) return;
+  createSearching.value = true;
+  try {
+    const res = await api.orders("all", { page: 1, pageSize: 10, keyword: no });
+    const hit =
+      res.items.find((o) => String(o.orderNo) === no) ?? res.items[0];
+    // Order 行结构宽松断言（模板只用 orderNo/实付/配送费/items 快照）
+    createOrder.value = (hit ?? null) as unknown as typeof createOrder.value;
+    createSelected.value = [];
+    createAmounts.value = {};
+    if (!hit) toast.value = "未找到订单，请核对单号";
+  } catch (e) {
+    toast.value = e instanceof Error ? e.message : "查询失败";
+  } finally {
+    createSearching.value = false;
+  }
+}
+function toggleCreateLine(pid: string) {
+  const i = createSelected.value.indexOf(pid);
+  if (i >= 0) createSelected.value.splice(i, 1);
+  else createSelected.value.push(pid);
+}
+async function submitCreate() {
+  if (!createOrder.value || submitting.value) return;
+  if (!createSelected.value.length) {
+    toast.value = "请勾选退款商品";
+    return;
+  }
+  submitting.value = true;
+  try {
+    const after = await api.createOrderRefund(createOrder.value.id, {
+      productIds: createSelected.value,
+      amounts: createSelected.value.map((pid) => {
+        const line = createOrder.value!.items.find(
+          (l) => l.product.id === pid,
+        )!;
+        const raw = createAmounts.value[pid];
+        return {
+          productId: pid,
+          amount:
+            raw != null && raw !== ""
+              ? Math.round(Number(raw) * 100)
+              : Math.round(line.product.price * line.quantity),
+        };
+      }),
+      remark: remark.value.trim(),
+    });
+    toast.value =
+      after.status === "refunded"
+        ? "退款已完成（微信原路退回）"
+        : "已批准，退款受理中";
+    createOpen.value = false;
+    await Promise.all([load(), loadPendingCount()]);
+  } catch (e) {
+    toast.value = e instanceof Error ? e.message : "操作失败，请重试";
+  } finally {
+    submitting.value = false;
+  }
+}
+
 onMounted(() => {
   void load();
   void loadPendingCount();
@@ -176,6 +273,9 @@ onMounted(() => {
         </p>
       </div>
       <div class="head-actions">
+        <button v-if="canAudit" class="btn primary" @click="openCreate">
+          按商品退款
+        </button>
         <button class="btn" :disabled="loading" @click="load(); loadPendingCount()">
           {{ loading ? "刷新中…" : "刷新" }}
         </button>
@@ -291,6 +391,25 @@ onMounted(() => {
           <button class="btn small" @click="detail = null">关闭</button>
         </div>
         <dl class="as-grid">
+          <!-- v2 部分退款：商品行（整单退不显示） -->
+          <div v-if="detail.items.length" class="as-imgs-row">
+            <dt>退款商品</dt>
+            <dd>
+              <table class="as-items">
+                <thead>
+                  <tr><th>商品</th><th>单价</th><th>数量</th><th>金额</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="i in detail.items" :key="i.id">
+                    <td>{{ i.productName }}</td>
+                    <td>¥{{ fenToYuan(i.unitPrice) }}</td>
+                    <td>×{{ i.quantity }}</td>
+                    <td>¥{{ fenToYuan(i.amount) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </dd>
+          </div>
           <div><dt>订单号</dt><dd class="mono">{{ detail.orderNo }}</dd></div>
           <div><dt>用户</dt><dd>{{ detail.userName || "—" }}{{ detail.userPhone ? `（${detail.userPhone}）` : "" }}</dd></div>
           <div><dt>来源</dt><dd>{{ SOURCE_TEXT[detail.source] ?? detail.source }}</dd></div>
@@ -344,6 +463,23 @@ onMounted(() => {
                   : "拒绝后订单将回滚至申请前状态（" + (ORDER_STATUS_TEXT[detail.beforeStatus] ?? detail.beforeStatus) + "），用户可补充后重新申请。"
               }}
             </p>
+            <!-- v2 部分退款：核定各行金额（默认申请值，可改） -->
+            <div v-if="detail.items.length" class="as-amounts">
+              <div v-for="i in detail.items" :key="i.id" class="as-amounts__row">
+                <span class="as-amounts__name">{{ i.productName }}（上限 ¥{{ fenToYuan(i.unitPrice * i.quantity) }}）</span>
+                <input
+                  v-model="itemAmounts[i.id]"
+                  class="as-amounts__input"
+                  type="number"
+                  min="0"
+                  :max="(i.unitPrice * i.quantity / 100).toFixed(2)"
+                  step="0.01"
+                />
+              </div>
+              <p class="as-audit-tip">
+                金额可调整（单位元）；合计不得超过本单可退余额（实付−配送费−已退）。
+              </p>
+            </div>
             <textarea
               v-model="remark"
               class="as-textarea"
@@ -363,6 +499,72 @@ onMounted(() => {
         </p>
       </div>
     </div>
+  <!-- v2 按商品退款弹窗：搜订单 → 勾商品 → 核定金额 → 提交即退款 -->
+  <div v-if="createOpen" class="as-mask" @click.self="createOpen = false">
+    <div class="as-modal panel">
+      <div class="as-modal-head">
+        <h3>按商品退款</h3>
+        <button class="btn small" @click="createOpen = false">关闭</button>
+      </div>
+      <div class="as-create-search">
+        <input
+          v-model="createOrderNo"
+          class="as-input"
+          style="flex: 1"
+          placeholder="输入完整订单号"
+          @keyup.enter="searchOrder"
+        />
+        <button class="btn" :disabled="createSearching" @click="searchOrder">
+          {{ createSearching ? "查询中…" : "查询订单" }}
+        </button>
+      </div>
+      <template v-if="createOrder">
+        <p class="as-audit-tip">
+          订单 {{ createOrder.orderNo }} · 实付 ¥{{ fenToYuan(createOrder.payableAmount) }}（含配送费
+          ¥{{ fenToYuan(createOrder.deliveryFee ?? 0) }}）· 可退上限 ¥{{ fenToYuan(createOrder.payableAmount - (createOrder.deliveryFee ?? 0)) }}
+        </p>
+        <div class="as-lines">
+          <div
+            v-for="line in createOrder.items"
+            :key="line.product.id"
+            class="as-line"
+            :class="{ 'as-line--on': createSelected.includes(line.product.id) }"
+            role="button"
+            @click="toggleCreateLine(line.product.id)"
+          >
+            <span>{{ line.product.name }} × {{ line.quantity }}</span>
+            <input
+              class="as-amounts__input"
+              type="number"
+              min="0"
+              :max="((line.product.price * line.quantity) / 100).toFixed(2)"
+              step="0.01"
+              :placeholder="`¥${fenToYuan(line.product.price * line.quantity)}`"
+              @click.stop
+              @change="
+                createAmounts[line.product.id] = (
+                  $event.target as HTMLInputElement
+                ).value
+              "
+            />
+          </div>
+        </div>
+        <p class="as-audit-tip">
+          勾选商品、可改金额（元）；提交即向微信发起原路退款，合计不得超可退上限。
+        </p>
+        <div class="as-audit-actions">
+          <button
+            class="btn primary"
+            :disabled="submitting || !createSelected.length"
+            @click="submitCreate"
+          >
+            {{ submitting ? "退款中…" : "确认退款" }}
+          </button>
+          <button class="btn" :disabled="submitting" @click="createOpen = false">取消</button>
+        </div>
+      </template>
+    </div>
+  </div>
   </div>
 </template>
 
@@ -506,4 +708,30 @@ onMounted(() => {
   resize: vertical;
 }
 .as-audit-actions { display: flex; gap: 8px; margin-top: 10px; }
+/* v2 按商品退款弹窗 */
+.as-create-search { display: flex; gap: 8px; margin-bottom: 12px; }
+.as-items { width: 100%; border-collapse: collapse; font-size: 12px; }
+.as-items th, .as-items td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f1f5f9; }
+.as-items th { color: #94a3b8; font-weight: 500; }
+.as-lines { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.as-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.as-line--on { border-color: #16a34a; background: rgba(22, 163, 74, 0.05); }
+.as-amounts__input {
+  width: 90px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  text-align: right;
+}
 </style>
