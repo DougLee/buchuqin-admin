@@ -4965,16 +4965,18 @@ const pickingItems = computed(() => {
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
   const items = order?.items;
   if (!order || !items?.length) return null;
-  let total = 0;
+  // 2026-09-24 道哥定版（修正 09-20 旧口径）：毛利 = 实付 − Σ(批发快照×数量)——
+  // 必须扣整单优惠（券/折扣属实付内），与首页概览/经营日报/部分退款硬上限同口径。
+  // 任一行缺批发快照（历史单）仍显示 —（口径不完整不误导）。
+  let cost = 0;
   for (const line of items) {
-    // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——
-    // 目录价差口径（优惠券属营销费用不摊进行）；无快照历史单显示 —
-    const cost = line.product?.unitWholesaleCost;
-    if (cost == null) return null;
-    const price = line.product?.price ?? 0;
-    total += (price - cost) * line.quantity;
+    const wholesale = line.product?.unitWholesaleCost;
+    if (wholesale == null) return null;
+    cost += wholesale * line.quantity;
   }
-  return total;
+  const payable = Number(order.payableAmount);
+  if (!Number.isFinite(payable)) return null;
+  return payable - cost;
 }
 /** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转）。
  *  IKFTK7 第三轮 + 2026-09-20 定版：成本口径 = 批发价快照 unitWholesaleCost */
