@@ -86,13 +86,14 @@ function requestSession() {
   return {
     headers: requestToken ? { Authorization: `Bearer ${requestToken}` } : undefined,
     assertCurrent,
-    check(response: Response, loginRequest = false) {
+    check(response: Response, loginRequest = false, reason?: string) {
       assertCurrent();
       if (response.status === 401 && !loginRequest) {
         clearSession();
         token = "";
         window.location.hash = "#/login";
-        throw new Error("登录已失效，请重新登录");
+        // ADMIN_SINGLE_SESSION 顶下线：透传后端明确文案（如「已在其他设备登录」）
+        throw new Error(reason || "登录已失效，请重新登录");
       }
     },
   };
@@ -166,8 +167,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...options.headers,
     },
   });
-  session.check(response, path === "/auth/admin-login");
+  // body 先解析再 check：401 时透传后端明确原因（如「已在其他设备登录，您已被顶下线」）
   const body = (await response.json().catch(() => null)) as ApiResult<T> | null;
+  session.check(response, path === "/auth/admin-login", body?.message);
   session.assertCurrent();
   if (!response.ok || !body)
     throw new Error(body?.message || `请求失败（${response.status}）`);
