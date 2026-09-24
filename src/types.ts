@@ -1210,3 +1210,20 @@ export interface CampusConfigBundle {
   slots: DeliverySlotRow[];
   notices: NoticeRow[];
 }
+
+/** SKU简化分析：金额整数分；毛利不扣券，库存独立于销售期间。 */
+export interface SkuAnalysisRow {
+  id: string; campusId: string; campusName: string; name: string; barcode: string;
+  categoryId: string; categoryName: string; sales: number; quantity: number;
+  cost: number | null; margin: number | null; marginRate: number | null;
+  stock: number | null; lockedStock: number | null; available: number | null;
+  inventoryValue: number | null; contribution: number; cumulative: number;
+  core: boolean; quadrant: string; advice: string; issues: string[];
+}
+export interface SkuAnalysisReport {
+  rows: SkuAnalysisRow[]; median: number | null; invalidLines: number;
+  campuses: { id: string; name: string }[]; categories: { id: string; name: string }[];
+  start: string; end: string; generatedAt: string; ruleVersion: string; basis: string;
+  totals: { sales: number; quantity: number; sellingSkus: number; knownMargin: number | null;
+    knownMarginRate: number | null; costCoverage: number | null; inventoryValue: number | null; inventoryMissing: number };
+}

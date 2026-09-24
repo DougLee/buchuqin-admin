@@ -81,6 +81,7 @@ export const ROUTE_PERM: Record<string, string[]> = {
   ],
   "inventory-txns": [],
   "campus-report": [],
+  "sku-analysis": [],
   "battle-map": [],
   reports: [],
   audit: [],

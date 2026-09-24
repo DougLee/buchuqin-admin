@@ -1,3 +1,4 @@
+import SkuAnalysis from "./pages/SkuAnalysisPage.vue";
 import type { Component } from "vue";
 import Dashboard from "./pages/Dashboard.vue";
 import DataPage from "./pages/DataPage.vue";
@@ -19,6 +20,7 @@ import Menus from "./pages/MenusPage.vue";
 import Permissions from "./pages/RbacPermissionsPage.vue";
 import Audit from "./pages/RbacAuditPage.vue";
 export const views: Record<string, Component> = {
+  "sku-analysis": SkuAnalysis,
   dashboard: Dashboard, restock: Restock, purchase: Purchase, reports: Reports,
   "campus-report": CampusReport, "battle-map": BattleMap, featured: Featured,
   "campus-config": CampusConfig, "after-sales": AfterSales, accounts: Accounts, "rbac-roles": Roles, "rbac-menus": Menus,

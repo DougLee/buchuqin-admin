@@ -41,6 +41,7 @@ import type {
   RestockShipmentDetail,
   HqDailyReport,
   CampusDailyReport,
+  SkuAnalysisReport,
   BattleMapBuilding,
   BattleRoomDetail,
   PurchaseOrderRow,
@@ -257,6 +258,8 @@ export async function downloadRoomTemplate(buildingId: string): Promise<void> {
 }
 
 export const api = {
+  skuAnalysis: (query: { start: string; end: string; campusId: string; categoryId: string; keyword: string }) =>
+    request<SkuAnalysisReport>(`/admin/reports/sku-analysis?${new URLSearchParams(query).toString()}`),
   /** IKAJSL：hq 不带 campus = 跨校区汇总；带 campus = 单校区明细 */
   dashboard: (campusId?: string) =>
     request<DashboardData | HqDashboardData>(
