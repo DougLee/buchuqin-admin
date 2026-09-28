@@ -7,15 +7,17 @@ import type {
   BattleRoomCell,
   BattleRoomDetail,
   Building,
+  Campus,
 } from "../types";
 import { fenToYuan } from "../utils/money";
-import { sessionUser } from "../session";
+import { isPlatform } from "../session";
 
 /**
  * 营销作战地图（IKFOQ3，2026-09-17 grilling 定版）：
  * - 楼栋→楼层→寝室格子三色：🟢 已下单（paidAt 非空）/🟡 注册未下单/⚪ 未开发
  * - 点格子开抽屉：注册用户列表+下单统计，高频客户=近 30 天 ≥3 单
- * - 校区上下文跟顶栏，数据实时聚合
+ * - 校区上下文（IKISDN）：平台账号页内选校区（记住上次，摆脱顶栏切换依赖）；
+ *   校区级账号跟账号本校区，无下拉
  */
 const loading = ref(true);
 const error = ref("");
@@ -23,6 +25,15 @@ const buildings = ref<Building[]>([]);
 const buildingId = ref("");
 const map = ref<BattleMapBuilding | null>(null);
 const floorNo = ref<number | null>(null);
+
+const CAMPUS_KEY = "battle-campus";
+const campuses = ref<Campus[]>([]);
+const campusId = ref("");
+
+/** 平台账号可选校区：排除总部仓（type=hq 无楼栋无寝室，选了必空） */
+const campusOptions = computed(() =>
+  campuses.value.filter((c) => c.type !== "hq"),
+);
 
 const drawerOpen = ref(false);
 const roomLoading = ref(false);
@@ -43,7 +54,10 @@ async function loadMap() {
   loading.value = true;
   error.value = "";
   try {
-    map.value = await api.battleMapBuilding(buildingId.value);
+    map.value = await api.battleMapBuilding(
+      buildingId.value,
+      campusId.value || undefined,
+    );
     // 缺省选最低楼层
     floorNo.value = map.value.floors[0]?.floor ?? null;
   } catch (e) {
@@ -59,7 +73,10 @@ async function openRoom(cell: BattleRoomCell) {
   roomLoading.value = true;
   roomDetail.value = null;
   try {
-    roomDetail.value = await api.battleMapRoom(cell.roomId);
+    roomDetail.value = await api.battleMapRoom(
+      cell.roomId,
+      campusId.value || undefined,
+    );
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载寝室详情失败";
     drawerOpen.value = false;
@@ -68,12 +85,15 @@ async function openRoom(cell: BattleRoomCell) {
   }
 }
 
-onMounted(async () => {
+/** 拉当前校区楼栋并自动落到第一栋；校区级账号不传 → 后端回落账号本校区 */
+async function loadBuildings() {
+  loading.value = true;
+  error.value = "";
   try {
     const list = await api.buildings({
       page: 1,
       pageSize: 100,
-      campusId: sessionUser.value?.campusId,
+      campusId: campusId.value || undefined,
     });
     buildings.value = list.items;
     const first = buildings.value[0];
@@ -81,8 +101,33 @@ onMounted(async () => {
       buildingId.value = first.id;
       await loadMap();
     } else {
+      buildingId.value = "";
+      map.value = null;
       loading.value = false;
     }
+  } catch {
+    loading.value = false;
+    error.value = "楼栋列表加载失败";
+  }
+}
+
+async function onCampusChange() {
+  localStorage.setItem(CAMPUS_KEY, campusId.value);
+  await loadBuildings();
+}
+
+onMounted(async () => {
+  try {
+    // 平台账号：页内选校区（IKISDN），恢复上次选择、缺省第一个校区
+    if (isPlatform.value) {
+      campuses.value = await api.campuses();
+      const saved = localStorage.getItem(CAMPUS_KEY) ?? "";
+      campusId.value =
+        campusOptions.value.find((c) => c.id === saved)?.id ??
+        campusOptions.value[0]?.id ??
+        "";
+    }
+    await loadBuildings();
   } catch {
     loading.value = false;
     error.value = "楼栋列表加载失败";
@@ -102,7 +147,16 @@ onMounted(async () => {
         </p>
       </div>
       <div class="head-actions battle-filter">
-        <select v-model="buildingId" @change="loadMap">
+        <select
+          v-if="isPlatform && campusOptions.length"
+          v-model="campusId"
+          @change="onCampusChange"
+        >
+          <option v-for="c in campusOptions" :key="c.id" :value="c.id">
+            {{ c.name }}
+          </option>
+        </select>
+        <select v-model="buildingId" :disabled="!buildings.length" @change="loadMap">
           <option v-for="b in buildings" :key="b.id" :value="b.id">
             {{ b.name }}
           </option>
@@ -158,6 +212,15 @@ onMounted(async () => {
     </div>
     <div v-else-if="loading" class="data-panel">
       <div class="row-skeleton"></div>
+    </div>
+    <div v-else-if="!error" class="data-panel">
+      <p class="empty-cell">
+        {{
+          buildings.length
+            ? "该楼栋暂无寝室数据（先到楼栋管理建寝室）。"
+            : "当前校区暂无楼栋，先到楼栋管理新建。"
+        }}
+      </p>
     </div>
 
     <!-- 寝室详情抽屉 -->
