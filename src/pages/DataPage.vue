@@ -1492,10 +1492,15 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   );
 }
 /** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
+// 流水类型字典（与 API 落库 type 一一对应；adjust 含手工调整与盘点，reason 区分）
 const TXN_TYPE_TEXT: Record<string, string> = {
-  "stock-in": "采购入库",
+  "stock-in": "人工入库",
   adjust: "盘点调整",
   out: "订单出库",
+  "purchase-receive": "采购收货",
+  "purchase-bad": "采购坏品",
+  "restock-out": "订货发货",
+  "restock-in": "订货到货",
 };
 function toTxnRow(t: InventoryTxn): AdminRow {
   return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
