@@ -26,6 +26,8 @@ interface FeatRow {
 const candidates = ref<Product[]>([]);
 const loadingCands = ref(true);
 const picked = ref<FeatRow[]>([]);
+/** 隐藏分类的商品不进推荐位候选池（C 端全链路不露出，勾了不显示） */
+const hiddenCategoryIds = ref<Set<string>>(new Set());
 const saving = ref(false);
 const savedIds = ref<string[]>([]);
 const toast = ref("");
@@ -52,6 +54,16 @@ const total = ref(0);
 const hasMore = computed(() => candidates.value.length < total.value);
 const loadingMore = ref(false);
 /** 分页拉取：首页覆盖 / loadMore 追加（后端 pageSize 封顶 100，翻页搜全） */
+async function loadHiddenCategories() {
+  try {
+    const cats = await api.adminCategories();
+    hiddenCategoryIds.value = new Set(
+      cats.filter((c) => c.hidden).map((c) => c.id as string),
+    );
+  } catch {
+    /* 拉不到不过滤（容错） */
+  }
+}
 async function loadCandidates(append = false) {
   if (!append) loadingCands.value = true;
   else loadingMore.value = true;
@@ -68,7 +80,10 @@ async function loadCandidates(append = false) {
       "campus",
     );
     // IKH0EK 验收拍板：有库存才可进推荐位（件数语义不适用，纯勾选）
-    const fresh = prods.items.filter((p) => p.stock > 0);
+    // 道哥 2026-09-28：隐藏分类的商品前台全链路不露出，勾了也白勾——候选池排除
+    const fresh = prods.items.filter(
+      (p) => p.stock > 0 && !hiddenCategoryIds.value.has(p.categoryId),
+    );
     candidates.value = append ? [...candidates.value, ...fresh] : fresh;
     total.value = prods.total;
   } catch (e) {
@@ -89,6 +104,7 @@ function onFilterChange(f: { categoryId: string; keyword: string }) {
   void loadCandidates();
 }
 onMounted(async () => {
+  void loadHiddenCategories();
   try {
     const [, feat] = await Promise.all([loadCandidates(), api.featured()]);
     picked.value = feat;
@@ -231,6 +247,13 @@ async function save() {
                     <div class="feat-product">
                       <img class="cell-thumb" :src="p.image" :alt="p.name" />
                       <strong>{{ p.name }}</strong>
+                      <!-- 道哥 2026-09-28：分类已隐藏的商品前台不露出，标记提醒 -->
+                      <span
+                        v-if="hiddenCategoryIds.has(p.categoryId)"
+                        class="cat-hidden-badge"
+                        title="该商品所属分类已隐藏，小程序不会显示；建议移除或恢复分类"
+                        >分类已隐藏</span
+                      >
                     </div>
                   </td>
                   <td>¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</td>
@@ -295,5 +318,16 @@ async function save() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+</style>
+<style scoped>
+.cat-hidden-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 99px;
+  padding: 2px 8px;
+  flex-shrink: 0;
 }
 </style>
