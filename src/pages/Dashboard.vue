@@ -243,7 +243,8 @@ function exportReport() {
     </div>
     <!-- IKAJSL：hq 汇总视角——合计 KPI + 校区对比表（点行下钻单校区明细） -->
     <template v-else-if="hqData">
-      <section class="kpi-grid">
+      <!-- six：6 卡一行（IKISZ2+），避免 5 列栅格下在营校区孤卡断行 -->
+      <section class="kpi-grid six">
         <article class="kpi hero-kpi">
           <p :title="hqData.caliber.revenue">今日营业额（全校区）</p>
           <strong
@@ -269,11 +270,16 @@ function exportReport() {
           <p :title="hqData.caliber.newUsers">今日新用户</p>
           <strong>{{ hqData.kpis.newUsers }}<small> 人</small></strong>
         </article>
-        <article class="kpi alert-kpi">
+        <!-- 语义色：有异常才转橙警示，0 项保持中性（IKISZ2+） -->
+        <article
+          class="kpi"
+          :class="hqData.kpis.exceptions ? 'alert-kpi' : ''"
+        >
           <p :title="hqData.caliber.exceptions">待处理异常</p>
           <strong>{{ hqData.kpis.exceptions }}<small> 项</small></strong>
-          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
+          <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到；无异常不渲染按钮 -->
           <button
+            v-if="hqData.kpis.exceptions"
             @click="router.push({ path: menuPath('orders') || '/access-denied', query: { status: 'exception' } })"
             >立即处理 →</button
           >
