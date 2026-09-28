@@ -128,9 +128,15 @@ function rateText(row: CampusDailyRow) {
         <p class="report-label">批发成本</p>
         <strong>¥{{ fenToYuan(report.totals.costTotal, true) }}</strong>
       </div>
+      <div class="report-card">
+        <p class="report-label">毛利（未扣券）</p>
+        <strong>¥{{ fenToYuan(report.totals.marginTotal, true) }}</strong>
+        <p class="report-sub">商品金额 − 批发成本</p>
+      </div>
       <div class="report-card report-card-gross">
-        <p class="report-label">毛利</p>
+        <p class="report-label">综合毛利</p>
         <strong>¥{{ fenToYuan(report.totals.gross, true) }}</strong>
+        <p class="report-sub">实付 − 批发成本（扣券）</p>
       </div>
       <div class="report-card">
         <p class="report-label">毛利率</p>
@@ -155,17 +161,18 @@ function rateText(row: CampusDailyRow) {
               <th>订单数</th>
               <th>销售额</th>
               <th>批发成本</th>
-              <th>毛利</th>
+              <th title="商品金额 − 批发成本（未扣券）">毛利</th>
+              <th title="实付 − 批发成本（扣券）">综合毛利</th>
               <th>毛利率</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="isHqScope ? 7 : 6"><div class="row-skeleton"></div></td>
+              <td :colspan="isHqScope ? 8 : 7"><div class="row-skeleton"></div></td>
             </tr>
             <template v-else>
               <tr v-if="!report.rows.length">
-                <td :colspan="isHqScope ? 7 : 6" class="empty-cell">
+                <td :colspan="isHqScope ? 8 : 7" class="empty-cell">
                   所选范围内没有已完成的订单（只计 completed，退款/未完成单不计）。
                 </td>
               </tr>
@@ -175,6 +182,7 @@ function rateText(row: CampusDailyRow) {
                 <td>{{ r.orders }}</td>
                 <td>¥{{ fenToYuan(r.salesTotal) }}</td>
                 <td>¥{{ fenToYuan(r.costTotal) }}</td>
+                <td>¥{{ fenToYuan(r.marginTotal) }}</td>
                 <td class="report-gross">¥{{ fenToYuan(r.gross) }}</td>
                 <td>{{ rateText(r) }}</td>
               </tr>

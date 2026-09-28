@@ -252,6 +252,15 @@ function exportReport() {
           <div class="orb"></div>
         </article>
         <article class="kpi">
+          <p :title="hqData.caliber.margin">今日毛利（全校区）</p>
+          <strong
+            ><small>¥</small>{{ fenToYuan(hqData.kpis.margin, true) }}</strong
+          >
+          <p class="kpi-sub" :title="hqData.caliber.profit">
+            综合毛利 ¥{{ fenToYuan(hqData.kpis.profit, true) }}
+          </p>
+        </article>
+        <article class="kpi">
           <p :title="hqData.caliber.orders">今日订单</p>
           <strong>{{ hqData.kpis.orders }}<small> 单</small></strong>
         </article>
@@ -286,7 +295,10 @@ function exportReport() {
               <th>状态</th>
               <th>楼栋</th>
               <th>今日营业额</th>
-              <th title="实付 − 行级批发成本快照（口径同经营日报）">今日毛利</th>
+              <th title="商品金额 − 行级批发成本快照（未扣券）">今日毛利</th>
+              <th title="实付 − 行级批发成本快照（扣券，口径同校区日报）">
+                今日综合毛利
+              </th>
               <th>今日订单</th>
               <th>今日新用户</th>
               <th>异常</th>
@@ -303,6 +315,7 @@ function exportReport() {
               </td>
               <td>{{ row.buildings }}</td>
               <td>¥{{ fenToYuan(row.revenue, true) }}</td>
+              <td :class="{ 'profit-neg': row.margin < 0 }">¥{{ fenToYuan(row.margin, true) }}</td>
               <td :class="{ 'profit-neg': row.profit < 0 }">¥{{ fenToYuan(row.profit, true) }}</td>
               <td>{{ row.orders }}</td>
               <td>{{ row.newUsers }}</td>

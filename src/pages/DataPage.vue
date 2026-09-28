@@ -3070,8 +3070,8 @@ const configs: Record<string, SectionConfig> = {
       ["contactText", "收货人"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
-      // IKFTZ9：毛利列（合计口径同详情，缺成本显示 —）
-      ["marginTotal", "毛利"],
+      // IKFTZ9：综合毛利列（实付−成本，口径同详情合计；缺成本显示 —）
+      ["marginTotal", "综合毛利"],
       // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
       ["slaText", "时效"],
       // IKC9M2：补下单时间列（格式化走 display 的 createdAt 统一分支）
@@ -4221,7 +4221,7 @@ function detailCols(cols: [string, string][], order?: string[]) {
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
-  // 订单毛利列（IKFTZ9）：口径同详情合计（实付分摊 − 成本），缺成本显示 —
+  // 订单综合毛利列（IKFTZ9）：实付 − 成本（扣券），口径同详情合计，缺成本显示 —
   if (key === "marginTotal") {
     const total = orderMarginTotalOf(row as unknown as Order);
     return total == null ? "—" : `¥${fenToYuan(total)}`;
@@ -5006,11 +5006,19 @@ const orderMarginItems = computed(() => {
       quantity: line.quantity,
       priceText: `¥${fenToYuan(price)}`,
       marginText: marginFen == null ? "—" : `¥${fenToYuan(marginFen)}`,
+      marginFen,
       hasMargin: cost != null,
     };
   });
 });
-/** 订单毛利合计（IKFTK7）：全部行都有成本才算得出，缺成本行时不显示合计 */
+/** 订单毛利合计（IKIT0F，未扣券）：Σ逐行（售价−批发快照）×数量；
+ *  任一行缺快照 → null 不显示（口径不完整不误导） */
+const orderMarginGrossTotal = computed(() => {
+  const lines = orderMarginItems.value;
+  if (!lines.length || lines.some((l) => !l.hasMargin)) return null;
+  return lines.reduce((sum, l) => sum + (l.marginFen ?? 0), 0);
+});
+/** 综合毛利（IKFTK7）：实付−成本（扣券），全部行都有成本才算得出，缺成本行时不显示 */
 const orderMarginTotal = computed(() =>
   orderMarginTotalOf(selected.value as unknown as Order | undefined),
 );
@@ -7024,8 +7032,14 @@ async function cancelInviteRow(row: AdminRow) {
                   <strong>{{ line.marginText }}</strong></span
                 >
               </li>
+              <li v-if="orderMarginGrossTotal != null" class="margin-total-row">
+                <span class="margin-name">毛利合计（商品金额−成本，未扣券）</span>
+                <span class="margin-amount">
+                  <strong>¥{{ fenToYuan(orderMarginGrossTotal) }}</strong></span
+                >
+              </li>
               <li v-if="orderMarginTotal != null" class="margin-total-row">
-                <span class="margin-name">订单毛利合计</span>
+                <span class="margin-name">综合毛利（实付−成本，扣券）</span>
                 <span class="margin-amount">
                   <strong>¥{{ fenToYuan(orderMarginTotal) }}</strong></span
                 >

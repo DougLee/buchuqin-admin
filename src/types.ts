@@ -703,7 +703,9 @@ export interface HqDashboardData {
     status: string;
     buildings: number;
     revenue: number;
-    /** 今日毛利（分）：实付 − 行级批发成本快照，口径同经营日报 */
+    /** 今日毛利（分）：商品金额 − 行级批发成本快照，未扣券（IKISZ2） */
+    margin: number;
+    /** 今日综合毛利（分）：实付 − 行级批发成本快照，扣券（口径同校区日报） */
     profit: number;
     orders: number;
     newUsers: number;
@@ -711,6 +713,7 @@ export interface HqDashboardData {
   }>;
   kpis: {
     revenue: number;
+    margin: number;
     profit: number;
     orders: number;
     newUsers: number;
@@ -1057,8 +1060,13 @@ export interface CampusDailyRow {
   orders: number;
   /** 销售额（分）=Σ payableAmount 实付 */
   salesTotal: number;
+  /** 商品金额合计（分）=Σ productAmount（IKISZ2 毛利未扣券口径） */
+  productTotal: number;
   /** 批发成本（分）=Σ 行数量×unitWholesaleCost 快照（缺快照按 0） */
   costTotal: number;
+  /** 毛利（分）=商品金额−成本，未扣券（IKISZ2） */
+  marginTotal: number;
+  /** 综合毛利（分）=实付−成本，扣券+配送费无成本收入 */
   gross: number;
   /** 毛利率万分比整数（/100=百分比） */
   marginRate: number;
@@ -1068,6 +1076,8 @@ export interface CampusDailyReport {
     orders: number;
     salesTotal: number;
     costTotal: number;
+    /** 毛利合计（分）=商品金额−成本，未扣券（IKISZ2） */
+    marginTotal: number;
     gross: number;
     marginRate: number;
   };

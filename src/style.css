@@ -608,6 +608,12 @@ a {
   line-height: 1;
   color: #18382b;
 }
+/* IKISZ2：毛利卡副行（综合毛利） */
+.kpi .kpi-sub {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .kpi strong small {
   font-size: 14px;
 }
