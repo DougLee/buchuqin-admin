@@ -595,18 +595,16 @@ export const api = {
   /** 营销作战地图（IKFOQ3）：整栋楼层格子（三色）+汇总；平台账号带校区聚焦（IKISDN） */
   battleMapBuilding: (buildingId: string, campus?: string) =>
     request<BattleMapBuilding>(
-      withQuery(
-        `/admin/battle-map/buildings/${buildingId}`,
+      `/admin/battle-map/buildings/${buildingId}${withQuery(
         campus ? `campus=${encodeURIComponent(campus)}` : undefined,
-      ),
+      )}`,
     ),
   /** 营销作战地图：寝室详情（注册用户列表+统计） */
   battleMapRoom: (roomId: string, campus?: string) =>
     request<BattleRoomDetail>(
-      withQuery(
-        `/admin/battle-map/rooms/${roomId}`,
+      `/admin/battle-map/rooms/${roomId}${withQuery(
         campus ? `campus=${encodeURIComponent(campus)}` : undefined,
-      ),
+      )}`,
     ),
   /** 订单状态计数（IKAJSP）：Tab 角标，返回原始状态→数量；hq 可带校区。 */
   /** IKHFWV 新订单水位线（30s 轮询）：今日已支付累计+最新单摘要 */
