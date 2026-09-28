@@ -1068,7 +1068,9 @@ export interface CampusDailyRow {
   marginTotal: number;
   /** 综合毛利（分）=实付−成本，扣券+配送费无成本收入 */
   gross: number;
-  /** 毛利率万分比整数（/100=百分比） */
+  /** 毛利率万分比（/100=百分比）=毛利/商品金额（IKISZ2+） */
+  marginRawRate: number;
+  /** 综合毛利率万分比（/100=百分比）=综合毛利/实付 */
   marginRate: number;
 }
 export interface CampusDailyReport {
@@ -1076,9 +1078,14 @@ export interface CampusDailyReport {
     orders: number;
     salesTotal: number;
     costTotal: number;
+    /** 商品金额合计（分）=Σ productAmount（IKISZ2） */
+    productTotal: number;
     /** 毛利合计（分）=商品金额−成本，未扣券（IKISZ2） */
     marginTotal: number;
     gross: number;
+    /** 毛利率万分比（/100=百分比）=毛利合计/商品金额合计（IKISZ2+） */
+    marginRawRate: number;
+    /** 综合毛利率万分比（/100=百分比）=综合毛利/实付 */
     marginRate: number;
   };
   rows: CampusDailyRow[];

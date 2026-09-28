@@ -257,7 +257,8 @@ function exportReport() {
             ><small>¥</small>{{ fenToYuan(hqData.kpis.margin, true) }}</strong
           >
           <p class="kpi-sub" :title="hqData.caliber.profit">
-            综合毛利 ¥{{ fenToYuan(hqData.kpis.profit, true) }}
+            综合毛利
+            <strong>¥{{ fenToYuan(hqData.kpis.profit, true) }}</strong>
           </p>
         </article>
         <article class="kpi">

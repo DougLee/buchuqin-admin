@@ -32,8 +32,13 @@ const endDate = ref(localDate(yd));
 const campusId = ref("");
 const buildingId = ref("");
 
+/** 综合毛利率（综合毛利/实付） */
 const marginRateText = computed(() =>
   report.value ? (report.value.totals.marginRate / 100).toFixed(2) : "0.00",
+);
+/** 毛利率（毛利/商品金额，未扣券，IKISZ2+） */
+const marginRawRateText = computed(() =>
+  report.value ? (report.value.totals.marginRawRate / 100).toFixed(2) : "0.00",
 );
 
 async function load() {
@@ -81,6 +86,10 @@ onMounted(async () => {
 function rateText(row: CampusDailyRow) {
   return `${(row.marginRate / 100).toFixed(2)}%`;
 }
+/** 毛利率（未扣券基数=商品金额，IKISZ2+） */
+function rawRateText(row: CampusDailyRow) {
+  return `${((row.marginRawRate ?? 0) / 100).toFixed(2)}%`;
+}
 </script>
 
 <template>
@@ -118,7 +127,7 @@ function rateText(row: CampusDailyRow) {
 
     <p v-if="error" class="load-error">{{ error }}</p>
 
-    <!-- 四大数字（范围合计） -->
+    <!-- 五卡（范围合计，IKISZ2+ 双口径对称） -->
     <div v-if="report" class="report-cards">
       <div class="report-card">
         <p class="report-label">销售额（实付）</p>
@@ -129,19 +138,27 @@ function rateText(row: CampusDailyRow) {
         <strong>¥{{ fenToYuan(report.totals.costTotal, true) }}</strong>
       </div>
       <div class="report-card">
-        <p class="report-label">毛利（未扣券）</p>
+        <p class="report-label" title="商品金额 − 批发成本（未扣券）">
+          毛利<span class="label-tag">未扣券</span>
+        </p>
         <strong>¥{{ fenToYuan(report.totals.marginTotal, true) }}</strong>
-        <p class="report-sub">商品金额 − 批发成本</p>
+        <p class="report-sub">
+          毛利率 <em class="sub-num">{{ marginRawRateText }}%</em>
+        </p>
       </div>
       <div class="report-card report-card-gross">
-        <p class="report-label">综合毛利</p>
+        <p class="report-label" title="实付 − 批发成本（扣券，配送费为无成本收入）">
+          综合毛利<span class="label-tag dark">扣券</span>
+        </p>
         <strong>¥{{ fenToYuan(report.totals.gross, true) }}</strong>
-        <p class="report-sub">实付 − 批发成本（扣券）</p>
+        <p class="report-sub">
+          综合毛利率 <em class="sub-num">{{ marginRateText }}%</em>
+        </p>
       </div>
       <div class="report-card">
-        <p class="report-label">毛利率</p>
-        <strong>{{ marginRateText }}%</strong>
-        <p class="report-sub">共 {{ report.totals.orders }} 个已完成订单</p>
+        <p class="report-label">已完成订单</p>
+        <strong>{{ report.totals.orders }}</strong>
+        <p class="report-sub">只计 completed，退款单不计</p>
       </div>
     </div>
 
@@ -163,16 +180,15 @@ function rateText(row: CampusDailyRow) {
               <th>批发成本</th>
               <th title="商品金额 − 批发成本（未扣券）">毛利</th>
               <th title="实付 − 批发成本（扣券）">综合毛利</th>
-              <th>毛利率</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="isHqScope ? 8 : 7"><div class="row-skeleton"></div></td>
+              <td :colspan="isHqScope ? 7 : 6"><div class="row-skeleton"></div></td>
             </tr>
             <template v-else>
               <tr v-if="!report.rows.length">
-                <td :colspan="isHqScope ? 8 : 7" class="empty-cell">
+                <td :colspan="isHqScope ? 7 : 6" class="empty-cell">
                   所选范围内没有已完成的订单（只计 completed，退款/未完成单不计）。
                 </td>
               </tr>
@@ -182,9 +198,14 @@ function rateText(row: CampusDailyRow) {
                 <td>{{ r.orders }}</td>
                 <td>¥{{ fenToYuan(r.salesTotal) }}</td>
                 <td>¥{{ fenToYuan(r.costTotal) }}</td>
-                <td>¥{{ fenToYuan(r.marginTotal) }}</td>
-                <td class="report-gross">¥{{ fenToYuan(r.gross) }}</td>
-                <td>{{ rateText(r) }}</td>
+                <td>
+                  ¥{{ fenToYuan(r.marginTotal) }}
+                  <small class="cell-sub">{{ rawRateText(r) }}</small>
+                </td>
+                <td class="report-gross">
+                  ¥{{ fenToYuan(r.gross) }}
+                  <small class="cell-sub">{{ rateText(r) }}</small>
+                </td>
               </tr>
             </template>
           </tbody>
@@ -225,7 +246,7 @@ function rateText(row: CampusDailyRow) {
 }
 .report-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -234,14 +255,36 @@ function rateText(row: CampusDailyRow) {
   border-radius: 18px;
   padding: 18px 20px;
   box-shadow: 0 1px 3px #10241b0a;
+  display: flex;
+  flex-direction: column;
+}
+.report-card-gross {
+  background: linear-gradient(145deg, #f2faf5, #fff);
+  border: 1px solid #d9ede1;
 }
 .report-card-gross strong {
   color: var(--brand, #159c55);
 }
 .report-label {
   font-size: 12px;
-  color: #647169;
+  color: #55645b;
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 口径徽标：未扣券/扣券一眼可辨 */
+.label-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2f0;
+  color: #55645b;
+  font-weight: 600;
+}
+.label-tag.dark {
+  background: #159c5520;
+  color: var(--brand, #159c55);
 }
 .report-card strong {
   font-size: 24px;
@@ -249,13 +292,36 @@ function rateText(row: CampusDailyRow) {
   letter-spacing: -0.5px;
 }
 .report-sub {
-  margin-top: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 11px;
+  color: #55645b;
+}
+.report-sub .sub-num {
+  font-style: normal;
+  font-weight: 700;
+  color: #153628;
+}
+/* 表格毛利/综合毛利副行（毛利率小字） */
+.cell-sub {
+  display: block;
   font-size: 11px;
   color: #7b8981;
+  font-weight: 400;
+  margin-top: 1px;
+}
+.report-gross .cell-sub {
+  color: var(--brand, #159c55);
+  opacity: 0.75;
 }
 .report-gross {
   color: var(--brand, #159c55);
   font-weight: 700;
+}
+@media (max-width: 1200px) {
+  .report-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 @media (max-width: 900px) {
   .report-cards {
