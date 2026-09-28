@@ -2,6 +2,40 @@
 import { computed, onMounted, onUnmounted, ref, shallowReactive, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, downloadRoomTemplate, fetchAllPages } from "../api";
+import {
+  AFTER_SALE_ROW_STATUS_TEXT,
+  AFTER_SALE_STATUS_TABS,
+  AFTER_SALE_TYPE_TEXT,
+  BANNER_COLOR_TEXT,
+  BANNER_PLACEMENT_TEXT,
+  BANNER_STATUS_TABS,
+  BILL_STATUS_TABS,
+  COUPON_KIND_TEXT,
+  COUPON_STATUS_TABS,
+  COUPON_TRIGGER_TEXT,
+  createLabels,
+  createPermissions,
+  DORM_GENDER_TEXT,
+  HQ_PRODUCT_STATUS_TABS,
+  INVITE_STATUS_TABS,
+  LEAVE_STATUS_TABS,
+  ORDER_STATUS_TABS,
+  PICKING_STATUS_TABS,
+  PRODUCT_STATUS_TABS,
+  PRODUCT_STATUS_TEXT,
+  PROMO_TYPE_TEXT,
+  PROMOTION_STATE_TABS,
+  RECRUIT_STATUS_CLASS,
+  RECRUIT_STATUS_LABEL,
+  RECRUIT_STATUS_TABS,
+  ROLE_OPTIONS,
+  STAFF_STATUS_LABEL,
+  STAFF_STATUS_TABS,
+  STATUS_TEXT,
+  TXN_TYPE_TEXT,
+  WHEEL_TYPE_LABEL,
+} from "../dicts";
+import type { StatusTab } from "../dicts";
 import IdCardImagesField from "../components/IdCardImagesField.vue";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
@@ -588,14 +622,8 @@ async function onRoomsImportFile(event: Event) {
 
 /* ---------- 员工账号 ---------- */
 // IKEAGE：实习楼长（招募审批自动创建，与楼长同权），排序跟在「楼长」后。
-// 2026-09-14 道哥放开手建：新增表单与编辑同口径用 ROLE_OPTIONS，
+// 2026-09-14 道哥放开手建：新增表单与编辑同口径用 ROLE_OPTIONS（src/dicts/staff），
 // 后端 createStaff/updateStaff 已兼容 roleText 与楼栋绑定校验
-const ROLE_OPTIONS = [
-  { value: "building-manager", label: "楼长" },
-  { value: "intern-building-manager", label: "实习楼长" },
-  { value: "fulltime-rider", label: "全职配送员" },
-  { value: "parttime-rider", label: "兼职配送员" },
-];
 function staffPayload(d: Record<string, FormValue>) {
   // IKBW0E：payload 需容纳显式 null（清空楼栋绑定），故放宽为 FormValue | null
   const payload: Record<string, FormValue | null> = {
@@ -1492,16 +1520,7 @@ function openStockForm(kind: "stock-in" | "stocktake", productId?: string) {
   );
 }
 /** 流水类型中文（IKA0UQ 出库类型随流水页新增）。 */
-// 流水类型字典（与 API 落库 type 一一对应；adjust 含手工调整与盘点，reason 区分）
-const TXN_TYPE_TEXT: Record<string, string> = {
-  "stock-in": "人工入库",
-  adjust: "盘点调整",
-  out: "订单出库",
-  "purchase-receive": "采购收货",
-  "purchase-bad": "采购坏品",
-  "restock-out": "订货发货",
-  "restock-in": "订货到货",
-};
+// 流水类型字典见 src/dicts/inventory（TXN_TYPE_TEXT）
 function toTxnRow(t: InventoryTxn): AdminRow {
   return { ...t, typeText: TXN_TYPE_TEXT[t.type] ?? t.type };
 }
@@ -1533,11 +1552,6 @@ function unwrap<T extends AdminRow>(res: PagedResponse<T>): PageRows {
   return { rows: res.items, total: res.total };
 }
 /** 状态 Tab 组（IKAJSP）：把若干原始状态聚合为一个运营阶段（如「配送中」），statuses 空 = 全部。 */
-interface StatusTab {
-  key: string;
-  label: string;
-  statuses: string[];
-}
 interface SectionConfig {
   title: string;
   eyebrow: string;
@@ -1586,11 +1600,7 @@ const marketingMapConfig: SectionConfig = {
  * 按库位指引拣货复核，确认出库后一步转「待配送」，库存不二次扣（支付已扣）。
  */
 /** IKB5P5：拣货任务状态 Tab（待出库=paid 主链路，拣货中=picking 历史单）。 */
-const PICKING_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: ["paid", "picking"] },
-  { key: "paid", label: "待出库", statuses: ["paid"] },
-  { key: "picking", label: "拣货中", statuses: ["picking"] },
-];
+// 拣货 Tab 值域见 src/dicts/status-tab（PICKING_STATUS_TABS）
 const warehouseOrdersConfig: SectionConfig = {
   title: "拣货任务",
   eyebrow: "WAREHOUSE OUTBOUND",
@@ -1787,16 +1797,7 @@ watch(
   },
 );
 /** Banner 主题色展示：预置键转中文，自定义 hex 原样。 */
-const BANNER_COLOR_TEXT: Record<string, string> = {
-  green: "绿色",
-  orange: "橙色",
-  dark: "深色",
-};
-/** Banner 展示位置（IKA57F）：支付成功页广告位复用 Banner 基建。 */
-const BANNER_PLACEMENT_TEXT: Record<string, string> = {
-  home: "首页轮播",
-  "pay-success": "支付成功页",
-};
+// Banner 主题色/位置字典见 src/dicts/marketing（BANNER_COLOR_TEXT/BANNER_PLACEMENT_TEXT）
 function bannerPayload(d: Record<string, FormValue>) {
   return {
     // IKBW0A：投放范围字段已废止——归属校区由后端按操作者本校区落库。
@@ -2177,10 +2178,7 @@ function openRecruitRejectForm() {
   );
 }
 /* ---------- 促销活动管理（ADR-0006 / IKAHFF）：营销板块第三个 tab ---------- */
-const PROMO_TYPE_TEXT: Record<string, string> = {
-  seckill: "秒杀",
-  clearance: "临期特惠",
-};
+// 促销类型字典见 src/dicts/product（PROMO_TYPE_TEXT）
 /** 活动状态：停用/未开始/进行中/已结束（窗口读时判定，无 cron）。 */
 function promoState(p: Promotion): string {
   if (p.status === "disabled") return "已停用";
@@ -2328,13 +2326,7 @@ async function toggleBanner() {
  * （buchuqin-user-weapp apply.vue：quality/missing/damaged），
  * 未命中值 fallback 展示原值。
  */
-const AFTER_SALE_TYPE_TEXT: Record<string, string> = {
-  quality: "质量问题",
-  missing: "商品缺失",
-  damaged: "包装破损",
-  wrong: "错发",
-  other: "其他",
-};
+// 售后类型字典见 src/dicts/order（AFTER_SALE_TYPE_TEXT，与 AfterSalesPage.TYPE_TEXT 分叉注释同在）
 function toAfterSaleRow(a: AfterSale): AfterSaleRow {
   return {
     id: a.id,
@@ -2347,9 +2339,8 @@ function toAfterSaleRow(a: AfterSale): AfterSaleRow {
     status: a.status,
     // IKB5PA：状态列中文化（原始 pending/cancelled 不再外露）
     statusText:
-      ({ pending: "待处理", cancelled: "已取消" } as Record<string, string>)[
-        a.status
-      ] ?? a.status,
+      (AFTER_SALE_ROW_STATUS_TEXT as Record<string, string>)[a.status] ??
+        a.status,
     createdAt: a.createdAt,
     ...(a.order ? { order: a.order } : {}),
   };
@@ -2393,28 +2384,7 @@ const afterSaleOrderAmount = computed(() =>
 );
 
 /* IKB5PA：调配两视图的状态 Tab（声明前置：dispatch 配置在此引用）。 */
-const LEAVE_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending", label: "待审核", statuses: ["pending"] },
-  { key: "approved", label: "已通过", statuses: ["approved"] },
-  { key: "rejected", label: "已驳回", statuses: ["rejected"] },
-  { key: "cancelled", label: "已撤销", statuses: ["cancelled"] },
-];
-const INVITE_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "invited", label: "待响应", statuses: ["invited"] },
-  { key: "accepted", label: "已接受", statuses: ["accepted"] },
-  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
-  { key: "cancelled", label: "已取消", statuses: ["cancelled"] },
-];
-/** 促销 Tab（IKB5PA）：key 即后端 state 过滤值（时间窗读时判定）。 */
-const PROMOTION_STATE_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "live", label: "进行中", statuses: ["live"] },
-  { key: "upcoming", label: "未开始", statuses: ["upcoming"] },
-  { key: "ended", label: "已结束", statuses: ["ended"] },
-  { key: "disabled", label: "已停用", statuses: ["disabled"] },
-];
+// 请假/调配/促销 Tab 值域见 src/dicts/status-tab
 const dispatchLeavesConfig: SectionConfig = {
   title: "调配与请假",
   eyebrow: "DISPATCH DESK",
@@ -2742,11 +2712,7 @@ const wechatGroupsConfig: SectionConfig = {
   ],
 };
 /* ---------- 抽奖大转盘（IKD6FC）：单例配置，8 奖位行展示 ---------- */
-const WHEEL_TYPE_LABEL: Record<string, string> = {
-  coupon: "平台券",
-  partner: "异业券",
-  none: "谢谢参与",
-};
+// 转盘奖品类型字典见 src/dicts/product（WHEEL_TYPE_LABEL）
 const wheelConfig: SectionConfig = {
   title: "抽奖转盘",
   eyebrow: "MARKETING WHEEL",
@@ -2862,44 +2828,7 @@ async function removeWechatGroupRow() {
  * 订单状态 Tab（IKAJSP）：按运营节奏分组，多个原始状态合并展示
  * （配送中 = 等首程/首程/末程），计数来自 orders/status-counts。
  */
-const ORDER_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending-payment", label: "待支付", statuses: ["pending-payment"] },
-  { key: "awaiting-outbound", label: "待出库", statuses: ["paid", "picking"] },
-  {
-    key: "delivering",
-    label: "配送中",
-    statuses: ["waiting-first-mile", "first-mile", "last-mile"],
-  },
-  {
-    key: "waiting-handover",
-    label: "楼下待交接",
-    statuses: ["waiting-handover"],
-  },
-  { key: "delivered", label: "已送达", statuses: ["delivered"] },
-  { key: "completed", label: "已完成", statuses: ["completed"] },
-  {
-    key: "closed",
-    label: "取消/退款",
-    statuses: ["cancelled", "refunded"],
-  },
-  /* 异常独立成桶：工作台「待处理异常」直达定位（?status=exception），
-     混在取消/退款里按时间倒序翻不到 */
-  { key: "exception", label: "异常", statuses: ["exception"] },
-];
-/* IKB3K9：商品状态 Tab（口径含售罄映射——在售但库存 0 = 售罄）。 */
-const PRODUCT_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "on-sale", label: "在售", statuses: ["on-sale"] },
-  { key: "off-sale", label: "已下架", statuses: ["off-sale"] },
-  { key: "sold-out", label: "售罄", statuses: ["sold-out"] },
-];
-/* 官方库 Tab 无售罄（库存归校区，官方行不参与售罄映射）。 */
-const HQ_PRODUCT_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "on-sale", label: "在售", statuses: ["on-sale"] },
-  { key: "off-sale", label: "已下架", statuses: ["off-sale"] },
-];
+// 订单/商品/官方库 Tab 值域见 src/dicts/status-tab
 /* IKAJSM：hq 商品板块 = 官方商品库（源头档案）——无库存/库位列（库存归校区），
    建档/改档经同一 products 端点（后端按角色落 campus-official）。 */
 const hqProductsConfig: SectionConfig = {
@@ -2949,60 +2878,7 @@ const hqProductsConfig: SectionConfig = {
 };
 
 /* ---------- IKB5PA：各板块状态 Tab（服务端 status 过滤 + total 角标） ---------- */
-const STAFF_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "online", label: "在线", statuses: ["online"] },
-  { key: "paused", label: "暂停", statuses: ["paused"] },
-  { key: "offline", label: "离线", statuses: ["offline"] },
-];
-const STAFF_STATUS_LABEL: Record<string, string> = {
-  online: "在线",
-  paused: "暂停接单",
-  offline: "离线",
-};
-const AFTER_SALE_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending", label: "待处理", statuses: ["pending"] },
-  { key: "cancelled", label: "已取消", statuses: ["cancelled"] },
-];
-const COUPON_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "active", label: "发放中", statuses: ["active"] },
-  { key: "paused", label: "已暂停", statuses: ["paused"] },
-];
-const BANNER_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "active", label: "启用", statuses: ["active"] },
-  { key: "hidden", label: "已隐藏", statuses: ["hidden"] },
-];
-const BILL_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending-review", label: "待确认", statuses: ["pending-review"] },
-  { key: "confirmed", label: "已确认", statuses: ["confirmed"] },
-  { key: "paid", label: "已打款", statuses: ["paid"] },
-];
-/* IKEAGE 楼长招募：报名状态 Tab（待联系→面试中→已通过/已拒绝） */
-const RECRUIT_STATUS_TABS: StatusTab[] = [
-  { key: "all", label: "全部", statuses: [] },
-  { key: "pending", label: "待联系", statuses: ["pending"] },
-  { key: "interviewing", label: "面试中", statuses: ["interviewing"] },
-  { key: "approved", label: "已通过", statuses: ["approved"] },
-  { key: "rejected", label: "已拒绝", statuses: ["rejected"] },
-];
-const RECRUIT_STATUS_LABEL: Record<string, string> = {
-  pending: "待联系",
-  interviewing: "面试中",
-  approved: "已通过",
-  rejected: "已拒绝",
-};
-/** 徽章配色：待联系橙 / 面试中蓝 / 已通过绿 / 已拒绝红（.status.info/.danger 新增于 style.css） */
-const RECRUIT_STATUS_CLASS: Record<string, string> = {
-  pending: "warning",
-  interviewing: "info",
-  approved: "success",
-  rejected: "danger",
-};
-
+// 员工/售后/券/Banner/账单/招募 Tab 值域与员工/招募文案见 src/dicts
 const configs: Record<string, SectionConfig> = {
   orders: {
     // IKB5P9：标题与侧边栏菜单统一为「订单配送」
@@ -3624,28 +3500,7 @@ const promotionConfig: SectionConfig = {
     ["stateText", "状态"],
   ],
 };
-const createLabels: Record<string, string> = {
-  products: "＋ 新建记录",
-  categories: "＋ 新建类别",
-  locations: "＋ 新建库位",
-  marketing: "＋ 新建优惠券",
-  // IKB5PB：营销拆分独立菜单（券/秒杀/支付广告位）
-  coupons: "＋ 新建优惠券",
-  banners: "＋ 新建 Banner",
-  promotions: "＋ 新建促销",
-  "pay-ads": "＋ 新建广告",
-  campuses: "＋ 新建校区",
-  buildings: "＋ 新建楼栋",
-  staff: "＋ 新建员工账号",
-  dispatch: "＋ 邀请调配",
-  rules: "＋ 新建提成规则",
-  // RBAC V1：accounts 板块移交独立页 /accounts
-  // IKBW0Q：打印机板块新建 = 绑定打印机
-  printers: "＋ 绑定打印机",
-  // IKAJSY：群码上传（users 为只读板块，无新建入口）
-  "wechat-groups": "＋ 上传群码",
-};
-const createPermissions: Record<string, string> = {"categories": "POST /admin/categories", "locations": "POST /admin/locations", "coupons": "POST /admin/coupons", "banners": "POST /admin/banners", "promotions": "POST /admin/promotions", "pay-ads": "POST /admin/banners", "campuses": "POST /admin/campuses", "buildings": "POST /admin/buildings", "staff": "POST /admin/staff", "dispatch": "POST /admin/dispatch-invitations", "rules": "POST /admin/commission-rules", "printers": "POST /admin/printers", "wechat-groups": "POST /admin/wechat-groups"};
+// 新建按钮文案/权限映射见 src/dicts/section（createLabels/createPermissions）
 const section = computed(() => props.fixedSection ?? String(route.meta.section ?? route.params.section)),
   config = computed<SectionConfig>(() => {
     if (section.value === "dispatch")
@@ -4140,29 +3995,7 @@ watch(
     resetStatusFilterAndLoad();
   },
 );
-const STATUS_TEXT: Record<string, string> = {
-  // IKDFIN：与财务 Tab 文案对齐（原「待复核/已支付」，两值仅财务账单外露）
-  "pending-review": "待确认",
-  pending: "待审核",
-  approved: "已通过",
-  rejected: "已拒绝",
-  confirmed: "已确认",
-  paid: "已打款",
-  active: "启用",
-  // inactive：校区停用值（UpdateCampusDto active|inactive）——此前表里漏了，
-  // 校区管理列表停用行原样显示英文（道哥 2026-09-14 截图反馈）
-  inactive: "已停用",
-  paused: "已暂停",
-  disabled: "已停用",
-  hidden: "已隐藏",
-  // IKB5PA：状态 Tab 化后新增的展示值
-  cancelled: "已取消",
-  invited: "待响应",
-  accepted: "已接受",
-  online: "在线",
-  offline: "离线",
-  completed: "已完成",
-};
+// 万能状态字典见 src/dicts/order（STATUS_TEXT，17 键跨域键空间）
 /** 金额字段（契约：整数分），统一经 fenToYuan 展示为 ¥xx.xx。 */
 const MONEY_KEYS = [
   "price",
@@ -4237,13 +4070,8 @@ function display(row: AdminRow, key: string) {
   )
     // IKB3K9：商品状态列中文化（在售/已下架/售罄）
     return (
-      (
-        {
-          "on-sale": "在售",
-          "off-sale": "已下架",
-          "sold-out": "售罄",
-        } as Record<string, string>
-      )[String(v)] ?? String(v ?? "—")
+      (PRODUCT_STATUS_TEXT as Record<string, string>)[String(v)] ??
+        String(v ?? "—")
     );
   if (key === "categoryId")
     // 类别字典 id → 名称（商品列表/抽屉展示）
@@ -4259,9 +4087,7 @@ function display(row: AdminRow, key: string) {
     return BANNER_COLOR_TEXT[String(v)] ?? String(v ?? "—");
   if (key === "gender")
     return (
-      ({ male: "男生", female: "女生", mixed: "混合" } as Record<string, string>)[
-        String(v)
-      ] ?? (v || "—")
+      (DORM_GENDER_TEXT as Record<string, string>)[String(v)] ?? (v || "—")
     );
   if (key === "product") {
     const product = record.product as { name?: string } | undefined;
@@ -4283,18 +4109,13 @@ function display(row: AdminRow, key: string) {
   // IKDCVO：券品种/发放方式中文化；异业券不参与下单，面额/门槛显示 —
   if (key === "kind")
     return (
-      ({ platform: "金额券", partner: "异业券" } as Record<string, string>)[
-        String(v)
-      ] ?? String(v ?? "—")
+      (COUPON_KIND_TEXT as Record<string, string>)[String(v)] ??
+        String(v ?? "—")
     );
   if (key === "trigger")
     return (
-      (
-        { manual: "手动领取", lottery: "转盘", signup: "注册发" } as Record<
-          string,
-          string
-        >
-      )[String(v)] ?? String(v ?? "—")
+      (COUPON_TRIGGER_TEXT as Record<string, string>)[String(v)] ??
+        String(v ?? "—")
     );
   if (
     (key === "amount" || key === "threshold") &&

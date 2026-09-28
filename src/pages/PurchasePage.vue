@@ -22,18 +22,8 @@ const loading = ref(true);
 const error = ref("");
 const orders = ref<PurchaseOrderRow[]>([]);
 
-const PHASE_TEXT: Record<PurchaseOrderRow["phase"], string> = {
-  pending: "待到货",
-  partial: "部分到货",
-  completed: "已收齐",
-  closed: "已关闭",
-};
-const PHASE_CLASS: Record<PurchaseOrderRow["phase"], string> = {
-  pending: "info",
-  partial: "warning",
-  completed: "success",
-  closed: "",
-};
+// 采购阶段字典见 src/dicts/inventory（PURCHASE_PHASE_TEXT/CLASS，IKIYMM 集中化）
+import { PURCHASE_PHASE_CLASS, PURCHASE_PHASE_TEXT } from "../dicts";
 
 async function load() {
   loading.value = true;
@@ -170,8 +160,8 @@ async function refreshDetail() {
                 <td><strong>{{ row.batchName }}</strong></td>
                 <td>{{ row.supplierName }}</td>
                 <td>
-                  <span class="status" :class="PHASE_CLASS[row.phase]">
-                    {{ PHASE_TEXT[row.phase] }}
+                  <span class="status" :class="PURCHASE_PHASE_CLASS[row.phase]">
+                    {{ PURCHASE_PHASE_TEXT[row.phase] }}
                   </span>
                 </td>
                 <td>
@@ -205,8 +195,8 @@ async function refreshDetail() {
             <h2>{{ detail?.supplierName ?? "采购单" }}</h2>
             <p v-if="detail" class="detail-window">
               {{ detail.batchName }}
-              <span class="status" :class="PHASE_CLASS[detail.phase]" style="margin-left: 8px">
-                {{ PHASE_TEXT[detail.phase] }}
+              <span class="status" :class="PURCHASE_PHASE_CLASS[detail.phase]" style="margin-left: 8px">
+                {{ PURCHASE_PHASE_TEXT[detail.phase] }}
               </span>
               <template v-if="detail.closedAt">
                 · 关闭（{{ detail.closedByName || "—" }}）{{ detail.closedNote }}

@@ -11,6 +11,8 @@ import type {
 } from "../types";
 import { fenToYuan } from "../utils/money";
 import { isPlatform } from "../session";
+// 寝室三色字典见 src/dicts/misc（BATTLE_ROOM_STATUS_TEXT，IKIYMM 集中化）
+import { BATTLE_ROOM_STATUS_TEXT } from "../dicts";
 
 /**
  * 营销作战地图（IKFOQ3，2026-09-17 grilling 定版）：
@@ -42,12 +44,6 @@ const roomDetail = ref<BattleRoomDetail | null>(null);
 const floor = computed<BattleFloor | null>(
   () => map.value?.floors.find((f) => f.floor === floorNo.value) ?? null,
 );
-
-const STATUS_TEXT: Record<BattleRoomCell["status"], string> = {
-  ordered: "已下单",
-  registered: "注册未下单",
-  fresh: "未开发",
-};
 
 async function loadMap() {
   if (!buildingId.value) return;
@@ -198,7 +194,7 @@ onMounted(async () => {
           class="room-cell"
           :class="cell.status"
           type="button"
-          :title="`${cell.roomNo} · ${STATUS_TEXT[cell.status]}`"
+          :title="`${cell.roomNo} · ${BATTLE_ROOM_STATUS_TEXT[cell.status]}`"
           @click="openRoom(cell)"
         >
           <b>{{ cell.roomNo }}</b>

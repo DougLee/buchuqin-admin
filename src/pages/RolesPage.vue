@@ -98,7 +98,8 @@ const flatRows = computed<FlatRow[]>(() => {
   walk(menuTree.value, 0, false);
   return out;
 });
-const TYPE_TEXT: Record<number, string> = { 0: "目录", 1: "菜单", 2: "按钮" };
+// 菜单类型字典见 src/dicts/misc（MENU_TYPE_TEXT，IKIYMM 集中化）
+import { MENU_TYPE_TEXT } from "../dicts";
 
 /* 折叠（默认全展开；checkbox 点击不冒泡折叠） */
 const foldedNodes = ref<Set<string>>(new Set());
@@ -448,7 +449,7 @@ function removeLabel(role: RbacRole): string {
                 <code class="menu-node__code">{{ node.row.code }}</code>
               </label>
               <span class="status info menu-node__type">{{
-                TYPE_TEXT[node.row.type]
+                MENU_TYPE_TEXT[node.row.type]
               }}</span>
               <code v-if="node.row.path" class="menu-node__path">{{
                 node.row.path

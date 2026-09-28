@@ -54,15 +54,10 @@ export interface RbacMe {
   rbacVersion: number;
 }
 
-/** 旧角色标签（账号列表/审计展示兜底）。 */
-export const ROLE_LABELS: Record<string, string> = {
-  hq: "总部长",
-  admin: "管理员",
-  operations: "运营",
-  warehouse: "仓储",
-  finance: "财务",
-  rbac: "后台账号",
-};
+/** 旧角色标签（账号列表/审计展示兜底）——字典见 src/dicts/staff（IKIYMM 搬入），
+ *  此处转出口保持既有 import 路径兼容。 */
+import { ROLE_LABELS } from "./dicts";
+export { ROLE_LABELS };
 
 /**
  * 路由/菜单 section → write URL 模式串（any-of 命中即可写）。

@@ -12,29 +12,16 @@ import { fenToYuan } from "../utils/money";
  * - 拒绝 = 订单回滚申请前状态，用户可重新申请
  * - 审核权 after-sales.audit（默认校区运营）；其余角色只读
  */
-const TABS = [
-  { key: "pending", label: "待审核" },
-  { key: "refunding", label: "退款中" },
-  { key: "refunded", label: "已退款" },
-  { key: "rejected", label: "已拒绝" },
-  { key: "failed", label: "退款失败" },
-] as const;
-
-const SOURCE_TEXT: Record<string, string> = {
-  "after-sale": "送达后售后",
-  "pre-delivery": "未发货",
-};
-const TYPE_TEXT: Record<string, string> = {
-  quality: "质量问题",
-  missing: "缺件",
-  damaged: "破损",
-};
-/** 订单状态中文（回滚去向展示）。 */
-const ORDER_STATUS_TEXT: Record<string, string> = {
-  paid: "仓库正在接单",
-  delivered: "已送达",
-  completed: "已确认收货",
-};
+// 字典见 src/dicts（IKIYMM 集中化）：
+// TABS→REFUND_STATUS_TABS、SOURCE_TEXT→REFUND_SOURCE_TEXT、
+// TYPE_TEXT→AFTERSALE_PAGE_TYPE_TEXT（与 DataPage AFTER_SALE_TYPE_TEXT 分叉）、
+// ORDER_STATUS_TEXT→REFUND_ROLLBACK_STATUS_TEXT
+import {
+  AFTERSALE_PAGE_TYPE_TEXT,
+  REFUND_ROLLBACK_STATUS_TEXT,
+  REFUND_SOURCE_TEXT,
+  REFUND_STATUS_TABS,
+} from "../dicts";
 
 const tab = ref<string>("pending");
 const source = ref<string>("all");
@@ -288,7 +275,7 @@ onMounted(() => {
     <div class="as-toolbar panel">
       <div class="as-tabs">
         <button
-          v-for="t in TABS"
+          v-for="t in REFUND_STATUS_TABS"
           :key="t.key"
           class="as-tab"
           :class="{ active: tab === t.key }"
@@ -345,10 +332,10 @@ onMounted(() => {
             <td class="mono">{{ row.orderNo }}</td>
             <td>{{ row.userName || row.userPhone || "用户" }}</td>
             <td>
-              <span class="as-src" :class="row.source">{{ SOURCE_TEXT[row.source] ?? row.source }}</span>
+              <span class="as-src" :class="row.source">{{ REFUND_SOURCE_TEXT[row.source] ?? row.source }}</span>
             </td>
             <td class="as-reason">
-              {{ row.source === "pre-delivery" ? row.reason || "—" : (TYPE_TEXT[row.type ?? ""] ?? row.type) }}
+              {{ row.source === "pre-delivery" ? row.reason || "—" : (AFTERSALE_PAGE_TYPE_TEXT[row.type ?? ""] ?? row.type) }}
             </td>
             <td class="num">¥{{ fenToYuan(row.amount) }}</td>
             <td>{{ new Date(row.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</td>
@@ -412,9 +399,9 @@ onMounted(() => {
           </div>
           <div><dt>订单号</dt><dd class="mono">{{ detail.orderNo }}</dd></div>
           <div><dt>用户</dt><dd>{{ detail.userName || "—" }}{{ detail.userPhone ? `（${detail.userPhone}）` : "" }}</dd></div>
-          <div><dt>来源</dt><dd>{{ SOURCE_TEXT[detail.source] ?? detail.source }}</dd></div>
+          <div><dt>来源</dt><dd>{{ REFUND_SOURCE_TEXT[detail.source] ?? detail.source }}</dd></div>
           <div v-if="detail.source === 'after-sale'">
-            <dt>售后类型</dt><dd>{{ TYPE_TEXT[detail.type ?? ""] ?? detail.type }}</dd>
+            <dt>售后类型</dt><dd>{{ AFTERSALE_PAGE_TYPE_TEXT[detail.type ?? ""] ?? detail.type }}</dd>
           </div>
           <div><dt>申请时间</dt><dd>{{ new Date(detail.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</dd></div>
           <div><dt>订单实付</dt><dd>¥{{ fenToYuan(detail.payableAmount) }}（含配送费 ¥{{ fenToYuan(detail.deliveryFee) }}）</dd></div>
@@ -460,7 +447,7 @@ onMounted(() => {
               {{
                 auditMode === "approve"
                   ? `确认向微信发起 ¥${fenToYuan(detail.amount)} 原路退款？批准后不可撤销。`
-                  : "拒绝后订单将回滚至申请前状态（" + (ORDER_STATUS_TEXT[detail.beforeStatus] ?? detail.beforeStatus) + "），用户可补充后重新申请。"
+                  : "拒绝后订单将回滚至申请前状态（" + (REFUND_ROLLBACK_STATUS_TEXT[detail.beforeStatus] ?? detail.beforeStatus) + "），用户可补充后重新申请。"
               }}
             </p>
             <!-- v2 部分退款：核定各行金额（默认申请值，可改） -->

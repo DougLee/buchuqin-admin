@@ -37,34 +37,13 @@ const batches = ref<RestockBatch[]>([]);
 const tab = ref<"batches" | "orders">("batches");
 const hqOrders = ref<RestockOrder[]>([]);
 
-const PHASE_TEXT: Record<RestockBatch["phase"], string> = {
-  upcoming: "未开始",
-  open: "进行中",
-  ended: "已结束",
-  closed: "已关闭",
-};
-const PHASE_CLASS: Record<RestockBatch["phase"], string> = {
-  upcoming: "info",
-  open: "success",
-  ended: "",
-  closed: "danger",
-};
-const ORDER_STATUS_TEXT: Record<RestockOrder["status"], string> = {
-  draft: "草稿",
-  submitted: "待审核",
-  confirmed: "已确认",
-  rejected: "已驳回",
-  shipped: "已发货",
-  received: "已到货",
-};
-const ORDER_STATUS_CLASS: Record<RestockOrder["status"], string> = {
-  draft: "",
-  submitted: "warning",
-  confirmed: "success",
-  rejected: "danger",
-  shipped: "info",
-  received: "success",
-};
+// 订货批次/订单状态字典见 src/dicts/inventory（RESTOCK_*，IKIYMM 集中化）
+import {
+  RESTOCK_ORDER_STATUS_CLASS,
+  RESTOCK_ORDER_STATUS_TEXT,
+  RESTOCK_PHASE_CLASS,
+  RESTOCK_PHASE_TEXT,
+} from "../dicts";
 const router = useRouter();
 
 async function loadBatches() {
@@ -462,7 +441,7 @@ async function confirmReceipt() {
               <tr v-for="b in batches" :key="b.id">
                 <td><strong>{{ b.name }}</strong></td>
                 <td>
-                  <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
+                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{ RESTOCK_PHASE_TEXT[b.phase] }}</span>
                 </td>
                 <td>{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</td>
                 <td>
@@ -531,7 +510,7 @@ async function confirmReceipt() {
               <tr v-for="b in batches" :key="b.id">
                 <td><strong>{{ b.name }}</strong></td>
                 <td>
-                  <span class="status" :class="PHASE_CLASS[b.phase]">{{ PHASE_TEXT[b.phase] }}</span>
+                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{ RESTOCK_PHASE_TEXT[b.phase] }}</span>
                 </td>
                 <td>
                   {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
@@ -597,8 +576,8 @@ async function confirmReceipt() {
                 <td><strong>{{ o.batchName }}</strong></td>
                 <td>{{ o.campusShortName || o.campusName }}</td>
                 <td>
-                  <span class="status" :class="ORDER_STATUS_CLASS[o.status]">
-                    {{ ORDER_STATUS_TEXT[o.status] }}
+                  <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
+                    {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
                   </span>
                   <em v-if="o.shippedAt" class="ship-note">
                     发 {{ fmtDateTime(o.shippedAt) }}
@@ -696,8 +675,8 @@ async function confirmReceipt() {
             <h2>{{ detail?.name ?? "批次详情" }}</h2>
             <p v-if="detail" class="detail-window">
               {{ fmtDateTime(detail.startAt) }} ~ {{ fmtDateTime(detail.endAt) }}
-              <span class="status" :class="PHASE_CLASS[detail.phase]" style="margin-left: 8px">
-                {{ PHASE_TEXT[detail.phase] }}
+              <span class="status" :class="RESTOCK_PHASE_CLASS[detail.phase]" style="margin-left: 8px">
+                {{ RESTOCK_PHASE_TEXT[detail.phase] }}
               </span>
             </p>
           </div>
@@ -732,8 +711,8 @@ async function confirmReceipt() {
             <div v-for="o in detail.orders" :key="o.id" class="order-brief">
               <div class="order-brief-head">
                 <strong>{{ o.campusShortName || o.campusName }}</strong>
-                <span class="status" :class="ORDER_STATUS_CLASS[o.status]">
-                  {{ ORDER_STATUS_TEXT[o.status] }}
+                <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
+                  {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
                 </span>
                 <span class="order-brief-total">
                   {{ o.totalCases ?? 0 }} 件(×{{ o.totalUnits ?? 0 }})
@@ -853,10 +832,10 @@ async function confirmReceipt() {
               <span
                 v-if="myOrder"
                 class="status"
-                :class="ORDER_STATUS_CLASS[myOrder.status]"
+                :class="RESTOCK_ORDER_STATUS_CLASS[myOrder.status]"
                 style="margin-left: 8px"
               >
-                {{ ORDER_STATUS_TEXT[myOrder.status] }}
+                {{ RESTOCK_ORDER_STATUS_TEXT[myOrder.status] }}
               </span>
             </p>
           </div>

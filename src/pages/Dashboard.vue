@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
+import { ACTIVITY_ROUTES, FLOW_LABELS } from "../dicts";
 import { isPlatform, menuPath } from "../session";
 import type {
   DashboardActivity,
@@ -127,21 +128,7 @@ const activities = computed<DashboardActivity[]>(() => {
   const list = data.value?.activities;
   return Array.isArray(list) ? list : [];
 });
-/* IKAJSS：动态流直达路由——按 entityType（订单/促销/商品/员工/群码…）跳对应处理页。
- *  IKBDK7：营销拆分后 promotion/coupon 直达新菜单（旧 /marketing 仅剩历史深链兼容）。 */
-const ACTIVITY_ROUTES: Record<string, string> = {
-  order: "/orders",
-  promotion: "/promotions",
-  product: "/products",
-  staff: "/staff",
-  "wechat-group": "/wechat-groups",
-  coupon: "/coupons",
-  banner: "/banners",
-  "admin-account": "/accounts",
-  campus: "/campuses",
-  building: "/campuses",
-  "after-sale": "/after-sales",
-};
+// 动态流路由/水位命名见 src/dicts/misc（ACTIVITY_ROUTES/FLOW_LABELS，IKIYMM 集中化）
 function activityRoute(a: DashboardActivity) {
   const path = ACTIVITY_ROUTES[a.entityType ?? a.type];
   return path ? menuPath(path.slice(1)) : undefined;
@@ -165,17 +152,6 @@ function deltaText(value: number | null) {
   if (value === null || !Number.isFinite(value)) return null;
   return `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`;
 }
-/* IKB3KE：水位命名与订单配送 Tab/状态机文案统一（同桶同名），
-   超时是横向监控指标非订单状态。 */
-const FLOW_LABELS: Record<string, string> = {
-  waitingPick: "待出库",
-  waitingFirstMile: "待配送员接单",
-  firstMile: "骑手配送中",
-  waitingHandover: "楼下待交接",
-  lastMile: "楼长送往寝室",
-  delivered: "已送达",
-  timeout: "履约超时",
-};
 function flowLabel(key: string): string {
   return FLOW_LABELS[key] ?? key;
 }
