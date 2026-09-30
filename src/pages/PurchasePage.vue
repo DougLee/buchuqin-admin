@@ -48,6 +48,42 @@ async function load() {
     loading.value = false;
   }
 }
+/** 删除待审核订货单（IKJCJF：总部审核前可删）。 */
+const deleting = ref("");
+async function deleteMyOrder(id: string) {
+  if (!window.confirm("确认删除这张待审核订货单？")) return;
+  deleting.value = id;
+  try {
+    await api.deleteRestockOrder(id);
+    await load();
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "操作失败");
+  } finally {
+    deleting.value = "";
+  }
+}
+/** 校区确认到货：按发货数全额入账（grilling #3 不登记差异）。 */
+const receiptBusy = ref(false);
+async function confirmReceipt() {
+  const target = myDetail.value;
+  if (!target) return;
+  if (
+    !window.confirm(
+      "确认到货后库存按发货数全额入账（差异请线下核对登记），订货单随即完结。确认到货？",
+    )
+  )
+    return;
+  receiptBusy.value = true;
+  try {
+    await api.confirmRestockReceipt(target.id);
+    myDetail.value = await api.restockOrderDetail(target.id);
+    await load();
+  } catch (e) {
+    alert(e instanceof Error ? e.message : "操作失败");
+  } finally {
+    receiptBusy.value = false;
+  }
+}
 async function openMyOrder(id: string) {
   myDrawerOpen.value = true;
   myDetail.value = null;
@@ -191,6 +227,14 @@ async function refreshDetail() {
                 </td>
                 <td class="row-actions">
                   <button class="btn mini primary" @click="openMyOrder(o.id)">详情</button>
+                  <button
+                    v-if="o.status === 'submitted' && hasPerm('DELETE /admin/restock/orders/:id')"
+                    class="btn mini danger-btn"
+                    :disabled="deleting === o.id"
+                    @click="deleteMyOrder(o.id)"
+                  >
+                    {{ deleting === o.id ? "删除中…" : "删除" }}
+                  </button>
                 </td>
               </tr>
             </template>
@@ -374,6 +418,16 @@ async function refreshDetail() {
               <dt v-if="myDetail.shipment?.receivedAt">到货时间</dt>
               <dd v-if="myDetail.shipment?.receivedAt">{{ fmtDateTime(myDetail.shipment.receivedAt) }}</dd>
             </dl>
+            <div v-if="myDetail.status === 'shipped'" class="drawer-actions">
+              <button
+                v-if="hasPerm('POST /admin/restock/orders/:id/receipt')"
+                class="btn primary"
+                :disabled="receiptBusy"
+                @click="confirmReceipt"
+              >
+                {{ receiptBusy ? "入账中…" : "确认到货入账" }}
+              </button>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>

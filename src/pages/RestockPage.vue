@@ -244,7 +244,6 @@ const orderProducts = computed(
 );
 /** 行编辑态：productId → 件数（空串显示为 0）。 */
 const lineCases = ref<Record<string, number>>({});
-const myOrder = computed<RestockOrder | null>(() => orderDetail.value?.orders[0] ?? null);
 /** IKJCJF 多单制：有订货权限即可再填一张新单（批次窗口后端校验）。 */
 const editable = computed(() => canOrder.value);
 const totalCases = computed(() =>
@@ -281,19 +280,6 @@ async function submitMyOrder() {
     refresh();
   } catch (e) {
     alert(e instanceof Error ? e.message : "提交失败");
-  }
-}
-/** 删除待审核订货单（总部审核前可删，IKJCJF）。 */
-async function deleteMyOrder() {
-  const target = myOrder.value;
-  if (!target) return;
-  if (!window.confirm(`确认删除这张待审核订货单？`)) return;
-  try {
-    await api.deleteRestockOrder(target.id);
-    orderDrawer.value = false;
-    refresh();
-  } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
   }
 }
 
@@ -352,27 +338,7 @@ function gotoPurchase() {
   shipmentDrawer.value = false;
   router.push(menuPath("purchase") || "/access-denied");
 }
-/** 校区确认到货：按发货数全额入账（grilling #3 不登记差异） */
-const receiptBusy = ref(false);
-async function confirmReceipt() {
-  if (!myOrder.value) return;
-  if (
-    !window.confirm(
-      "确认到货后库存按发货数全额入账（差异请线下核对登记），订货单随即完结。确认到货？",
-    )
-  )
-    return;
-  receiptBusy.value = true;
-  try {
-    await api.confirmRestockReceipt(myOrder.value.id);
-    orderDrawer.value = false;
-    refresh();
-  } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
-  } finally {
-    receiptBusy.value = false;
-  }
-}
+// 到货确认已迁「采购管理」（IKJCJF 收敛：订货管理只保留订货动作）
 </script>
 
 <template>
@@ -462,14 +428,15 @@ async function confirmReceipt() {
                   <span v-else class="status">未填单</span>
                 </td>
                 <td class="row-actions">
+                  <!-- IKJCJF 收敛：订货管理只保留订货动作，跟踪在采购管理 -->
                   <button
                     class="btn mini primary"
-                    v-if="hasPerm('GET /admin/restock/batches/:id') && (canOrder || b.orderTotal)"
-                    :disabled="b.phase !== 'open' && !b.orderTotal"
+                    v-if="canOrder && b.phase === 'open'"
                     @click="openMyOrder(b)"
                   >
-                    {{ b.orderTotal ? "查看订货单" : "填写订货单" }}
+                    填写订货单
                   </button>
+                  <small v-else-if="b.orderTotal" class="order-progress">见采购管理</small>
                 </td>
               </tr>
             </template>
@@ -828,34 +795,11 @@ async function confirmReceipt() {
             <h2>{{ orderBatch?.name }}</h2>
             <p v-if="orderBatch" class="detail-window">
               {{ fmtDateTime(orderBatch.startAt) }} ~ {{ fmtDateTime(orderBatch.endAt) }}
-              <span
-                v-if="myOrder"
-                class="status"
-                :class="RESTOCK_ORDER_STATUS_CLASS[myOrder.status]"
-                style="margin-left: 8px"
-              >
-                {{ RESTOCK_ORDER_STATUS_TEXT[myOrder.status] }}
-              </span>
             </p>
           </div>
           <button @click="orderDrawer = false">✕</button>
         </div>
         <template v-if="orderDetail">
-          <p v-if="myOrder?.status === 'rejected' && myOrder?.auditNote" class="reject-banner">
-            总部驳回：{{ myOrder?.auditNote }}（可修改后重新提交）
-          </p>
-          <p v-if="myOrder?.status === 'confirmed'" class="confirm-banner">
-            订货单已确认，等待总部发货。
-          </p>
-          <!-- IKFOQ2：已发货横幅+确认到货入口；到货后按发货数全额入账 -->
-          <p v-if="myOrder?.status === 'shipped'" class="confirm-banner">
-            总部已发货{{ myOrder?.shippedAt ? `（${fmtDateTime(myOrder.shippedAt)}）` : "" }}，
-            货到核对后请点右下角「确认到货入账」。
-          </p>
-          <p v-if="myOrder?.status === 'received'" class="confirm-banner">
-            已确认到货{{ myOrder?.receivedAt ? `（${fmtDateTime(myOrder.receivedAt)}）` : "" }}，
-            库存已按发货数入账。
-          </p>
           <!-- IKGQ6Q 组件化：筛选+列表内聚进 ProductPickerField（多选填件数），
                已填件数账本 lineCases 仍在本页（合计条继续吃它） -->
           <ProductPickerField
@@ -873,7 +817,7 @@ async function confirmReceipt() {
             </template>
           </div>
         </template>
-        <div v-if="editable" class="drawer-actions">
+        <div class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">取消</button>
           <button
             v-if="hasPerm('PUT /admin/restock/batches/:batchId/order')"
@@ -882,25 +826,6 @@ async function confirmReceipt() {
           >
             提交审核
           </button>
-        </div>
-        <div v-else-if="myOrder?.status === 'submitted'" class="drawer-actions">
-          <button class="btn ghost" @click="orderDrawer = false">关闭</button>
-          <button
-            v-if="myOrder?.status === 'submitted' && hasPerm('DELETE /admin/restock/orders/:id')"
-            class="btn danger-btn"
-            @click="deleteMyOrder"
-          >
-            删除订货单
-          </button>
-        </div>
-        <div v-else-if="myOrder?.status === 'shipped'" class="drawer-actions">
-          <button class="btn ghost" @click="orderDrawer = false">关闭</button>
-          <button v-if="hasPerm('POST /admin/restock/orders/:id/receipt')" class="btn primary" :disabled="receiptBusy" @click="confirmReceipt">
-            {{ receiptBusy ? "入账中…" : "确认到货入账" }}
-          </button>
-        </div>
-        <div v-else class="drawer-actions">
-          <button class="btn ghost" @click="orderDrawer = false">关闭</button>
         </div>
       </div>
     </div>
