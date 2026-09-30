@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
-import { hasPerm, hasPlatformPerm, sessionUser } from "../session";
+import { hasPerm, hasPlatformPerm, sessionUser, switchableCampuses } from "../session";
 import DataPage from "./DataPage.vue";
 import type {
   CampusConfigBundle,
@@ -14,16 +14,22 @@ import type {
  * 校区配置聚合页（IKHM1O 道哥 2026-09-21 定版全收）：
  * 顶部校区选择器（平台角色）+ Tab 分区，把原散在 6 处的校区维度配置收进一菜单。
  * - 参数类 Tab（档案/配送营业/楼长结算/送达时段/公告）走聚合接口，支持 ?campus=
- * - 内容类 Tab（群码/打印机/Banner/抽奖）内嵌 DataPage 板块复用——按当前登录
- *   校区取数（平台角色配其他校区请先在顶栏切换校区）
+ * - 内容类 Tab（群码/打印机/Banner/抽奖）内嵌 DataPage 板块复用——多校区授权
+ *   账号经页内选择器切换（IKJA7Y：?campus= 授权集内即可写，顶栏切换器已移除）
  * - Tab 与写入操作按当前有效接口权限过滤，跨校区写入另校验该操作的平台授权。
  */
 const isPlatform = computed(() => hasPlatformPerm("GET /admin/campus-config"));
+/** IKJA7Y：所选校区在授权集内（或平台角色）即可写 */
+const campusWritable = computed(
+  () =>
+    isPlatform.value ||
+    switchableCampuses.value.includes(bundle.value?.campus.id ?? ""),
+);
 const canEditProfile = computed(() => hasPlatformPerm("PATCH /admin/campuses/:id"));
 const canEditDelivery = computed(() => canEditProfile.value ||
-  (bundle.value?.campus.id === sessionUser.value?.campusId && hasPerm("PATCH /admin/delivery-config")));
+  (campusWritable.value && hasPerm("PATCH /admin/delivery-config")));
 function canWrite(pattern: string) {
-  return hasPerm(pattern) && (bundle.value?.campus.id === sessionUser.value?.campusId || hasPlatformPerm(pattern));
+  return hasPerm(pattern) && (campusWritable.value || hasPlatformPerm(pattern));
 }
 
 const TABS = computed(() => {

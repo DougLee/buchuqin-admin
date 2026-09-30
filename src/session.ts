@@ -179,6 +179,9 @@ export const isPlatform = ref(false);
 const platformPatterns = ref<Set<string>>(new Set());
 export const rbacRoles = ref<RbacMe["roles"]>([]);
 export const switchableCampuses = ref<string[]>([]);
+/** IKJA7Y 页内校区切换：api.request 统一注入 ?campus=（多校区授权账号的数据
+ *  视角）。空串=不注入（单校区账号/平台全量语义不受影响）。切换账号时清空。 */
+export const activeCampus = ref<string>("");
 export const rbacVersion = ref(0);
 export const rbacLoaded = ref(false);
 export const authorizationEpoch = ref(0);
@@ -263,6 +266,7 @@ export function applyRbac(me: RbacMe) {
   isPlatform.value = me.platform;
   rbacRoles.value = me.roles ?? [];
   switchableCampuses.value = me.switchableCampuses ?? [];
+  activeCampus.value = "";
   rbacVersion.value = me.rbacVersion ?? 0;
   rbacLoaded.value = true;
   try {
@@ -310,6 +314,7 @@ export function clearSession() {
   isPlatform.value = false;
   rbacRoles.value = [];
   switchableCampuses.value = [];
+  activeCampus.value = "";
   rbacLoaded.value = false;
   ["adminToken", "adminUser", "adminRbac"].forEach((key) =>
     localStorage.removeItem(key),

@@ -41,11 +41,13 @@ import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import ProductPickerField from "../components/ProductPickerField.vue";
 import {
+  activeCampus,
   canWrite,
   hasPerm,
   isPlatform,
   isSuper,
   sessionUser,
+  switchableCampuses,
 } from "../session";
 import { resolveImageUrl } from "../utils/image";
 import { fmtDate, fmtDateTime } from "../utils/datetime";
@@ -2514,6 +2516,8 @@ const isHqView = computed(() => productView.value === "official");
 /** IKCRS8：campuses=纯校区管理（平台视图），楼栋独立 /buildings 板块——
  *  原 IKBWRT 双 tab（campusTab/campusPlatformView）拆除。 */
 watch(campusFilter, () => {
+  // IKJA7Y：同步全局请求注入（锁定类板块的 ?campus= 由 api.request 统一带）
+  activeCampus.value = campusFilter.value ?? "";
   resetAndLoad();
   // IKD6FI：营销地图跟随校区筛选重新拉取
   if (isMktMapTab.value) void loadMarketingMap();
@@ -2527,14 +2531,19 @@ async function ensureCampusOptions() {
     campusOptionsData.value = await api.adminCampuses("filter");
   return campusOptionsData.value;
 }
-/** 平台视角选了校区就透传 campus 参数（IKCHEW：admin 同 hq 跨校区筛选） */
+/** IKJA7Y：可页内切换校区 = 平台账号 或 多校区授权（switchableCampuses 即授权集） */
+const canSwitchCampus = computed(
+  () => isPlatformAdmin.value || switchableCampuses.value.length > 1,
+);
+/** 选了校区就透传 campus 参数（IKCHEW：admin 同 hq 跨校区筛选；IKJA7Y 校区级
+ *  多授权账号同享——后端授权集白名单校验）。另经 api.request 全局注入兜底。 */
 function campusQuery(query: ListQuery): ListQuery {
-  return isPlatformAdmin.value && campusFilter.value
+  return canSwitchCampus.value && campusFilter.value
     ? { ...query, campusId: campusFilter.value }
     : query;
 }
 function campusScope(): string | undefined {
-  return isPlatformAdmin.value ? campusFilter.value || undefined : undefined;
+  return canSwitchCampus.value ? campusFilter.value || undefined : undefined;
 }
 const usersConfig: SectionConfig = {
   title: "C 端用户",
@@ -3593,7 +3602,8 @@ const section = computed(() => props.fixedSection ?? String(route.meta.section ?
  *  优惠券/秒杀按操作者本校区固定（hq 无这些板块权限，admin 跨校区走顶栏
  *  切换运营校区）——下拉渲染在那儿是选了也不生效的死控件。 */
 const campusFilterVisible = computed(() => {
-  if (!isPlatformAdmin.value) return false;
+  // IKJA7Y：多校区授权的校区级账号同样页内切换（顶栏切换器已移除）
+  if (!canSwitchCampus.value) return false;
   if (["orders", "users", "audit", "recruit"].includes(section.value))
     return true;
   // IKFOPY：库存板块全视图（总览/流水/采购申请）校区可筛选——聚焦总部仓复用仓储页

@@ -5,7 +5,6 @@ import { superViews } from "./view-catalog";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
 import {
-  applySession,
   authorizationEpoch,
   isSuper,
   canSee,
@@ -15,7 +14,6 @@ import {
   menuTree,
   roleLabel,
   sessionUser,
-  switchableCampuses,
 } from "./session";
 import { isUnread as changelogUnread } from "./changelog";
 const route = useRoute(),
@@ -176,13 +174,8 @@ watch(
       expandedGroups.value = [...expandedGroups.value, label];
   },
 );
-/* IKB3KG 方案A → RBAC V1：顶栏校区切换（授权范围内自选，切换换发 token）。
- *   RBAC V1：平台账号无可切校区（switchableCampuses 空）时显示「全校区视角」；
- *   其余账号多校区出下拉、单校区显示静态校名。 */
-const campusChoices = ref<
-  { id: string; name: string; shortName: string; current: boolean }[]
->([]);
-const campusName = ref("湖北工业大学");
+/* IKJA7Y：顶栏校区切换器已移除——校区上下文降级为请求级参数，
+ * 多校区授权账号在各页面的页内筛选下拉切换（DataPage/CampusConfigPage）。 */
 /* ---------- IKHFWV 新订单提醒：30s 轮询水位线（今日已支付累计）----------
    受众=canSee('orders')（订单配送菜单可见者全收，道哥定版）；顶栏铃铛可关
    （localStorage）；形态=右下浮窗+叮两声（WebAudio 合成免音频资产）+
@@ -307,45 +300,6 @@ setInterval(pollNewOrders, 30_000);
 function dismissNotify(key: string) {
   notifyCards.value = notifyCards.value.filter((c) => c.key !== key);
 }
-const campusSwitching = ref(false);
-/** 平台账号且无可切校区 = 跨校区汇总视角（无当前校区概念）。 */
-const isAllCampusView = computed(
-  () => isPlatform.value && switchableCampuses.value.length === 0,
-);
-async function loadCampusChoices() {
-  // 未登录不发注定 401 的请求（登录页停留期 console 曾报错）；登录后由 watch 补拉
-  if (isAllCampusView.value || !localStorage.getItem("adminToken")) return;
-  try {
-    campusChoices.value = await api.adminCampuses();
-    const hit =
-      campusChoices.value.find((c) => c.current) ??
-      campusChoices.value.find((c) => c.id === sessionUser.value?.campusId);
-    if (hit) campusName.value = hit.shortName || hit.name;
-  } catch {
-    /* 取不到授权列表保持静态展示，不阻塞后台 */
-  }
-}
-onMounted(loadCampusChoices);
-/* 登录成功（Login push 不重挂载 App）：会话建立后补拉授权校区，多校区下拉才有数据 */
-watch(sessionUser, (u) => {
-  if (u) void loadCampusChoices();
-});
-async function switchCampus(event: Event) {
-  const campusId = (event.target as HTMLSelectElement).value;
-  if (!campusId || campusId === sessionUser.value?.campusId) return;
-  campusSwitching.value = true;
-  try {
-    const result = await api.switchAdminCampus(campusId);
-    applySession(result.user);
-    // RBAC V1：权限随校区上下文变化——先刷新授权再整页重载
-    // （失败也继续 reload：token 已换发，停留旧页面只会更不一致）
-    await loadRbac();
-    window.location.reload();
-  } catch (error) {
-    campusSwitching.value = false;
-    alert(error instanceof Error ? error.message : "校区切换失败");
-  }
-}
 // Refresh permission changes made in another session; never trust cached menus indefinitely.
 let permissionTimer: ReturnType<typeof setInterval> | undefined;
 const refreshPermissions = () => { if (sessionUser.value && !isLogin.value) void loadRbac(); };
@@ -407,31 +361,6 @@ onBeforeUnmount(() => {
         >
           <span></span><span></span><span></span>
         </button>
-        <div class="campus-select">
-          <span class="live-dot"></span>
-          <!-- RBAC V1：平台账号无可切校区 = 跨校区视角（订单/用户页内另有校区筛选） -->
-          <div v-if="isAllCampusView">
-            <small>总部运营</small><b>全校区视角</b>
-          </div>
-          <!-- IKB3KG 方案A：授权多校区出现下拉，单校区显示静态校名 -->
-          <div v-else-if="campusChoices.length > 1" class="campus-picker">
-            <small>当前运营校园</small>
-            <select
-              :value="sessionUser?.campusId"
-              :disabled="campusSwitching"
-              aria-label="切换运营校区"
-              @change="switchCampus"
-            >
-              <option v-for="c in campusChoices" :key="c.id" :value="c.id">
-                {{ c.shortName || c.name }}
-              </option>
-            </select>
-          </div>
-          <div v-else>
-            <small>当前运营校园</small><b>{{ campusName }}</b>
-          </div>
-          <strong v-if="!isAllCampusView && campusChoices.length > 1">⌄</strong>
-        </div>
         <div class="header-actions">
           <input
             v-model="globalKeyword"

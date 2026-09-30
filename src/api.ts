@@ -1,4 +1,4 @@
-import { clearSession, getSessionGeneration, type RbacMe, type SessionUser } from "./session";
+import { activeCampus, clearSession, getSessionGeneration, type RbacMe, type SessionUser } from "./session";
 import { compressToWebp } from "./utils/image";
 import type {
   AccountGrant,
@@ -159,7 +159,14 @@ function withQuery(...parts: (string | undefined)[]): string {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const session = requestSession();
-  const response = await fetch(`/api/v1${path}`, {
+  // IKJA7Y 页内校区切换：多校区授权账号选中的校区统一注入 ?campus=
+  // （后端 scopedCampus/campusScope 校验授权集）。已带 campus 参数的请求
+  // （显式聚焦）不重复注入，避免同名 query 双值。
+  const campusQs =
+    activeCampus.value && !path.includes("campus=")
+      ? `${path.includes("?") ? "&" : "?"}campus=${encodeURIComponent(activeCampus.value)}`
+      : "";
+  const response = await fetch(`/api/v1${path}${campusQs}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
