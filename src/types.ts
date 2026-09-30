@@ -972,7 +972,6 @@ export interface RestockOrder {
   campusName?: string;
   campusShortName?: string;
   status:
-    | "draft"
     | "submitted"
     | "confirmed"
     | "rejected"
@@ -991,6 +990,13 @@ export interface RestockOrder {
   receivedAt?: string | null;
   updatedAt?: string;
   items?: RestockOrderLine[];
+  /** IKFOQ2：发货/到货摘要（详情接口 include 下发） */
+  shipment?: {
+    id: string;
+    shippedAt?: string | null;
+    receivedAt?: string | null;
+    note?: string;
+  } | null;
 }
 
 /* ---------- 发货单（IKFOQ2，2026-09-15 grilling 定版） ---------- */

@@ -245,11 +245,8 @@ const orderProducts = computed(
 /** 行编辑态：productId → 件数（空串显示为 0）。 */
 const lineCases = ref<Record<string, number>>({});
 const myOrder = computed<RestockOrder | null>(() => orderDetail.value?.orders[0] ?? null);
-const editable = computed(
-  () =>
-    canOrder.value && (myOrder.value === null ||
-    ["draft", "rejected"].includes(myOrder.value?.status ?? "")),
-);
+/** IKJCJF 多单制：有订货权限即可再填一张新单（批次窗口后端校验）。 */
+const editable = computed(() => canOrder.value);
 const totalCases = computed(() =>
   Object.values(lineCases.value).reduce((s, n) => s + (Number(n) || 0), 0),
 );
@@ -271,25 +268,28 @@ async function openMyOrder(batch: RestockBatch) {
     next[item.productId] = own?.items?.find((l) => l.productId === item.productId)?.cases ?? 0;
   lineCases.value = next;
 }
-async function saveMyOrder(submit: boolean) {
+/** IKJCJF 多单制：填完即提交，每次生成一张新订货单（无草稿）。 */
+async function submitMyOrder() {
   if (!orderBatch.value) return;
   const items = (orderDetail.value?.items ?? [])
     .map((i) => ({ productId: i.productId, cases: Number(lineCases.value[i.productId]) || 0 }))
     .filter((i) => i.cases > 0);
-  if (submit && !items.length) return alert("请至少为一个商品填写件数");
+  if (!items.length) return alert("请至少为一个商品填写件数");
   try {
     await api.saveRestockOrder(orderBatch.value.id, items);
-    if (submit) await api.submitRestockOrder(orderBatch.value.id);
     orderDrawer.value = false;
     refresh();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "保存失败");
+    alert(e instanceof Error ? e.message : "提交失败");
   }
 }
-async function withdrawMyOrder() {
-  if (!orderBatch.value) return;
+/** 删除待审核订货单（总部审核前可删，IKJCJF）。 */
+async function deleteMyOrder() {
+  const target = myOrder.value;
+  if (!target) return;
+  if (!window.confirm(`确认删除这张待审核订货单？`)) return;
   try {
-    await api.withdrawRestockOrder(orderBatch.value.id);
+    await api.deleteRestockOrder(target.id);
     orderDrawer.value = false;
     refresh();
   } catch (e) {
@@ -445,21 +445,20 @@ async function confirmReceipt() {
                 </td>
                 <td>{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</td>
                 <td>
-                  <span
-                    v-if="b.orderTotal"
-                    class="status"
-                    :class="b.orderShipped ? 'info' : b.orderConfirmed ? 'success' : 'warning'"
-                  >
-                    {{
-                      b.orderReceived
-                        ? "已到货"
+                  <template v-if="b.orderTotal">
+                    <span class="status" :class="b.orderShipped ? 'info' : b.orderConfirmed ? 'success' : 'warning'">
+                      {{ b.orderTotal }} 张
+                    </span>
+                    <small class="order-progress">
+                      {{ b.orderReceived
+                        ? `已到货 ${b.orderReceived}`
                         : b.orderShipped
-                          ? "已发货"
+                          ? `已发货 ${b.orderShipped}`
                           : b.orderConfirmed
-                            ? "已确认"
-                            : "已提交"
-                    }}
-                  </span>
+                            ? `已确认 ${b.orderConfirmed}`
+                            : `待审核 ${b.orderTotal}` }}
+                    </small>
+                  </template>
                   <span v-else class="status">未填单</span>
                 </td>
                 <td class="row-actions">
@@ -876,12 +875,23 @@ async function confirmReceipt() {
         </template>
         <div v-if="editable" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">取消</button>
-          <button class="btn ghost" @click="saveMyOrder(false)">保存草稿</button>
-          <button v-if="hasPerm('POST /admin/restock/batches/:batchId/order/submit')" class="btn primary" @click="saveMyOrder(true)">提交审核</button>
+          <button
+            v-if="hasPerm('PUT /admin/restock/batches/:batchId/order')"
+            class="btn primary"
+            @click="submitMyOrder"
+          >
+            提交审核
+          </button>
         </div>
         <div v-else-if="myOrder?.status === 'submitted'" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
-          <button v-if="hasPerm('POST /admin/restock/batches/:batchId/order/withdraw')" class="btn danger-btn" @click="withdrawMyOrder">撤回订货单</button>
+          <button
+            v-if="myOrder?.status === 'submitted' && hasPerm('DELETE /admin/restock/orders/:id')"
+            class="btn danger-btn"
+            @click="deleteMyOrder"
+          >
+            删除订货单
+          </button>
         </div>
         <div v-else-if="myOrder?.status === 'shipped'" class="drawer-actions">
           <button class="btn ghost" @click="orderDrawer = false">关闭</button>
@@ -1356,5 +1366,11 @@ textarea {
 textarea:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px #159c5515;
+}
+.order-progress {
+  display: block;
+  font-size: 11px;
+  color: #7b8981;
+  margin-top: 2px;
 }
 </style>

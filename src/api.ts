@@ -489,7 +489,7 @@ export const api = {
         orders: RestockOrder[];
       } & BatchMarginSummary
     >(`/admin/restock/batches/${id}`),
-  /** 校区保存本批次订货单（upsert，草稿/驳回态可改，items 全量替换）。 */
+  /** 校区提交本批次订货单（IKJCJF 多单制：填完即提交，每次一张新单）。 */
   saveRestockOrder: (
     batchId: string,
     items: { productId: string; cases: number; remark?: string }[],
@@ -498,15 +498,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ items }),
     }),
-  submitRestockOrder: (batchId: string) =>
-    request<{ id: string; status: string }>(
-      `/admin/restock/batches/${batchId}/order/submit`,
-      { method: "POST", body: "{}" },
-    ),
-  withdrawRestockOrder: (batchId: string) =>
-    request<{ id: string; status: string }>(
-      `/admin/restock/batches/${batchId}/order/withdraw`,
-      { method: "POST", body: "{}" },
+  /** 校区删除待审核订货单（IKJCJF：审核前可删，物理删除）。 */
+  deleteRestockOrder: (orderId: string) =>
+    request<{ id: string; deleted: boolean }>(
+      `/admin/restock/orders/${orderId}`,
+      { method: "DELETE", body: "{}" },
     ),
   /* ---------- 采购单（IKFOQ1） ---------- */
   purchaseOrders: () =>

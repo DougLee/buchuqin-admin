@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 import { hasPerm } from "../session";
+import type { RestockOrder } from "../types";
+import { RESTOCK_ORDER_STATUS_CLASS, RESTOCK_ORDER_STATUS_TEXT } from "../dicts";
 import type {
   PurchaseOrderDetail,
   PurchaseOrderRow,
@@ -21,6 +23,11 @@ import { fmtDateTime } from "../utils/datetime";
 const loading = ref(true);
 const error = ref("");
 const orders = ref<PurchaseOrderRow[]>([]);
+/** IKJCJF：校区级账号进本页=看自己校区的订货单进度（采购单是总部动作） */
+const isCampusView = computed(() => !hasPerm("GET /admin/purchase/orders"));
+const myOrders = ref<RestockOrder[]>([]);
+const myDetail = ref<RestockOrder | null>(null);
+const myDrawerOpen = ref(false);
 
 // 采购阶段字典见 src/dicts/inventory（PURCHASE_PHASE_TEXT/CLASS，IKIYMM 集中化）
 import { PURCHASE_PHASE_CLASS, PURCHASE_PHASE_TEXT } from "../dicts";
@@ -29,11 +36,26 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    orders.value = await api.purchaseOrders();
+    if (isCampusView.value) {
+      // 校区视角：本校区全部订货单（跨批次，含待审/通过/发货/到货）
+      myOrders.value = await api.restockOrders();
+    } else {
+      orders.value = await api.purchaseOrders();
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载失败";
   } finally {
     loading.value = false;
+  }
+}
+async function openMyOrder(id: string) {
+  myDrawerOpen.value = true;
+  myDetail.value = null;
+  try {
+    myDetail.value = await api.restockOrderDetail(id);
+  } catch (e) {
+    myDrawerOpen.value = false;
+    error.value = e instanceof Error ? e.message : "加载失败";
   }
 }
 onMounted(load);
@@ -118,13 +140,66 @@ async function refreshDetail() {
     <div class="page-head">
       <div>
         <h1>采购管理</h1>
-        <p>批次订货汇总生成供应商采购单，验收入总部仓；坏品登记自动出库，支持部分到货。</p>
+        <p v-if="isCampusView">本校区全部订货单的进度跟踪：提交 → 总部确认 → 发货 → 到货确认。</p>
+        <p v-else>批次订货汇总生成供应商采购单，验收入总部仓；坏品登记自动出库，支持部分到货。</p>
       </div>
     </div>
 
     <p v-if="error" class="load-error">{{ error }}</p>
 
-    <div class="data-panel">
+    <!-- IKJCJF：校区视角=我的订货单（跨批次进度跟踪） -->
+    <div v-if="isCampusView" class="data-panel">
+      <div class="data-summary">
+        <div>
+          <strong>{{ myOrders.length }}</strong><span> 张订货单</span>
+        </div>
+        <p><span class="live-dot"></span>数据已同步 · 全部批次</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>批次</th>
+              <th>提交时间</th>
+              <th>提交人</th>
+              <th>商品</th>
+              <th>件数</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading" v-for="i in 4" :key="i">
+              <td :colspan="7"><div class="row-skeleton"></div></td>
+            </tr>
+            <template v-else>
+              <tr v-if="!myOrders.length">
+                <td :colspan="7" class="empty-cell">
+                  还没有订货单。到「订货管理」选开放批次填写提交。
+                </td>
+              </tr>
+              <tr v-for="o in myOrders" :key="o.id">
+                <td><strong>{{ o.batchName || o.batchId }}</strong></td>
+                <td>{{ fmtDateTime(o.submittedAt) }}</td>
+                <td>{{ o.submitByName || "—" }}</td>
+                <td>{{ o.itemCount ?? o.items?.length ?? "—" }}</td>
+                <td>{{ o.totalCases ?? "—" }}</td>
+                <td>
+                  <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
+                    {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
+                  </span>
+                </td>
+                <td class="row-actions">
+                  <button class="btn mini primary" @click="openMyOrder(o.id)">详情</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div v-else class="data-panel">
       <div class="data-summary">
         <div>
           <strong>{{ orders.length }}</strong><span> 张采购单</span>
@@ -267,6 +342,53 @@ async function refreshDetail() {
             </template>
           </template>
           <button v-else-if="hasPerm('POST /admin/purchase/orders/:id/reopen')" class="btn primary" @click="reopenOrder">重开采购单</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 校区视角：订货单详情抽屉（IKJCJF） -->
+    <div v-if="myDrawerOpen" class="drawer-mask" @click.self="myDrawerOpen = false">
+      <div class="drawer">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">RESTOCK ORDER</p>
+            <h2>
+              订货单
+              <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[myDetail?.status ?? 'submitted']" style="margin-left: 8px">
+                {{ RESTOCK_ORDER_STATUS_TEXT[myDetail?.status ?? 'submitted'] }}
+              </span>
+            </h2>
+          </div>
+          <button @click="myDrawerOpen = false">✕</button>
+        </div>
+        <div class="drawer-body">
+          <p v-if="!myDetail" class="empty-cell">加载中…</p>
+          <template v-else>
+            <dl class="my-meta">
+              <dt>提交时间</dt><dd>{{ fmtDateTime(myDetail.submittedAt) }}</dd>
+              <dt>提交人</dt><dd>{{ myDetail.submitByName || "—" }}</dd>
+              <dt v-if="myDetail.auditNote">审核意见</dt>
+              <dd v-if="myDetail.auditNote">{{ myDetail.auditNote }}</dd>
+              <dt v-if="myDetail.shipment?.shippedAt">发货时间</dt>
+              <dd v-if="myDetail.shipment?.shippedAt">{{ fmtDateTime(myDetail.shipment.shippedAt) }}</dd>
+              <dt v-if="myDetail.shipment?.receivedAt">到货时间</dt>
+              <dd v-if="myDetail.shipment?.receivedAt">{{ fmtDateTime(myDetail.shipment.receivedAt) }}</dd>
+            </dl>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>商品</th><th>件数</th><th>听数</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="l in myDetail.items" :key="l.productId">
+                    <td>{{ l.product?.name ?? l.productId }}</td>
+                    <td>{{ l.cases }}</td>
+                    <td>{{ l.cases * l.unitsPerCase }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
         </div>
       </div>
     </div>
