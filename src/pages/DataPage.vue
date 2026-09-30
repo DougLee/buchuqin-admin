@@ -2504,7 +2504,10 @@ const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
 const isHqRole = computed(() => isPlatform.value);
 const isPlatformAdmin = computed(() => isSuper.value || isPlatform.value);
 function cols(config: { columns: [string, string][] }): [string, string][] {
-  const list = config.columns.filter((c) => c[0] !== "contactText"); // 详情专用列不进列表
+  // contactText/deliveryFee（IKJ92S）为详情专用列，不进列表
+  const list = config.columns.filter(
+    (c) => c[0] !== "contactText" && c[0] !== "deliveryFee",
+  );
   return isPlatformAdmin.value ? list : list.filter((c) => c[0] !== "costPrice");
 }
 /** IKCHEW：官方库视角 UI——平台账号随商品视角切换；校区账号恒假。
@@ -2951,20 +2954,23 @@ const configs: Record<string, SectionConfig> = {
       ["contactText", "收货人"],
       ["statusText", "当前状态"],
       ["payableAmount", "实付金额"],
-      // IKFTZ9：综合毛利列（实付−成本，口径同详情合计；缺成本显示 —）
+      // IKJ92S：配送费详情专用列（cols() 过滤不进列表，详情字段卡展示）
+      ["deliveryFee", "配送费"],
+      // IKFTZ9：综合毛利列（实付−配送费−成本，口径同详情合计；缺成本显示 —）
       ["marginTotal", "综合毛利"],
       // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
       ["slaText", "时效"],
       // IKC9M2：补下单时间列（格式化走 display 的 createdAt 统一分支）
       ["createdAt", "下单时间"],
     ],
-    // IKFSZJ 第二轮：详情三列按道哥指定顺序——行1 编号/状态/时效，行2 用户/实付/时间；商品通栏
+    // IKFSZJ 第二轮：详情三列按道哥指定顺序——行1 编号/状态/时效，行2 用户/实付/配送费/时间；商品通栏
     detailOrder: [
       "orderNo",
       "statusText",
       "slaText",
       "contactText",
       "payableAmount",
+      "deliveryFee",
       "createdAt",
     ],
     // 2026-09-21 道哥：详情去「商品」卡——毛利详情已含逐商品+数量（渲染处
@@ -4059,7 +4065,8 @@ function detailCols(cols: [string, string][], order?: string[]) {
 function display(row: AdminRow, key: string) {
   const record = row as unknown as Record<string, unknown>;
   const v = record[key];
-  // 订单综合毛利列（IKFTZ9）：实付 − 成本（扣券），口径同详情合计，缺成本显示 —
+  // 订单综合毛利列（IKFTZ9/IKJ92S）：实付−配送费 − 成本（扣券剔除配送费），
+  // 口径同详情合计，缺成本显示 —
   if (key === "marginTotal") {
     const total = orderMarginTotalOf(row as unknown as Order);
     return total == null ? "—" : `¥${fenToYuan(total)}`;
@@ -4791,9 +4798,9 @@ const pickingItems = computed(() => {
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
   const items = order?.items;
   if (!order || !items?.length) return null;
-  // 2026-09-24 道哥定版（修正 09-20 旧口径）：毛利 = 实付 − Σ(批发快照×数量)——
-  // 必须扣整单优惠（券/折扣属实付内），与首页概览/经营日报/部分退款硬上限同口径。
-  // 任一行缺批发快照（历史单）仍显示 —（口径不完整不误导）。
+  // IKJ92S（2026-09-30 道哥定版）：综合毛利 = 实付−配送费 − Σ(批发快照×数量)——
+  // 配送费交付配送员属配送成本，不进毛利；券属实付内照扣。
+  // 与首页概览/经营日报同口径。任一行缺批发快照（历史单）仍显示 —（口径不完整不误导）。
   let cost = 0;
   for (const line of items) {
     const wholesale = line.product?.unitWholesaleCost;
@@ -4802,7 +4809,7 @@ function orderMarginTotalOf(order: MarginSource | undefined | null): number | nu
   }
   const payable = Number(order.payableAmount);
   if (!Number.isFinite(payable)) return null;
-  return payable - cost;
+  return payable - Number(order.deliveryFee ?? 0) - cost;
 }
 /** 毛利计算的松散结构（列表行/详情选中行共用，避免 Order 交叉类型强转）。
  *  IKFTK7 第三轮 + 2026-09-20 定版：成本口径 = 批发价快照 unitWholesaleCost */

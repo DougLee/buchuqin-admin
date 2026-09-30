@@ -147,7 +147,7 @@ function rawRateText(row: CampusDailyRow) {
         </p>
       </div>
       <div class="report-card report-card-gross">
-        <p class="report-label" title="实付 − 批发成本（扣券，配送费为无成本收入）">
+        <p class="report-label" title="实付 − 配送费 − 批发成本（扣券；配送费交付配送员不进毛利）">
           综合毛利<span class="label-tag dark">扣券</span>
         </p>
         <strong>¥{{ fenToYuan(report.totals.gross, true) }}</strong>
@@ -179,7 +179,7 @@ function rawRateText(row: CampusDailyRow) {
               <th>销售额</th>
               <th>批发成本</th>
               <th title="商品金额 − 批发成本（未扣券）">毛利</th>
-              <th title="实付 − 批发成本（扣券）">综合毛利</th>
+              <th title="实付 − 配送费 − 批发成本（扣券）">综合毛利</th>
             </tr>
           </thead>
           <tbody>

@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-09-30",
+    title: "综合毛利剔除配送费",
+    admin: [
+      "综合毛利口径调整：综合毛利=售价−批发成本−券−配送费（配送费交付配送员，不再计入毛利）",
+      "订单详情新增「配送费」字段（实付金额旁）；毛利口径说明同步更新",
+      "首页概览与校区日报的综合毛利/综合毛利率同步剔除配送费",
+    ],
+  },
+  {
     date: "2026-09-28",
     title: "毛利双口径与作战地图跨校区",
     admin: [
