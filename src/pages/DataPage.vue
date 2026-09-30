@@ -5575,7 +5575,9 @@ async function cancelInviteRow(row: AdminRow) {
           盘点
         </button>
       </template>
-      <button class="btn ghost" @click="exportData">导出数据</button>
+      <button class="btn ghost" :disabled="exporting" @click="exportData">
+        {{ exporting ? "导出中…" : "导出数据" }}
+      </button>
     </div>
     <div v-if="loadError" class="load-error">
       <span>加载失败：{{ loadError }}</span>
