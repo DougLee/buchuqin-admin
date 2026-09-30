@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  api,
-} from "../api";
+import { api } from "../api";
 import ProductPickerField from "../components/ProductPickerField.vue";
 import { canSee, hasPerm, isPlatform, menuPath } from "../session";
 import type {
@@ -58,7 +56,9 @@ async function loadBatches() {
   }
 }
 async function loadHqOrders() {
-  hqOrders.value = hasPerm("GET /admin/restock/orders") ? await api.restockOrders() : [];
+  hqOrders.value = hasPerm("GET /admin/restock/orders")
+    ? await api.restockOrders()
+    : [];
 }
 function refresh() {
   loadBatches();
@@ -68,7 +68,9 @@ onMounted(refresh);
 
 /** 折算显示：N 件(×M 听)；无件概念（unitsPerCase≤1）只显示件数。 */
 function caseText(cases: number, unitsPerCase: number): string {
-  return unitsPerCase > 1 ? `${cases} 件(×${cases * unitsPerCase} 听)` : `${cases} 件`;
+  return unitsPerCase > 1
+    ? `${cases} 件(×${cases * unitsPerCase} 听)`
+    : `${cases} 件`;
 }
 
 /* ---------- 批次新建/编辑（总部） ---------- */
@@ -131,7 +133,8 @@ async function submitBatch() {
 }
 async function closeBatch(batch: RestockBatch) {
   if (batch.closedAt) return;
-  if (!window.confirm(`确认提前关闭「${batch.name}」？关闭后校区不能再订货`)) return;
+  if (!window.confirm(`确认提前关闭「${batch.name}」？关闭后校区不能再订货`))
+    return;
   try {
     await api.closeRestockBatch(batch.id);
     refresh();
@@ -142,7 +145,9 @@ async function closeBatch(batch: RestockBatch) {
 
 /* ---------- 批次详情（总部：商品范围+各校区订货单） ---------- */
 const detailDrawer = ref(false);
-const detail = ref<Awaited<ReturnType<typeof api.restockBatchDetail>> | null>(null);
+const detail = ref<Awaited<ReturnType<typeof api.restockBatchDetail>> | null>(
+  null,
+);
 async function openBatchDetail(batch: RestockBatch) {
   detailDrawer.value = true;
   detail.value = null;
@@ -154,7 +159,12 @@ const poDrawer = ref(false);
 const poSaving = ref(false);
 const poSupplier = ref("");
 /** 聚合行：productId → 件数（该批次 confirmed 订货单按商品求和） */
-type PoLine = { productId: string; name: string; cases: number; unitCost: number };
+type PoLine = {
+  productId: string;
+  name: string;
+  cases: number;
+  unitCost: number;
+};
 const poLines = ref<PoLine[]>([]);
 function openPurchaseForm() {
   const d = detail.value;
@@ -214,10 +224,15 @@ async function audit(action: "confirm" | "reject" | "revoke") {
     return alert("驳回请填写理由，方便校区修改后重新提交");
   auditBusy.value = true;
   try {
-    await api.auditRestockOrder(auditTarget.value.id, action, auditNote.value.trim());
+    await api.auditRestockOrder(
+      auditTarget.value.id,
+      action,
+      auditNote.value.trim(),
+    );
     auditDrawer.value = false;
     refresh();
-    if (detail.value) detail.value = await api.restockBatchDetail(detail.value.id);
+    if (detail.value)
+      detail.value = await api.restockBatchDetail(detail.value.id);
   } catch (e) {
     // 确认时库存不足等后端阻断信息原样透出
     alert(e instanceof Error ? e.message : "操作失败");
@@ -230,17 +245,27 @@ async function audit(action: "confirm" | "reject" | "revoke") {
 const orderDrawer = ref(false);
 const orderBatch = ref<RestockBatch | null>(null);
 const orderDetail = ref<{
-  items: { productId: string; product: { id: string; name: string; image: string; price: number; retailUnit?: string; wholesaleUnit?: string; unitsPerCase: number; categoryId?: string; category?: { name: string } } }[];
+  items: {
+    productId: string;
+    product: {
+      id: string;
+      name: string;
+      image: string;
+      price: number;
+      retailUnit?: string;
+      wholesaleUnit?: string;
+      unitsPerCase: number;
+      categoryId?: string;
+      category?: { name: string };
+    };
+  }[];
   orders: RestockOrder[];
 } | null>(null);
 /* ---------- 订货单商品选择（IKGQ6Q 组件化）：筛选/列表内聚进
    ProductPickerField（multiple 模式），页面只留件数账本与合计 ---------- */
 /** 批次可订商品集：选择器候选（快照 product，含 category 名供类别聚合） */
-const orderProducts = computed(
-  () =>
-    (orderDetail.value?.items ?? []).map(
-      (i) => i.product as unknown as Product,
-    ),
+const orderProducts = computed(() =>
+  (orderDetail.value?.items ?? []).map((i) => i.product as unknown as Product),
 );
 /** 行编辑态：productId → 件数（空串显示为 0）。 */
 const lineCases = ref<Record<string, number>>({});
@@ -251,7 +276,8 @@ const totalCases = computed(() =>
 );
 const totalUnits = computed(() =>
   (orderDetail.value?.items ?? []).reduce(
-    (s, i) => s + (Number(lineCases.value[i.productId]) || 0) * i.product.unitsPerCase,
+    (s, i) =>
+      s + (Number(lineCases.value[i.productId]) || 0) * i.product.unitsPerCase,
     0,
   ),
 );
@@ -264,14 +290,18 @@ async function openMyOrder(batch: RestockBatch) {
   const own = detail.orders[0];
   const next: Record<string, number> = {};
   for (const item of detail.items)
-    next[item.productId] = own?.items?.find((l) => l.productId === item.productId)?.cases ?? 0;
+    next[item.productId] =
+      own?.items?.find((l) => l.productId === item.productId)?.cases ?? 0;
   lineCases.value = next;
 }
 /** IKJCJF 多单制：填完即提交，每次生成一张新订货单（无草稿）。 */
 async function submitMyOrder() {
   if (!orderBatch.value) return;
   const items = (orderDetail.value?.items ?? [])
-    .map((i) => ({ productId: i.productId, cases: Number(lineCases.value[i.productId]) || 0 }))
+    .map((i) => ({
+      productId: i.productId,
+      cases: Number(lineCases.value[i.productId]) || 0,
+    }))
     .filter((i) => i.cases > 0);
   if (!items.length) return alert("请至少为一个商品填写件数");
   try {
@@ -307,7 +337,8 @@ async function submitShip() {
     await api.shipRestockOrder(shipTarget.value.id);
     shipDrawer.value = false;
     refresh();
-    if (detail.value) detail.value = await api.restockBatchDetail(detail.value.id);
+    if (detail.value)
+      detail.value = await api.restockBatchDetail(detail.value.id);
   } catch (e) {
     // 库存不足拦截（含缺货数量）原样透出
     alert(e instanceof Error ? e.message : "发货失败");
@@ -357,7 +388,11 @@ function gotoPurchase() {
         </p>
       </div>
       <div class="head-actions">
-        <button v-if="canManage && tab === 'batches'" class="btn primary" @click="openBatchForm()">
+        <button
+          v-if="canManage && tab === 'batches'"
+          class="btn primary"
+          @click="openBatchForm()"
+        >
           <span>＋</span>新建批次
         </button>
       </div>
@@ -381,7 +416,8 @@ function gotoPurchase() {
     <div v-if="!isHqScope" class="data-panel">
       <div class="data-summary">
         <div>
-          <strong>{{ batches.length }}</strong><span> 个批次</span>
+          <strong>{{ batches.length }}</strong
+          ><span> 个批次</span>
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
@@ -402,27 +438,46 @@ function gotoPurchase() {
             </tr>
             <template v-else>
               <tr v-if="!batches.length">
-                <td :colspan="5" class="empty-cell">暂无订货批次，总部开放后这里会出现批次。</td>
+                <td :colspan="5" class="empty-cell">
+                  暂无订货批次，总部开放后这里会出现批次。
+                </td>
               </tr>
               <tr v-for="b in batches" :key="b.id">
-                <td><strong>{{ b.name }}</strong></td>
                 <td>
-                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{ RESTOCK_PHASE_TEXT[b.phase] }}</span>
+                  <strong>{{ b.name }}</strong>
                 </td>
-                <td>{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</td>
+                <td>
+                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{
+                    RESTOCK_PHASE_TEXT[b.phase]
+                  }}</span>
+                </td>
+                <td>
+                  {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
+                </td>
                 <td>
                   <template v-if="b.orderTotal">
-                    <span class="status" :class="b.orderShipped ? 'info' : b.orderConfirmed ? 'success' : 'warning'">
+                    <span
+                      class="status"
+                      :class="
+                        b.orderShipped
+                          ? 'info'
+                          : b.orderConfirmed
+                            ? 'success'
+                            : 'warning'
+                      "
+                    >
                       {{ b.orderTotal }} 张
                     </span>
                     <small class="order-progress">
-                      {{ b.orderReceived
-                        ? `已到货 ${b.orderReceived}`
-                        : b.orderShipped
-                          ? `已发货 ${b.orderShipped}`
-                          : b.orderConfirmed
-                            ? `已确认 ${b.orderConfirmed}`
-                            : `待审核 ${b.orderTotal}` }}
+                      {{
+                        b.orderReceived
+                          ? `已到货 ${b.orderReceived}`
+                          : b.orderShipped
+                            ? `已发货 ${b.orderShipped}`
+                            : b.orderConfirmed
+                              ? `已确认 ${b.orderConfirmed}`
+                              : `待审核 ${b.orderTotal}`
+                      }}
                     </small>
                   </template>
                   <span v-else class="status">未填单</span>
@@ -436,7 +491,9 @@ function gotoPurchase() {
                   >
                     填写订货单
                   </button>
-                  <small v-else-if="b.orderTotal" class="order-progress">见采购管理</small>
+                  <small v-else-if="b.orderTotal" class="order-progress"
+                    >见采购管理</small
+                  >
                 </td>
               </tr>
             </template>
@@ -449,7 +506,8 @@ function gotoPurchase() {
     <div v-if="isHqScope && tab === 'batches'" class="data-panel">
       <div class="data-summary">
         <div>
-          <strong>{{ batches.length }}</strong><span> 个批次</span>
+          <strong>{{ batches.length }}</strong
+          ><span> 个批次</span>
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
@@ -471,31 +529,50 @@ function gotoPurchase() {
             </tr>
             <template v-else>
               <tr v-if="!batches.length">
-                <td :colspan="6" class="empty-cell">还没有订货批次，点右上角「新建批次」开始。</td>
+                <td :colspan="6" class="empty-cell">
+                  还没有订货批次，点右上角「新建批次」开始。
+                </td>
               </tr>
               <tr v-for="b in batches" :key="b.id">
-                <td><strong>{{ b.name }}</strong></td>
                 <td>
-                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{ RESTOCK_PHASE_TEXT[b.phase] }}</span>
+                  <strong>{{ b.name }}</strong>
+                </td>
+                <td>
+                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{
+                    RESTOCK_PHASE_TEXT[b.phase]
+                  }}</span>
                 </td>
                 <td>
                   {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
                 </td>
                 <td>
-                  {{ b.orderTotal ?? 0 }} 单 / {{ b.orderConfirmed ?? 0 }} 已确认
+                  {{ b.orderTotal ?? 0 }} 单 /
+                  {{ b.orderConfirmed ?? 0 }} 已确认
                 </td>
                 <td>{{ b.createdByName || "—" }}</td>
                 <td class="row-actions">
-                  <button v-if="hasPerm('GET /admin/restock/batches/:id')" class="btn mini ghost" @click="openBatchDetail(b)">详情</button>
                   <button
-                    v-if="hasPerm('PATCH /admin/restock/batches/:id') && (b.phase === 'upcoming' || b.phase === 'open')"
+                    v-if="hasPerm('GET /admin/restock/batches/:id')"
+                    class="btn mini ghost"
+                    @click="openBatchDetail(b)"
+                  >
+                    详情
+                  </button>
+                  <button
+                    v-if="
+                      hasPerm('PATCH /admin/restock/batches/:id') &&
+                      (b.phase === 'upcoming' || b.phase === 'open')
+                    "
                     class="btn mini ghost"
                     @click="openBatchForm(b)"
                   >
                     编辑
                   </button>
                   <button
-                    v-if="hasPerm('POST /admin/restock/batches/:id/close') && !b.closedAt"
+                    v-if="
+                      hasPerm('POST /admin/restock/batches/:id/close') &&
+                      !b.closedAt
+                    "
                     class="btn mini ghost danger-btn"
                     @click="closeBatch(b)"
                   >
@@ -513,7 +590,8 @@ function gotoPurchase() {
     <div v-if="isHqScope && tab === 'orders'" class="data-panel">
       <div class="data-summary">
         <div>
-          <strong>{{ hqOrders.length }}</strong><span> 张订货单</span>
+          <strong>{{ hqOrders.length }}</strong
+          ><span> 张订货单</span>
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
@@ -539,10 +617,15 @@ function gotoPurchase() {
                 <td :colspan="7" class="empty-cell">还没有校区提交订货单。</td>
               </tr>
               <tr v-for="o in hqOrders" :key="o.id">
-                <td><strong>{{ o.batchName }}</strong></td>
+                <td>
+                  <strong>{{ o.batchName }}</strong>
+                </td>
                 <td>{{ o.campusShortName || o.campusName }}</td>
                 <td>
-                  <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
+                  <span
+                    class="status"
+                    :class="RESTOCK_ORDER_STATUS_CLASS[o.status]"
+                  >
                     {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
                   </span>
                   <em v-if="o.shippedAt" class="ship-note">
@@ -556,31 +639,54 @@ function gotoPurchase() {
                   {{ o.totalCases ?? 0 }} 件<br />折算 {{ o.totalUnits ?? 0 }}
                 </td>
                 <td>
-                  {{ o.submitByName || "—" }}<br />{{ o.submittedAt ? fmtDateTime(o.submittedAt) : "—" }}
+                  {{ o.submitByName || "—" }}<br />{{
+                    o.submittedAt ? fmtDateTime(o.submittedAt) : "—"
+                  }}
                 </td>
                 <td>
                   <template v-if="o.auditAt">
                     {{ o.auditByName }}<br />{{ fmtDateTime(o.auditAt) }}
-                    <em v-if="o.auditNote" class="audit-note">「{{ o.auditNote }}」</em>
+                    <em v-if="o.auditNote" class="audit-note"
+                      >「{{ o.auditNote }}」</em
+                    >
                   </template>
                   <template v-else>—</template>
                 </td>
                 <td class="row-actions">
                   <button
-                    v-if="hasPerm('POST /admin/restock/orders/:id/audit') && o.status === 'submitted'"
+                    v-if="
+                      hasPerm('POST /admin/restock/orders/:id/audit') &&
+                      o.status === 'submitted'
+                    "
                     class="btn mini primary"
                     @click="openAudit(o)"
                   >
                     审核
                   </button>
                   <template v-else-if="o.status === 'confirmed'">
-                    <button v-if="hasPerm('POST /admin/restock/orders/:id/ship') && hasPerm('GET /admin/restock/orders/:id')" class="btn mini primary" @click="openShip(o)">发货</button>
-                    <button v-if="hasPerm('POST /admin/restock/orders/:id/audit')" class="btn mini ghost danger-btn" @click="openAudit(o)">
+                    <button
+                      v-if="
+                        hasPerm('POST /admin/restock/orders/:id/ship') &&
+                        hasPerm('GET /admin/restock/orders/:id')
+                      "
+                      class="btn mini primary"
+                      @click="openShip(o)"
+                    >
+                      发货
+                    </button>
+                    <button
+                      v-if="hasPerm('POST /admin/restock/orders/:id/audit')"
+                      class="btn mini ghost danger-btn"
+                      @click="openAudit(o)"
+                    >
                       撤销确认
                     </button>
                   </template>
                   <button
-                    v-else-if="hasPerm('GET /admin/restock/orders/:id/shipment') && (o.status === 'shipped' || o.status === 'received')"
+                    v-else-if="
+                      hasPerm('GET /admin/restock/orders/:id/shipment') &&
+                      (o.status === 'shipped' || o.status === 'received')
+                    "
                     class="btn mini ghost"
                     @click="openShipment(o.id)"
                   >
@@ -596,7 +702,11 @@ function gotoPurchase() {
     </div>
 
     <!-- 新建/编辑批次 -->
-    <div v-if="batchDrawer" class="drawer-mask" @click.self="batchDrawer = false">
+    <div
+      v-if="batchDrawer"
+      class="drawer-mask"
+      @click.self="batchDrawer = false"
+    >
       <div class="drawer batch-form-drawer">
         <div class="drawer-head">
           <div>
@@ -625,23 +735,38 @@ function gotoPurchase() {
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="batchDrawer = false">取消</button>
-          <button class="btn primary" :disabled="batchSaving" @click="submitBatch">
-            {{ batchSaving ? "保存中…" : batchEditId ? "保存修改" : "创建批次" }}
+          <button
+            class="btn primary"
+            :disabled="batchSaving"
+            @click="submitBatch"
+          >
+            {{
+              batchSaving ? "保存中…" : batchEditId ? "保存修改" : "创建批次"
+            }}
           </button>
         </div>
       </div>
     </div>
 
     <!-- 批次详情（总部） -->
-    <div v-if="detailDrawer" class="drawer-mask" @click.self="detailDrawer = false">
+    <div
+      v-if="detailDrawer"
+      class="drawer-mask"
+      @click.self="detailDrawer = false"
+    >
       <div class="drawer detail-drawer">
         <div class="drawer-head">
           <div>
             <p class="eyebrow">BATCH DETAIL</p>
             <h2>{{ detail?.name ?? "批次详情" }}</h2>
             <p v-if="detail" class="detail-window">
-              {{ fmtDateTime(detail.startAt) }} ~ {{ fmtDateTime(detail.endAt) }}
-              <span class="status" :class="RESTOCK_PHASE_CLASS[detail.phase]" style="margin-left: 8px">
+              {{ fmtDateTime(detail.startAt) }} ~
+              {{ fmtDateTime(detail.endAt) }}
+              <span
+                class="status"
+                :class="RESTOCK_PHASE_CLASS[detail.phase]"
+                style="margin-left: 8px"
+              >
                 {{ RESTOCK_PHASE_TEXT[detail.phase] }}
               </span>
             </p>
@@ -661,10 +786,14 @@ function gotoPurchase() {
             </div>
             <div v-if="detail.grossEstimate != null" class="margin-row">
               <span>本批毛利预估</span>
-              <strong class="margin-value">¥{{ fenToYuan(detail.grossEstimate) }}</strong>
+              <strong class="margin-value"
+                >¥{{ fenToYuan(detail.grossEstimate) }}</strong
+              >
             </div>
             <button
-              v-if="hasPerm('POST /admin/restock/batches/:batchId/purchase-order')"
+              v-if="
+                hasPerm('POST /admin/restock/batches/:batchId/purchase-order')
+              "
               class="btn mini ghost po-btn"
               @click="openPurchaseForm"
             >
@@ -673,11 +802,16 @@ function gotoPurchase() {
           </div>
           <div class="detail-section">
             <h4>校区订货单（{{ detail.orders.length }}）</h4>
-            <div v-if="!detail.orders.length" class="empty-block">暂无校区订货。</div>
+            <div v-if="!detail.orders.length" class="empty-block">
+              暂无校区订货。
+            </div>
             <div v-for="o in detail.orders" :key="o.id" class="order-brief">
               <div class="order-brief-head">
                 <strong>{{ o.campusShortName || o.campusName }}</strong>
-                <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
+                <span
+                  class="status"
+                  :class="RESTOCK_ORDER_STATUS_CLASS[o.status]"
+                >
                   {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
                 </span>
                 <span class="order-brief-total">
@@ -699,20 +833,39 @@ function gotoPurchase() {
               </p>
               <div class="order-brief-ops">
                 <button
-                  v-if="hasPerm('POST /admin/restock/orders/:id/audit') && o.status === 'submitted'"
+                  v-if="
+                    hasPerm('POST /admin/restock/orders/:id/audit') &&
+                    o.status === 'submitted'
+                  "
                   class="btn mini ghost"
                   @click="openAudit(o)"
                 >
                   审核
                 </button>
                 <template v-else-if="o.status === 'confirmed'">
-                  <button v-if="hasPerm('POST /admin/restock/orders/:id/ship') && hasPerm('GET /admin/restock/orders/:id')" class="btn mini primary" @click="openShip(o)">发货</button>
-                  <button v-if="hasPerm('POST /admin/restock/orders/:id/audit')" class="btn mini ghost danger-btn" @click="openAudit(o)">
+                  <button
+                    v-if="
+                      hasPerm('POST /admin/restock/orders/:id/ship') &&
+                      hasPerm('GET /admin/restock/orders/:id')
+                    "
+                    class="btn mini primary"
+                    @click="openShip(o)"
+                  >
+                    发货
+                  </button>
+                  <button
+                    v-if="hasPerm('POST /admin/restock/orders/:id/audit')"
+                    class="btn mini ghost danger-btn"
+                    @click="openAudit(o)"
+                  >
                     撤销确认
                   </button>
                 </template>
                 <button
-                  v-else-if="hasPerm('GET /admin/restock/orders/:id/shipment') && (o.status === 'shipped' || o.status === 'received')"
+                  v-else-if="
+                    hasPerm('GET /admin/restock/orders/:id/shipment') &&
+                    (o.status === 'shipped' || o.status === 'received')
+                  "
                   class="btn mini ghost"
                   @click="openShipment(o.id)"
                 >
@@ -726,7 +879,11 @@ function gotoPurchase() {
     </div>
 
     <!-- 审核弹框（总部） -->
-    <div v-if="auditDrawer" class="drawer-mask" @click.self="auditDrawer = false">
+    <div
+      v-if="auditDrawer"
+      class="drawer-mask"
+      @click.self="auditDrawer = false"
+    >
       <div class="drawer">
         <div class="drawer-head">
           <div>
@@ -734,15 +891,20 @@ function gotoPurchase() {
             <h2>订货单审核</h2>
             <p v-if="auditTarget" class="detail-window">
               {{ auditTarget.campusShortName || auditTarget.campusName }} ·
-              {{ auditTarget.batchName }} · 共 {{ auditTarget.totalCases ?? 0 }} 件
-              (折算 {{ auditTarget.totalUnits ?? 0 }})
+              {{ auditTarget.batchName }} · 共
+              {{ auditTarget.totalCases ?? 0 }} 件 (折算
+              {{ auditTarget.totalUnits ?? 0 }})
             </p>
           </div>
           <button @click="auditDrawer = false">✕</button>
         </div>
         <div class="audit-form">
           <label class="audit-form__label" for="audit-note">
-            备注{{ auditTarget?.status === "confirmed" ? "（撤销时选填）" : "（驳回必填，确认选填）" }}
+            备注{{
+              auditTarget?.status === "confirmed"
+                ? "（撤销时选填）"
+                : "（驳回必填，确认选填）"
+            }}
           </label>
           <textarea
             id="audit-note"
@@ -751,10 +913,6 @@ function gotoPurchase() {
             maxlength="200"
             placeholder="如：数量超出本月预算，请酌减"
           ></textarea>
-          <p class="audit-tip">
-            <span class="audit-tip__icon">i</span>
-            确认即通过审核，采购按订货量向供应商下达；发货按总部仓实库扣减。
-          </p>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="auditDrawer = false">取消</button>
@@ -787,14 +945,19 @@ function gotoPurchase() {
     </div>
 
     <!-- 我的订货单（校区） -->
-    <div v-if="orderDrawer" class="drawer-mask" @click.self="orderDrawer = false">
+    <div
+      v-if="orderDrawer"
+      class="drawer-mask"
+      @click.self="orderDrawer = false"
+    >
       <div class="drawer order-editor-drawer">
         <div class="drawer-head">
           <div>
             <p class="eyebrow">MY ORDER</p>
             <h2>{{ orderBatch?.name }}</h2>
             <p v-if="orderBatch" class="detail-window">
-              {{ fmtDateTime(orderBatch.startAt) }} ~ {{ fmtDateTime(orderBatch.endAt) }}
+              {{ fmtDateTime(orderBatch.startAt) }} ~
+              {{ fmtDateTime(orderBatch.endAt) }}
             </p>
           </div>
           <button @click="orderDrawer = false">✕</button>
@@ -838,7 +1001,8 @@ function gotoPurchase() {
             <p class="eyebrow">PURCHASE ORDER</p>
             <h2>生成采购单</h2>
             <p class="detail-window">
-              {{ detail?.name }} · 已确认订货单按商品聚合；单价默认进货价，可逐行改
+              {{ detail?.name }} ·
+              已确认订货单按商品聚合；单价默认进货价，可逐行改
             </p>
           </div>
           <button @click="poDrawer = false">✕</button>
@@ -857,12 +1021,21 @@ function gotoPurchase() {
           <div v-for="l in poLines" :key="l.productId" class="po-line">
             <span class="po-line-name">{{ l.name }}</span>
             <span class="po-line-cases">{{ l.cases }}</span>
-            <input v-model.number="l.unitCost" type="number" min="0" step="0.01" />
+            <input
+              v-model.number="l.unitCost"
+              type="number"
+              min="0"
+              step="0.01"
+            />
           </div>
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="poDrawer = false">取消</button>
-          <button class="btn primary" :disabled="poSaving" @click="submitPurchaseOrder">
+          <button
+            class="btn primary"
+            :disabled="poSaving"
+            @click="submitPurchaseOrder"
+          >
             {{ poSaving ? "生成中…" : "生成采购单" }}
           </button>
         </div>
@@ -878,27 +1051,31 @@ function gotoPurchase() {
             <h2>确认发货</h2>
             <p v-if="shipTarget" class="detail-window">
               {{ shipTarget.campusShortName || shipTarget.campusName }} ·
-              {{ shipTarget.batchName }} · 共 {{ shipTarget.totalCases ?? 0 }} 件
-              (折算 {{ shipTarget.totalUnits ?? 0 }})
+              {{ shipTarget.batchName }} · 共
+              {{ shipTarget.totalCases ?? 0 }} 件 (折算
+              {{ shipTarget.totalUnits ?? 0 }})
             </p>
           </div>
           <button @click="shipDrawer = false">✕</button>
         </div>
-        <p class="ship-tip">
-          整单一次发出（不拆包分批）：确认后总部仓库存由锁定转实扣，发货后订货单不可撤销；
-          校区确认到货后库存才入账。
-        </p>
         <div class="ship-line ship-line-head">
           <span>商品</span><span>件数</span><span>折算</span>
         </div>
         <div v-for="l in shipLines" :key="l.productId" class="ship-line">
           <span class="ship-name">{{ l.product?.name }}</span>
           <span>{{ caseText(l.cases, l.unitsPerCase) }}</span>
-          <span>{{ l.cases * l.unitsPerCase }} {{ l.product?.retailUnit || "个" }}</span>
+          <span
+            >{{ l.cases * l.unitsPerCase }}
+            {{ l.product?.retailUnit || "个" }}</span
+          >
         </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="shipDrawer = false">取消</button>
-          <button class="btn primary" :disabled="shipSaving" @click="submitShip">
+          <button
+            class="btn primary"
+            :disabled="shipSaving"
+            @click="submitShip"
+          >
             {{ shipSaving ? "发货中…" : "确认发货" }}
           </button>
         </div>
@@ -906,14 +1083,19 @@ function gotoPurchase() {
     </div>
 
     <!-- 发货单详情（IKFOQ2：行快照价+发货/收货信息+全链路跳转） -->
-    <div v-if="shipmentDrawer" class="drawer-mask" @click.self="shipmentDrawer = false">
+    <div
+      v-if="shipmentDrawer"
+      class="drawer-mask"
+      @click.self="shipmentDrawer = false"
+    >
       <div class="drawer ship-drawer">
         <div class="drawer-head">
           <div>
             <p class="eyebrow">SHIPMENT DETAIL</p>
             <h2>发货单</h2>
             <p v-if="shipment" class="detail-window">
-              {{ shipment.campusShortName || shipment.campusName }} · {{ shipment.batchName }}
+              {{ shipment.campusShortName || shipment.campusName }} ·
+              {{ shipment.batchName }}
               <span
                 class="status"
                 :class="shipment.receivedAt ? 'success' : 'info'"
@@ -929,13 +1111,24 @@ function gotoPurchase() {
           <p class="ship-meta">
             发货：{{ shipment.shippedByName || "—" }} ·
             {{ fmtDateTime(shipment.shippedAt) }}<br />
-            到货：{{ shipment.receivedAt ? `${shipment.receivedByName || "—"} · ${fmtDateTime(shipment.receivedAt)}` : "待校区确认" }}
-            <template v-if="shipment.note"><br />备注：{{ shipment.note }}</template>
+            到货：{{
+              shipment.receivedAt
+                ? `${shipment.receivedByName || "—"} · ${fmtDateTime(shipment.receivedAt)}`
+                : "待校区确认"
+            }}
+            <template v-if="shipment.note"
+              ><br />备注：{{ shipment.note }}</template
+            >
           </p>
           <div class="ship-line ship-line-head">
-            <span>商品</span><span>件数</span><span>进货价快照</span><span>批发价快照</span>
+            <span>商品</span><span>件数</span><span>进货价快照</span
+            ><span>批发价快照</span>
           </div>
-          <div v-for="l in shipment.items" :key="l.productId" class="ship-line ship-line-4col">
+          <div
+            v-for="l in shipment.items"
+            :key="l.productId"
+            class="ship-line ship-line-4col"
+          >
             <span class="ship-name">{{ l.name }}</span>
             <span>{{ caseText(l.cases, l.unitsPerCase) }}</span>
             <span>¥{{ fenToYuan(l.costPerCase) }}/件</span>
@@ -958,15 +1151,19 @@ function gotoPurchase() {
               </strong>
             </div>
           </div>
-          <p class="ship-tip">
-            快照价为总部账毛利（毛利②）数据源：进货价取本批次采购实际成交价
-            （按听报价换算每件价，无采购单回退商品档案进货价），批发价为发货时实时价。
-          </p>
         </template>
         <div class="drawer-actions">
-          <button class="btn ghost" @click="shipmentDrawer = false">关闭</button>
-          <button v-if="shipment" class="btn ghost" @click="gotoBatch">查看本批次</button>
-          <button v-if="shipment && canSee('purchase')" class="btn ghost" @click="gotoPurchase">
+          <button class="btn ghost" @click="shipmentDrawer = false">
+            关闭
+          </button>
+          <button v-if="shipment" class="btn ghost" @click="gotoBatch">
+            查看本批次
+          </button>
+          <button
+            v-if="shipment && canSee('purchase')"
+            class="btn ghost"
+            @click="gotoPurchase"
+          >
             去采购管理
           </button>
         </div>
@@ -1216,7 +1413,9 @@ function gotoPurchase() {
   resize: vertical;
   min-height: 76px;
   outline: 0;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .audit-form textarea:focus {
   border-color: var(--brand, #159c55);
@@ -1253,22 +1452,6 @@ function gotoPurchase() {
   font-weight: 700;
 }
 /* 订货单编辑器 */
-.reject-banner {
-  margin-top: 14px;
-  font-size: 12px;
-  color: #b33a3a;
-  background: #fdeeee;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-.confirm-banner {
-  margin-top: 14px;
-  font-size: 12px;
-  color: #087641;
-  background: #e5f6eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
 .order-total {
   margin-top: 12px;
   font-size: 13px;
