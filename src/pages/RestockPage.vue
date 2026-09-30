@@ -773,6 +773,21 @@ function gotoPurchase() {
           </div>
           <button @click="detailDrawer = false">✕</button>
         </div>
+        <!-- 骨架屏：批次详情加载中（毛利盒/商品范围/订货单三段占位） -->
+        <template v-if="!detail">
+          <div class="detail-section skeleton-box">
+            <div class="row-skeleton" style="height: 22px; width: 60%"></div>
+          </div>
+          <div class="detail-section skeleton-box">
+            <div class="row-skeleton" style="height: 16px; width: 30%"></div>
+            <div class="row-skeleton" style="height: 16px; width: 80%"></div>
+            <div class="row-skeleton" style="height: 16px; width: 70%"></div>
+          </div>
+          <div class="detail-section skeleton-box">
+            <div class="row-skeleton" style="height: 16px; width: 25%"></div>
+            <div class="row-skeleton" style="height: 120px"></div>
+          </div>
+        </template>
         <template v-if="detail">
           <!-- IKFOQ1 毛利预估（IQ8）：批发价合计 − 全部采购单已收金额 -->
           <div class="detail-section margin-box">
@@ -1480,5 +1495,9 @@ textarea:focus {
   font-size: 11px;
   color: #7b8981;
   margin-top: 2px;
+}
+.skeleton-box {
+  display: grid;
+  gap: 10px;
 }
 </style>
