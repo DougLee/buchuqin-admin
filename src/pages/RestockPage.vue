@@ -806,7 +806,7 @@ async function confirmReceipt() {
             :disabled="auditBusy"
             @click="audit('confirm')"
           >
-            确认并锁库存
+            确认审核
           </button>
           <button
             v-if="auditTarget?.status === 'confirmed'"
