@@ -29,6 +29,9 @@ export interface ListQuery extends PageQuery {
   deliveryMode?: string;
   /** 角色筛选（IKD6FG：履约人员列表）。 */
   role?: string;
+  /** 创建时间起止（IKJ9XQ 对账：订单列表，YYYY-MM-DD，北京时间日界）。 */
+  start?: string;
+  end?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */

@@ -2473,6 +2473,9 @@ const campusFilter = ref("");
 const categoryFilter = ref("");
 const staffRoleFilter = ref("");
 const orderDeliveryFilter = ref("");
+/** IKJ9XQ 对账：订单创建时间范围（YYYY-MM-DD，北京时间日界） */
+const orderDateStart = ref("");
+const orderDateEnd = ref("");
 /* IKD6FG 反馈：分类筛选升级可搜索下拉（原生 select 无搜索能力）。
    blur 关菜单 + mousedown.prevent 选中，避免失焦先于点击的经典时序问题 */
 const categorySearchOpen = ref(false);
@@ -2523,7 +2526,9 @@ watch(campusFilter, () => {
   if (isMktMapTab.value) void loadMarketingMap();
 });
 /* IKD6FG：分类/角色/配送方式筛选变化即回第 1 页重载 */
-watch([categoryFilter, staffRoleFilter, orderDeliveryFilter], () =>
+watch(
+  [categoryFilter, staffRoleFilter, orderDeliveryFilter, orderDateStart, orderDateEnd],
+  () =>
   resetAndLoad(),
 );
 async function ensureCampusOptions() {
@@ -2907,6 +2912,9 @@ const configs: Record<string, SectionConfig> = {
             ...query,
             // IKD6FG：配送方式筛选
             deliveryMode: orderDeliveryFilter.value || undefined,
+            // IKJ9XQ 对账：创建时间范围
+            start: orderDateStart.value || undefined,
+            end: orderDateEnd.value || undefined,
           }),
         )
         .then((res) => ({
@@ -2948,6 +2956,12 @@ const configs: Record<string, SectionConfig> = {
               // IKBW0C：时效固定文案（立即配送/2小时送达），与履约端列表口径一致
               slaText:
                 o.deliveryMode === "instant" ? "立即配送" : "2小时送达",
+              // IKJ9XQ 对账：校区列（平台跨校区导出分账用）
+              campusText:
+                (o as Order & { campus?: { shortName?: string; name?: string } | null })
+                  .campus?.shortName ||
+                (o as Order & { campus?: { name?: string } | null }).campus?.name ||
+                "—",
             };
           }),
         }));
@@ -2959,10 +2973,14 @@ const configs: Record<string, SectionConfig> = {
       ["itemsText", "商品"],
       ["userText", "用户"],
       ["contactText", "收货人"],
+      ["campusText", "校区"],
       ["statusText", "当前状态"],
-      ["payableAmount", "实付金额"],
-      // IKJ92S：配送费详情专用列（cols() 过滤不进列表，详情字段卡展示）
+      // IKJ9XQ 对账四要素：商品金额/优惠/配送费/实付（配送费详情专用列，
+      // cols() 过滤不进列表但 CSV 导出含——对账 Excel 全字段）
+      ["productAmount", "商品金额"],
+      ["discount", "优惠"],
       ["deliveryFee", "配送费"],
+      ["payableAmount", "实付金额"],
       // IKFTZ9：综合毛利列（实付−配送费−成本，口径同详情合计；缺成本显示 —）
       ["marginTotal", "综合毛利"],
       // IKBW0C：时效列改固定文案（slaText 由 loader 按 deliveryMode 派生）
@@ -5494,6 +5512,24 @@ async function cancelInviteRow(row: AdminRow) {
         <option value="instant">即时达</option>
         <option value="scheduled">预约达</option>
       </select>
+      <!-- IKJ9XQ 对账：订单创建时间范围（北京时间日界，导出同步生效） -->
+      <template v-if="section === 'orders'">
+        <input
+          v-model="orderDateStart"
+          type="date"
+          class="filter-btn"
+          aria-label="下单日期起"
+          title="下单日期起"
+        />
+        <span class="report-sep">~</span>
+        <input
+          v-model="orderDateEnd"
+          type="date"
+          class="filter-btn"
+          aria-label="下单日期止"
+          title="下单日期止"
+        />
+      </template>
       <!-- IKAJSL → IKCHEW：平台视角的校区筛选（admin 同 hq；订单/用户/审计；
            IKD6FJ/IKD6FI：采购申请与营销地图同样支持跨校区）。
            全量断链审计（2026-09-05）：收敛到真正消费 campus 的视图——
