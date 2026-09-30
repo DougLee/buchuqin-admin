@@ -215,7 +215,6 @@ interface FormMeta {
   save: (data: Record<string, FormValue>) => Promise<void>;
 }
 const formOpen = ref(false),
-  formError = ref(""),
   formSaving = ref(false),
   formData = ref<Record<string, FormValue>>({}),
   formMeta = ref<FormMeta>();
@@ -250,7 +249,6 @@ function fieldInputType(field: FieldDef): string {
 async function submitForm() {
   const meta = formMeta.value;
   if (!meta) return;
-  formError.value = "";
   formSaving.value = true;
   try {
     await meta.save({ ...formData.value });
@@ -258,7 +256,8 @@ async function submitForm() {
     formOpen.value = false;
     await load();
   } catch (error) {
-    formError.value = error instanceof Error ? error.message : "保存失败";
+    // IKJ9NZ：失败提醒走 toast（表单保持打开供修正），不再内嵌提示条
+    notify(error instanceof Error ? error.message : "保存失败", true);
   } finally {
     formSaving.value = false;
   }
@@ -4170,7 +4169,8 @@ function rowKey(row: AdminRow): string {
 function notify(text: string, isError = false) {
   message.value = text;
   messageError.value = isError;
-  setTimeout(() => (message.value = ""), 2600);
+  // IKJ9NZ：错误停留 4.2s（长文案如「该楼栋已有在职楼长」要读得完）
+  setTimeout(() => (message.value = ""), isError ? 4200 : 2600);
 }
 function openDetail(row: AdminRow) {
   confirmDelete.value = false;
@@ -7276,7 +7276,6 @@ async function cancelInviteRow(row: AdminRow) {
             >
           </template>
         </div>
-        <p v-if="formError" class="form-hint">{{ formError }}</p>
         <div class="drawer-actions">
           <button class="btn ghost" @click="formOpen = false">取消</button
           ><button class="btn primary" :disabled="formSaving" @click="submitForm">
