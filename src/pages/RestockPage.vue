@@ -15,7 +15,7 @@ import { fenToYuan } from "../utils/money";
 import { fmtDateTime } from "../utils/datetime";
 
 /**
- * 订货管理（IKFOQ0，2026-09-15 grilling 定版）：
+ * 订货单（IKFOQ0，2026-09-15 grilling 定版）：
  * - 独立一级菜单（道哥拍板不塞仓储中心），交互重于通用表格故独立成页
  * - 总部视角：批次管理（建/改/关窗）+ 全校区订货单审核（确认/驳回/撤销，IKJC1R 不锁库存）
  * - 校区视角：批次列表 + 我的订货单按件编辑（N 件(×N 听) 换算）
@@ -378,7 +378,7 @@ function gotoPurchase() {
          header 标签会误命中变白卡（IKFOQ0 样式不一致根因） -->
     <div class="page-head">
       <div>
-        <h1>订货管理</h1>
+        <h1>订货单</h1>
         <p>
           {{
             isHqScope

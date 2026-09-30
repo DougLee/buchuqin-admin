@@ -211,7 +211,7 @@ async function refreshDetail() {
             <template v-else>
               <tr v-if="!myOrders.length">
                 <td :colspan="7" class="empty-cell">
-                  还没有订货单。到「订货管理」选开放批次填写提交。
+                  还没有订货单。到「订货单」选开放批次填写提交。
                 </td>
               </tr>
               <tr v-for="o in myOrders" :key="o.id">
@@ -272,7 +272,7 @@ async function refreshDetail() {
             <template v-else>
               <tr v-if="!orders.length">
                 <td :colspan="9" class="empty-cell">
-                  还没有采购单。到「订货管理」打开批次详情，一键聚合生成。
+                  还没有采购单。到「订货单」打开批次详情，一键聚合生成。
                 </td>
               </tr>
               <tr v-for="row in orders" :key="row.id">
