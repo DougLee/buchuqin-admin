@@ -977,6 +977,13 @@ function gotoPurchase() {
           </div>
           <button @click="orderDrawer = false">✕</button>
         </div>
+        <!-- 骨架屏：批次商品清单加载中 -->
+        <template v-if="!orderDetail">
+          <div class="detail-section skeleton-box">
+            <div class="row-skeleton" style="height: 36px; width: 40%"></div>
+            <div class="row-skeleton" style="height: 240px"></div>
+          </div>
+        </template>
         <template v-if="orderDetail">
           <!-- IKGQ6Q 组件化：筛选+列表内聚进 ProductPickerField（多选填件数），
                已填件数账本 lineCases 仍在本页（合计条继续吃它） -->
