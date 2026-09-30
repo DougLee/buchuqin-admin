@@ -221,7 +221,6 @@ const formOpen = ref(false),
 function openForm(meta: FormMeta, initial: Record<string, FormValue>) {
   formMeta.value = meta;
   formData.value = { ...initial };
-  formError.value = "";
   formOpen.value = true;
 }
 /** 条件字段过滤（IK9U3Y）：visible 不满足的字段不渲染也不参与提交。 */
