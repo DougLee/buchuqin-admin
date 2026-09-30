@@ -19,7 +19,7 @@ import { fmtDateTime } from "../utils/datetime";
 /**
  * 订货管理（IKFOQ0，2026-09-15 grilling 定版）：
  * - 独立一级菜单（道哥拍板不塞仓储中心），交互重于通用表格故独立成页
- * - 总部视角：批次管理（建/改/关窗）+ 全校区订货单审核（确认锁库存/驳回/撤销）
+ * - 总部视角：批次管理（建/改/关窗）+ 全校区订货单审核（确认/驳回/撤销，IKJC1R 不锁库存）
  * - 校区视角：批次列表 + 我的订货单按件编辑（N 件(×N 听) 换算）
  * - 权限两分法与后端一致：isHqScope 管批次审单，operations/warehouse 订货
  * - RBAC V1（2026-09-19）：isHqScope→isPlatform（服务端上下文）；
@@ -351,7 +351,7 @@ function gotoPurchase() {
         <p>
           {{
             isHqScope
-              ? "开放订货批次，审核校区订货单；确认即锁定总部仓库存，发货转扣。"
+              ? "开放订货批次，审核校区订货单；按订货量生成采购单补货。"
               : "批次窗口内按件填写订货单，提交总部审核；驳回可改后重提。"
           }}
         </p>
@@ -753,7 +753,7 @@ function gotoPurchase() {
           ></textarea>
           <p class="audit-tip">
             <span class="audit-tip__icon">i</span>
-            确认后即锁定总部仓库存，发货时转为实扣；撤销确认会自动释放锁定。
+            确认即通过审核，采购按订货量向供应商下达；发货按总部仓实库扣减。
           </p>
         </div>
         <div class="drawer-actions">

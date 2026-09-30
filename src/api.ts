@@ -546,7 +546,7 @@ export const api = {
     ),
   restockOrderDetail: (id: string) =>
     request<RestockOrder>(`/admin/restock/orders/${id}`),
-  /** 总部审核：confirm 锁总部仓库存（不足阻断），reject 驳回，revoke 撤销放锁。 */
+  /** 总部审核（IKJC1R：不锁库存）：confirm/reject/revoke（撤销回待审核）。 */
   auditRestockOrder: (
     id: string,
     action: "confirm" | "reject" | "revoke",
