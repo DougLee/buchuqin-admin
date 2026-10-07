@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
-import { hasPerm } from "../session";
+import { hasPerm, isPlatform } from "../session";
 import type { RefundApplication } from "../types";
 import { fenToYuan } from "../utils/money";
 
@@ -33,6 +33,9 @@ const pageSize = 20;
 const loading = ref(false);
 const pendingCount = ref(0);
 const toast = ref("");
+/** IKJCJF：校区筛选（平台账号跨校区查退款） */
+const campusFilter = ref("");
+const campusOptions = ref<{ id: string; name: string; shortName: string }[]>([]);
 
 const canAudit = computed(() =>
   hasPerm("POST /admin/refunds/:id/audit"),
@@ -47,6 +50,7 @@ async function load(append = false) {
         page: page.value,
         pageSize,
         keyword: keyword.value.trim() || undefined,
+        campusId: isPlatform.value ? campusFilter.value || undefined : undefined,
       },
       tab.value,
       source.value === "all" ? undefined : source.value,
@@ -244,6 +248,13 @@ async function submitCreate() {
 }
 
 onMounted(() => {
+  // 校区筛选字典（平台账号跨校区查退款，IKJCJF）
+  if (isPlatform.value) {
+    api
+      .adminCampuses("filter")
+      .then((list) => (campusOptions.value = list))
+      .catch(() => {});
+  }
   void load();
   void loadPendingCount();
 });
@@ -286,6 +297,18 @@ onMounted(() => {
         </button>
       </div>
       <div class="as-filters">
+        <select
+          v-if="isPlatform"
+          v-model="campusFilter"
+          class="as-select"
+          aria-label="校区筛选"
+          @change="search"
+        >
+          <option value="">全校区</option>
+          <option v-for="c in campusOptions" :key="c.id" :value="c.id">
+            {{ c.shortName || c.name }}
+          </option>
+        </select>
         <select v-model="source" class="as-select" @change="switchSource">
           <option value="all">全部来源</option>
           <option value="pre-delivery">未发货</option>
@@ -307,6 +330,7 @@ onMounted(() => {
         <thead>
           <tr>
             <th>订单号</th>
+            <th>校区</th>
             <th>用户</th>
             <th>来源</th>
             <th>原因</th>
@@ -318,10 +342,10 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="loading && !rows.length">
-            <td colspan="8" class="as-empty">加载中…</td>
+            <td colspan="9" class="as-empty">加载中…</td>
           </tr>
           <tr v-else-if="!rows.length">
-            <td colspan="8" class="as-empty">暂无申请</td>
+            <td colspan="9" class="as-empty">暂无申请</td>
           </tr>
           <tr
             v-for="row in rows"
@@ -330,6 +354,7 @@ onMounted(() => {
             @click="openDetail(row)"
           >
             <td class="mono">{{ row.orderNo }}</td>
+            <td>{{ row.campusShortName || row.campusName || "—" }}</td>
             <td>{{ row.userName || row.userPhone || "用户" }}</td>
             <td>
               <span class="as-src" :class="row.source">{{ REFUND_SOURCE_TEXT[row.source] ?? row.source }}</span>

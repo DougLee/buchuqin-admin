@@ -3624,6 +3624,8 @@ const campusFilterVisible = computed(() => {
   if (!canSwitchCampus.value) return false;
   if (["orders", "users", "audit", "recruit"].includes(section.value))
     return true;
+  // IKJCJF：商品类别按校区隔离（平台切校区管理各校区类别）
+  if (section.value === "categories") return true;
   // IKFOPY：库存板块全视图（总览/流水/采购申请）校区可筛选——聚焦总部仓复用仓储页
   if (section.value === "inventory") return true;
   if (section.value === "marketing") return mktTab.value === "map";

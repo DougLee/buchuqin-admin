@@ -579,6 +579,9 @@ export interface RefundApplication {
   orderId: string;
   orderNo: string;
   campusId: string;
+  /** IKJ9XQ 对账配套：校区展示名 */
+  campusName?: string;
+  campusShortName?: string;
   orderStatus: string;
   userName: string;
   userPhone: string;
