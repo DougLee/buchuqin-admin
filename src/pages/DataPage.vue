@@ -34,6 +34,7 @@ import {
   STATUS_TEXT,
   TXN_TYPE_TEXT,
   WHEEL_TYPE_LABEL,
+  fetchOperationalCampuses,
 } from "../dicts";
 import type { StatusTab } from "../dicts";
 import IdCardImagesField from "../components/IdCardImagesField.vue";
@@ -2532,9 +2533,8 @@ watch(
   resetAndLoad(),
 );
 async function ensureCampusOptions() {
-  if (!campusOptionsData.value.length)
-    campusOptionsData.value = await api.adminCampuses("filter");
-  return campusOptionsData.value;
+  // IKJCJF：校区下拉统一字典（运营口径，排除总部仓）
+  campusOptionsData.value = (await fetchOperationalCampuses()) as unknown as typeof campusOptionsData.value;
 }
 /** IKJA7Y：可页内切换校区 = 平台账号 或 多校区授权（switchableCampuses 即授权集） */
 const canSwitchCampus = computed(
@@ -3713,6 +3713,8 @@ async function load() {
       "recruit",
       // 校区商品跨校区管理（道哥 2026-09-22）：同样需要校区下拉选项
       "products",
+      // IKJCJF：商品类别按校区隔离，进板块时备好校区下拉
+      "categories",
     ].includes(section.value)
   )
     void ensureCampusOptions().catch(() => {});

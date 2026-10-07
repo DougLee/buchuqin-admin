@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { fenToYuan } from "../utils/money";
 import { isPlatform } from "../session";
+import { fetchOperationalCampuses, type CampusOption } from "../dicts";
 // 寝室三色字典见 src/dicts/misc（BATTLE_ROOM_STATUS_TEXT，IKIYMM 集中化）
 import { BATTLE_ROOM_STATUS_TEXT } from "../dicts";
 
@@ -29,7 +30,7 @@ const map = ref<BattleMapBuilding | null>(null);
 const floorNo = ref<number | null>(null);
 
 const CAMPUS_KEY = "battle-campus";
-const campuses = ref<Campus[]>([]);
+const campuses = ref<CampusOption[]>([]);
 const campusId = ref("");
 
 /** 平台账号可选校区：排除总部仓（type=hq 无楼栋无寝室，选了必空） */
@@ -116,7 +117,7 @@ onMounted(async () => {
   try {
     // 平台账号：页内选校区（IKISDN），恢复上次选择、缺省第一个校区
     if (isPlatform.value) {
-      campuses.value = await api.campuses();
+      campuses.value = await fetchOperationalCampuses();
       const saved = localStorage.getItem(CAMPUS_KEY) ?? "";
       campusId.value =
         campusOptions.value.find((c) => c.id === saved)?.id ??

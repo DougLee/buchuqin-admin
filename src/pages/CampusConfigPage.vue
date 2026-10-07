@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import { hasPerm, hasPlatformPerm, sessionUser, switchableCampuses } from "../session";
+import { fetchOrgCampuses } from "../dicts";
 import DataPage from "./DataPage.vue";
 import type {
   CampusConfigBundle,
@@ -84,7 +85,7 @@ async function load() {
 onMounted(async () => {
   if (isPlatform.value) {
     try {
-      campusOptions.value = await api.adminCampuses("filter");
+      campusOptions.value = await fetchOrgCampuses();
       selectedCampus.value = campusOptions.value.find(c => c.id === sessionUser.value?.campusId)?.id
         ?? campusOptions.value[0]?.id ?? "";
     } catch {

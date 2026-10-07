@@ -56,7 +56,7 @@ export interface RbacMe {
 
 /** 旧角色标签（账号列表/审计展示兜底）——字典见 src/dicts/staff（IKIYMM 搬入），
  *  此处转出口保持既有 import 路径兼容。 */
-import { ROLE_LABELS } from "./dicts";
+import { ROLE_LABELS, clearCampusCache } from "./dicts";
 export { ROLE_LABELS };
 
 /**
@@ -267,6 +267,7 @@ export function applyRbac(me: RbacMe) {
   rbacRoles.value = me.roles ?? [];
   switchableCampuses.value = me.switchableCampuses ?? [];
   activeCampus.value = "";
+  clearCampusCache();
   rbacVersion.value = me.rbacVersion ?? 0;
   rbacLoaded.value = true;
   try {
@@ -315,6 +316,7 @@ export function clearSession() {
   rbacRoles.value = [];
   switchableCampuses.value = [];
   activeCampus.value = "";
+  clearCampusCache();
   rbacLoaded.value = false;
   ["adminToken", "adminUser", "adminRbac"].forEach((key) =>
     localStorage.removeItem(key),

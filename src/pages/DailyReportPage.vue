@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 import type { Campus, HqDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
+import { fetchOperationalCampuses, type CampusOption } from "../dicts";
 
 /**
  * 总部经营日报（IKFOPR，2026-09-15 grilling 定版）：
@@ -13,7 +14,7 @@ import { fenToYuan } from "../utils/money";
 const loading = ref(true);
 const error = ref("");
 const report = ref<Awaited<ReturnType<typeof api.hqDailyReport>> | null>(null);
-const campuses = ref<Campus[]>([]);
+const campuses = ref<CampusOption[]>([]);
 
 function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -50,9 +51,7 @@ onMounted(async () => {
   load();
   try {
     // 校区筛选下拉：排除总部仓伪校区（type=hq）与官方库（status=official）
-    campuses.value = (await api.campuses()).filter(
-      (c) => c.type !== "hq" && c.status !== "official" && c.status !== "hidden",
-    );
+    campuses.value = await fetchOperationalCampuses();
   } catch {
     /* 下拉加载失败不阻断日报 */
   }

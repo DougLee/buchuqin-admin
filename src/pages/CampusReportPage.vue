@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
-import type { Building, Campus, CampusDailyRow } from "../types";
+import type { Building, CampusDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
 import { canSee, isPlatform, sessionUser } from "../session";
+import { fetchOperationalCampuses, type CampusOption } from "../dicts";
 
 /**
  * 校区经营日报（IKFOPS，2026-09-16 grilling 定版）：
@@ -14,7 +15,7 @@ import { canSee, isPlatform, sessionUser } from "../session";
 const loading = ref(true);
 const error = ref("");
 const report = ref<Awaited<ReturnType<typeof api.campusDailyReport>> | null>(null);
-const campuses = ref<Campus[]>([]);
+const campuses = ref<CampusOption[]>([]);
 const buildings = ref<Building[]>([]);
 
 /* 数据范围与后端 isHqScope 同口径：平台上下文跨校区，其余锁本校区
@@ -64,9 +65,7 @@ onMounted(async () => {
   try {
     if (isHqScope.value) {
       // 校区筛选下拉：排除总部仓伪校区（type=hq）与官方库（status=official）
-      campuses.value = (await api.campuses()).filter(
-        (c) => c.type !== "hq" && c.status !== "official" && c.status !== "hidden",
-      );
+      campuses.value = await fetchOperationalCampuses();
     } else if (sessionUser.value?.campusId) {
       // 楼栋筛选下拉（校区角色）：数据源=本校区楼栋
       const list = await api.buildings({

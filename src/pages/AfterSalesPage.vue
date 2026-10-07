@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 import { hasPerm, isPlatform } from "../session";
+import { fetchOperationalCampuses } from "../dicts";
 import type { RefundApplication } from "../types";
 import { fenToYuan } from "../utils/money";
 
@@ -35,7 +36,7 @@ const pendingCount = ref(0);
 const toast = ref("");
 /** IKJCJF：校区筛选（平台账号跨校区查退款） */
 const campusFilter = ref("");
-const campusOptions = ref<{ id: string; name: string; shortName: string }[]>([]);
+const campusOptions = ref<Awaited<ReturnType<typeof fetchOperationalCampuses>>>([]);
 
 const canAudit = computed(() =>
   hasPerm("POST /admin/refunds/:id/audit"),
@@ -250,8 +251,7 @@ async function submitCreate() {
 onMounted(() => {
   // 校区筛选字典（平台账号跨校区查退款，IKJCJF）
   if (isPlatform.value) {
-    api
-      .adminCampuses("filter")
+    fetchOperationalCampuses()
       .then((list) => (campusOptions.value = list))
       .catch(() => {});
   }
