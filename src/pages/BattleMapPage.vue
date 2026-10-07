@@ -33,10 +33,8 @@ const CAMPUS_KEY = "battle-campus";
 const campuses = ref<CampusOption[]>([]);
 const campusId = ref("");
 
-/** 平台账号可选校区：排除总部仓（type=hq 无楼栋无寝室，选了必空） */
-const campusOptions = computed(() =>
-  campuses.value.filter((c) => c.type !== "hq"),
-);
+/** 平台账号可选校区（IKJCJF：fetchOperationalCampuses 已按 id 排除总部仓） */
+const campusOptions = computed(() => campuses.value);
 
 const drawerOpen = ref(false);
 const roomLoading = ref(false);

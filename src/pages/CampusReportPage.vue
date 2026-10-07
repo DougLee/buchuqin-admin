@@ -64,7 +64,7 @@ onMounted(async () => {
   load();
   try {
     if (isHqScope.value) {
-      // 校区筛选下拉：排除总部仓伪校区（type=hq）与官方库（status=official）
+      // 校区筛选下拉：运营口径（fetchOperationalCampuses 按 id 排除总部仓，active 白名单排除官方库/停用）
       campuses.value = await fetchOperationalCampuses();
     } else if (sessionUser.value?.campusId) {
       // 楼栋筛选下拉（校区角色）：数据源=本校区楼栋

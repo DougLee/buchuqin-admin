@@ -50,7 +50,7 @@ async function load() {
 onMounted(async () => {
   load();
   try {
-    // 校区筛选下拉：排除总部仓伪校区（type=hq）与官方库（status=official）
+    // 校区筛选下拉：运营口径（fetchOperationalCampuses 按 id 排除总部仓，active 白名单排除官方库/停用）
     campuses.value = await fetchOperationalCampuses();
   } catch {
     /* 下拉加载失败不阻断日报 */
