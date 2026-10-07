@@ -8,6 +8,9 @@
 import { ref } from "vue";
 import { api } from "../api";
 
+/** 总部仓固定 id（后端 common/campus 同值；adminCampuses 不回 type 字段，按 id 排除） */
+export const HQ_CAMPUS_ID = "campus-hq";
+
 export interface CampusOption {
   id: string;
   name: string;
@@ -29,7 +32,7 @@ export async function fetchOrgCampuses(force = false): Promise<CampusOption[]> {
 export async function fetchOperationalCampuses(
   force = false,
 ): Promise<CampusOption[]> {
-  return (await fetchOrgCampuses(force)).filter((c) => c.type !== "hq");
+  return (await fetchOrgCampuses(force)).filter((c) => c.id !== HQ_CAMPUS_ID);
 }
 
 /** 账号切换/登出清缓存（session 调用）。 */
