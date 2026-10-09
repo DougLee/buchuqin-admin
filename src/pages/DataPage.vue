@@ -880,6 +880,21 @@ function openCouponCreate() {
           label: "支付后推荐（支付成功页展示，用户可一键领取）",
           type: "checkbox",
         },
+        // IKKEWS：每人限领张数（默认 1）
+        {
+          key: "perUserLimit",
+          label: "每人限领张数（同券同用户可持有张数，默认 1）",
+          type: "number",
+          min: 1,
+          visible: (d) => d.kind !== "partner",
+        },
+        // IKKEWS：定向券（领券中心不显示，仅定向发放触达）
+        {
+          key: "targetedOnly",
+          label: "定向券（领券中心不显示，仅通过定向发放触达用户）",
+          type: "checkbox",
+          visible: (d) => d.kind !== "partner" && d.trigger === "manual",
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
@@ -909,6 +924,9 @@ function openCouponCreate() {
           trigger: (d.trigger as "manual" | "lottery" | "signup") || "manual",
           remark: String(d.remark || "").trim(),
           featuredAfterPay: !!d.featuredAfterPay,
+          // IKKEWS：每人限领与定向券
+          perUserLimit: Math.max(1, Number(d.perUserLimit) || 1),
+          targetedOnly: !!d.targetedOnly,
         });
       },
     },
@@ -916,6 +934,8 @@ function openCouponCreate() {
       kind: "platform",
       trigger: "manual",
       featuredAfterPay: false,
+      perUserLimit: 1,
+      targetedOnly: false,
       name: "",
       amount: 5,
       threshold: 20,
@@ -1034,11 +1054,28 @@ function openCouponEdit(c: Coupon) {
           label: "支付后推荐（支付成功页展示，用户可一键领取）",
           type: "checkbox",
         },
+        // IKKEWS：每人限领张数（默认 1）
+        {
+          key: "perUserLimit",
+          label: "每人限领张数（同券同用户可持有张数，默认 1）",
+          type: "number",
+          min: 1,
+          visible: (d) => d.kind !== "partner",
+        },
+        // IKKEWS：定向券（领券中心不显示，仅定向发放触达）
+        {
+          key: "targetedOnly",
+          label: "定向券（领券中心不显示，仅通过定向发放触达用户）",
+          type: "checkbox",
+          visible: (d) => d.kind !== "partner" && d.trigger === "manual",
+        },
       ],
       save: async (d) => {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
         await api.updateCoupon(c.id, {
           featuredAfterPay: !!d.featuredAfterPay,
+          perUserLimit: Math.max(1, Number(d.perUserLimit) || 1),
+          targetedOnly: !!d.targetedOnly,
           name: String(d.name).trim(),
           remark: String(d.remark || "").trim(),
           ...(c.kind === "platform" && !locked
@@ -1091,6 +1128,7 @@ async function toggleCoupon() {
 /* 定向发放抽屉 */
 const issueOpen = ref(false),
   issueCouponRow = ref<Coupon>(),
+  issueCountInput = ref(""),
   users = ref<AdminUser[]>([]),
   usersLoading = ref(false),
   usersError = ref(""),
@@ -7927,6 +7965,17 @@ async function cancelInviteRow(row: AdminRow) {
                 />
               </label>
             </template>
+        <!-- IKKEWS：本次发放张数（默认 1，上限=每人限领−已持有，后端校验） -->
+        <label class="manual-ids"
+          >发放张数（每人，选填默认 1）
+          <input
+            v-model="issueCountInput"
+            class="issue-select"
+            type="number"
+            min="1"
+            placeholder="1"
+          />
+        </label>
             <label class="wheel-row__field wheel-row__weight">
               <span>权重（0 = 永不命中）</span>
               <input

@@ -943,6 +943,10 @@ export const api = {
     remark?: string;
     /** 支付后推荐（支付成功页领券卡） */
     featuredAfterPay?: boolean;
+    /** 每人限领张数（IKKEWS，默认 1） */
+    perUserLimit?: number;
+    /** 定向券（领券中心不可见，仅定向发放） */
+    targetedOnly?: boolean;
   }) =>
     request<Coupon>("/admin/coupons", {
       method: "POST",
@@ -963,6 +967,10 @@ export const api = {
       remark: string;
       /** 支付后推荐（支付成功页领券卡） */
       featuredAfterPay?: boolean;
+      /** 每人限领张数（IKKEWS，默认 1） */
+      perUserLimit?: number;
+      /** 定向券（领券中心不可见，仅定向发放） */
+      targetedOnly?: boolean;
       amount: number;
       threshold: number;
       total: number | null;
@@ -988,6 +996,8 @@ export const api = {
       buildingId?: string;
       floor?: number;
       roomNos?: string[];
+      /** IKKEWS：本次给每个命中用户发放的张数（默认 1） */
+      count?: number;
     },
   ) =>
     request<{ issued: number; targets: string[]; couponId: string }>(
