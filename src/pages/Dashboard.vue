@@ -237,6 +237,10 @@ function exportReport() {
             综合毛利
             <strong>¥{{ fenToYuan(hqData.kpis.profit, true) }}</strong>
           </p>
+          <p class="kpi-sub" :title="hqData.caliber.coupon">
+            优惠券消耗
+            <strong>¥{{ fenToYuan(hqData.kpis.coupon, true) }}</strong>
+          </p>
         </article>
         <article class="kpi">
           <p :title="hqData.caliber.orders">今日订单</p>

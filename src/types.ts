@@ -709,6 +709,8 @@ export interface HqDashboardData {
     status: string;
     buildings: number;
     revenue: number;
+    /** 今日优惠券消耗（分）：订单优惠抵扣（IKJ9YP） */
+    coupon: number;
     /** 今日毛利（分）：商品金额 − 行级批发成本快照，未扣券（IKISZ2） */
     margin: number;
     /** 今日综合毛利（分）：实付 − 行级批发成本快照，扣券（口径同校区日报） */
@@ -720,6 +722,8 @@ export interface HqDashboardData {
   kpis: {
     revenue: number;
     margin: number;
+    /** 今日优惠券消耗（分）：订单优惠抵扣合计（IKJ9YP） */
+    coupon: number;
     profit: number;
     orders: number;
     newUsers: number;
