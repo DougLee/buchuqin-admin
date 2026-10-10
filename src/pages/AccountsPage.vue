@@ -9,6 +9,7 @@ import type {
   RbacRole,
 } from "../types";
 import { fmtDateTime } from "../utils/datetime";
+import AdminPagination from "../shared/ui/AdminPagination.vue";
 
 /**
  * 账号管理（RBAC V1，2026-09-19）：
@@ -28,6 +29,13 @@ const toast = ref("");
 const toastError = ref(false);
 /** 删除确认弹窗目标账号（道哥 2026-10-10：弃两击改统一弹窗） */
 const deleteTarget = ref<AdminAccount | null>(null);
+const deleteSaving = ref(false);
+const deleteDialogOpen = computed({
+  get: () => deleteTarget.value !== null,
+  set: (open: boolean) => {
+    if (!open && !deleteSaving.value) deleteTarget.value = null;
+  },
+});
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(msg: string, error = false) {
@@ -110,25 +118,13 @@ function search() {
   page.value = 1;
   void load();
 }
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(total.value / pageSize.value)),
-);
-const pageList = computed<(number | "…")[]>(() => {
-  const pages = totalPages.value;
-  const cur = page.value;
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-  const start = Math.max(2, Math.min(cur - 1, pages - 4));
-  const end = Math.min(pages - 1, Math.max(cur + 1, 5));
-  const list: (number | "…")[] = [1];
-  if (start > 2) list.push("…");
-  for (let p = start; p <= end; p++) list.push(p);
-  if (end < pages - 1) list.push("…");
-  list.push(pages);
-  return list;
-});
-function goto(p: number | "…") {
-  if (p === "…") return;
-  page.value = p;
+function changePage(nextPage: number) {
+  page.value = nextPage;
+  void load();
+}
+function changePageSize(nextPageSize: number) {
+  pageSize.value = nextPageSize;
+  page.value = 1;
   void load();
 }
 
@@ -320,9 +316,22 @@ const previewGroups = computed(() => {
 function removeRow(row: AdminAccount) {
   deleteTarget.value = row;
 }
+/** Element Plus 表格槽位暴露 DefaultRow；运行时校验身份字段后再收窄。 */
+function accountRow(row: unknown): AdminAccount {
+  if (
+    !row ||
+    typeof row !== "object" ||
+    typeof (row as { id?: unknown }).id !== "string" ||
+    typeof (row as { username?: unknown }).username !== "string"
+  ) {
+    throw new TypeError("账号列表返回了无效的行数据");
+  }
+  return row as AdminAccount;
+}
 async function confirmDelete() {
   const row = deleteTarget.value;
   if (!row) return;
+  deleteSaving.value = true;
   try {
     await api.deleteAccount(row.id);
     deleteTarget.value = null;
@@ -331,6 +340,8 @@ async function confirmDelete() {
   } catch (e) {
     deleteTarget.value = null;
     notify(e instanceof Error ? e.message : "删除失败", true);
+  } finally {
+    deleteSaving.value = false;
   }
 }
 </script>
@@ -346,13 +357,9 @@ async function confirmDelete() {
         </p>
       </div>
       <div class="head-actions">
-        <button
-          v-if="isSuper"
-          class="btn primary"
-          @click="openCreate"
-        >
-          ＋ 新建账号
-        </button>
+        <ElButton v-if="isSuper" type="primary" @click="openCreate">
+          新建账号
+        </ElButton>
       </div>
     </div>
 
@@ -362,154 +369,127 @@ async function confirmDelete() {
 
     <div class="data-panel">
       <div class="panel-head toolbar">
-        <div class="filter-search">
-          <span></span
-          ><input
-            v-model.trim="keyword"
-            aria-label="搜索账号"
-            placeholder="搜索账号 / 昵称..."
-            @keyup.enter="search"
-          />
-        </div>
+        <ElInput
+          v-model="keyword"
+          class="account-search"
+          clearable
+          aria-label="搜索账号"
+          placeholder="搜索账号 / 昵称..."
+          @keyup.enter="search"
+          @clear="search"
+        >
+          <template #append>
+            <ElButton @click="search">搜索</ElButton>
+          </template>
+        </ElInput>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>账号</th>
-              <th>昵称</th>
-              <th>角色授权</th>
-              <th>状态</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading">
-              <td colspan="6"><div class="row-skeleton"></div></td>
-            </tr>
-            <tr v-else-if="loadError">
-              <td colspan="6" class="empty-cell">
-                {{ loadError }}
-                <button class="btn mini ghost" @click="load">重试</button>
-              </td>
-            </tr>
-            <tr v-else-if="!rows.length">
-              <td colspan="6" class="empty-cell">暂无账号</td>
-            </tr>
-            <tr v-for="row in rows" v-else :key="row.id">
-              <td><strong>{{ row.username }}</strong></td>
-              <td>{{ row.nickname || "—" }}</td>
-              <td>
-                <div class="grant-badges">
-                  <span
-                    v-for="(g, i) in row.grants ?? []"
-                    :key="i"
-                    class="status"
-                    :class="g.roleStatus === 'active' ? 'info' : 'warning'"
-                    >{{ grantLabel(g) }}</span
-                  >
-                  <span v-if="!(row.grants ?? []).length" class="muted">未授权</span>
-                </div>
-              </td>
-              <td>
-                <span
-                  class="status"
-                  :class="row.status === 'active' ? 'success' : 'warning'"
-                  >{{ row.status === "active" ? "启用" : "停用" }}</span
-                >
-              </td>
-              <td>{{ fmtDateTime(row.createdAt) }}</td>
-              <td class="row-actions">
-                <button class="btn mini ghost" @click="openPreview(row)">
-                  预览权限
-                </button>
-                <!-- 内置超管（道哥 2026-09-22）：系统唯一身份，不可编辑/删除 -->
-                <template v-if="isSuper && row.username !== 'admin'">
-                  <button class="btn mini primary" @click="openEdit(row)">
-                    编辑
-                  </button>
-                  <button class="btn mini danger-btn" @click="removeRow(row)">
-                    删除
-                  </button>
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pagination">
-        <span>第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</span>
-        <div class="pager-right">
-          <label class="page-mode"
-            >每页
-            <select
-              v-model.number="pageSize"
-              aria-label="每页条数"
-              @change="page = 1; load()"
-            >
-              <option v-for="size in PAGE_SIZES" :key="size" :value="size">
-                {{ size }} 条
-              </option>
-            </select>
-          </label>
-          <div>
-            <button :disabled="page === 1" @click="goto(page - 1)">←</button>
-            <template v-for="(p, i) in pageList" :key="`${i}-${p}`">
-              <button
-                v-if="p !== '…'"
-                :class="{ active: p === page }"
-                @click="goto(p)"
+      <ElAlert v-if="loadError" class="load-alert" type="error" show-icon :closable="false">
+        <template #title>
+          {{ loadError }}
+          <ElButton link type="primary" @click="load">重试</ElButton>
+        </template>
+      </ElAlert>
+      <ElTable
+        v-if="!loadError"
+        v-loading="loading"
+        :data="rows"
+        row-key="id"
+        empty-text="暂无账号"
+        class="account-table"
+      >
+        <ElTableColumn prop="username" label="账号" min-width="150">
+          <template #default="{ row }"><strong>{{ row.username }}</strong></template>
+        </ElTableColumn>
+        <ElTableColumn prop="nickname" label="昵称" min-width="130">
+          <template #default="{ row }">{{ row.nickname || "—" }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="角色授权" min-width="240">
+          <template #default="{ row }">
+            <div class="grant-badges">
+              <ElTag
+                v-for="(grant, index) in row.grants ?? []"
+                :key="`${grant.roleCode}-${grant.campusId ?? 'platform'}-${index}`"
+                :type="grant.roleStatus === 'active' ? 'info' : 'warning'"
+                effect="light"
               >
-                {{ p }}
-              </button>
-              <span v-else class="pager-ellipsis">…</span>
-            </template>
-            <button :disabled="page === totalPages" @click="goto(page + 1)">
-              →
-            </button>
-          </div>
-        </div>
-      </div>
+                {{ grantLabel(grant) }}
+              </ElTag>
+              <span v-if="!(row.grants ?? []).length" class="muted">未授权</span>
+            </div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="status" label="状态" width="90">
+          <template #default="{ row }">
+            <ElTag :type="row.status === 'active' ? 'success' : 'warning'">
+              {{ row.status === "active" ? "启用" : "停用" }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="createdAt" label="创建时间" min-width="170">
+          <template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="220">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <ElButton link type="primary" @click="openPreview(accountRow(row))">预览权限</ElButton>
+              <template v-if="isSuper && row.username !== 'admin'">
+                <ElButton link type="primary" @click="openEdit(accountRow(row))">编辑</ElButton>
+                <ElButton link type="danger" @click="removeRow(accountRow(row))">删除</ElButton>
+              </template>
+            </div>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+      <AdminPagination
+        v-if="!loadError"
+        :page="page"
+        :page-size="pageSize"
+        :page-sizes="PAGE_SIZES"
+        :total="total"
+        @update:page="changePage"
+        @update:page-size="changePageSize"
+      />
     </div>
 
     <!-- 新建/编辑抽屉：基本信息 + 授权编辑器（多行 角色×范围×校区） -->
-    <div v-if="drawerOpen" class="drawer-mask" @click.self="drawerOpen = false">
-      <aside class="drawer product-create">
-        <div class="drawer-head">
-          <div>
-            <h2>{{ editingId ? `编辑账号 ${form.username}` : "新建账号" }}</h2>
-          </div>
-          <button aria-label="关闭" @click="drawerOpen = false">×</button>
-        </div>
-        <div class="product-form">
-          <label>
-            账号
-            <input
-              v-model.trim="form.username"
+    <ElDrawer
+      v-model="drawerOpen"
+      class="account-drawer"
+      :title="editingId ? `编辑账号 ${form.username}` : '新建账号'"
+      size="min(760px, 100%)"
+      :show-close="!drawerSaving"
+      :close-on-click-modal="!drawerSaving"
+      :close-on-press-escape="!drawerSaving"
+    >
+      <ElForm class="account-form" label-position="top">
+        <div class="account-form-grid">
+          <ElFormItem label="账号">
+            <ElInput
+              v-model="form.username"
               :disabled="!!editingId"
               placeholder="3-20 位字母/数字/下划线"
-          /></label>
-          <label>
-            {{ editingId ? "重置密码（留空不改）" : "初始密码" }}
-            <input
+            />
+          </ElFormItem>
+          <ElFormItem :label="editingId ? '重置密码（留空不改）' : '初始密码'">
+            <ElInput
               v-model="form.password"
               type="password"
+              show-password
               placeholder="至少 8 位"
               autocomplete="new-password"
-          /></label>
-          <label>
-            昵称
-            <input v-model.trim="form.nickname" placeholder="如：仓储小王" />
-          </label>
-          <label v-if="editingId">
-            状态
-            <select v-model="form.status">
-              <option value="active">启用</option>
-              <option value="disabled">停用（立即失去后台访问）</option>
-            </select>
-          </label>
+            />
+          </ElFormItem>
+          <ElFormItem label="昵称">
+            <ElInput v-model="form.nickname" placeholder="如：仓储小王" />
+          </ElFormItem>
+          <ElFormItem v-if="editingId" label="状态">
+            <ElSelect v-model="form.status" class="full-width">
+              <ElOption label="启用" value="active" />
+              <ElOption label="停用（立即失去后台访问）" value="disabled" />
+            </ElSelect>
+          </ElFormItem>
         </div>
+      </ElForm>
         <section class="permission-builder" aria-labelledby="permission-heading">
           <div class="permission-heading">
             <div>
@@ -574,27 +554,22 @@ async function confirmDelete() {
 
             <div v-if="form.orgLevel === 'org'" class="scope-detail">
               <label for="account-organization">选择组织</label>
-              <select id="account-organization" v-model="form.organizationId">
-                <option value="">请选择组织</option>
-                <option v-for="o in orgOptions" :key="o.id" :value="o.id">
-                  {{ o.shortName || o.name }}
-                </option>
-              </select>
+              <ElSelect id="account-organization" v-model="form.organizationId" class="scope-select" placeholder="请选择组织">
+                <ElOption v-for="o in orgOptions" :key="o.id" :label="o.shortName || o.name" :value="o.id" />
+              </ElSelect>
             </div>
 
             <div v-if="form.orgLevel === 'campus'" class="scope-detail campus-picker">
               <div class="campus-picker-toolbar">
                 <label for="campus-org-filter">选择校区</label>
                 <div class="campus-picker-actions">
-                  <select id="campus-org-filter" v-model="campusFilterOrgId" aria-label="按组织筛选校区">
-                    <option value="">全部组织</option>
-                    <option v-for="o in orgOptions" :key="o.id" :value="o.id">
-                      {{ o.shortName || o.name }}
-                    </option>
-                  </select>
-                  <button type="button" class="text-button" @click="toggleVisibleCampuses">
+                  <ElSelect id="campus-org-filter" v-model="campusFilterOrgId" class="campus-filter" placeholder="全部组织" aria-label="按组织筛选校区">
+                    <ElOption label="全部组织" value="" />
+                    <ElOption v-for="o in orgOptions" :key="o.id" :label="o.shortName || o.name" :value="o.id" />
+                  </ElSelect>
+                  <ElButton link type="primary" @click="toggleVisibleCampuses">
                     {{ allVisibleCampusesSelected ? "取消全选" : "全选当前结果" }}
-                  </button>
+                  </ElButton>
                 </div>
               </div>
               <div class="campus-choice-grid">
@@ -622,63 +597,45 @@ async function confirmDelete() {
             <div><strong>授权结果</strong><p>{{ authorizationSummary }}</p></div>
           </div>
         </section>
-        <p v-if="drawerError" class="form-hint" role="alert">{{ drawerError }}</p>
+      <ElAlert v-if="drawerError" class="drawer-error" type="error" show-icon :closable="false" :title="drawerError" />
+      <template #footer>
         <div class="drawer-actions">
-          <button class="btn ghost" @click="drawerOpen = false">取消</button>
-          <button
-            class="btn primary"
-            :disabled="drawerSaving"
-            @click="submitDrawer"
-          >
-            {{ drawerSaving ? "保存中..." : editingId ? "保存修改" : "创建账号" }}
-          </button>
+          <ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton>
+          <ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">
+            {{ editingId ? "保存修改" : "创建账号" }}
+          </ElButton>
         </div>
-      </aside>
-    </div>
+      </template>
+    </ElDrawer>
 
     <!-- 有效权限预览：角色 + 权限码按目录组分块 -->
-    <div
-      v-if="previewOpen"
-      class="drawer-mask"
-      @click.self="previewOpen = false"
+    <ElDrawer
+      v-model="previewOpen"
+      class="account-drawer permission-preview-drawer"
+      :title="`有效权限 · ${previewAccount?.username ?? ''}`"
+      size="min(680px, 100%)"
     >
-      <aside class="drawer product-create">
-        <div class="drawer-head">
-          <div>
-            <h2>有效权限 · {{ previewAccount?.username }}</h2>
-          </div>
-          <button aria-label="关闭" @click="previewOpen = false">×</button>
-        </div>
-        <div v-if="previewLoading" class="preview-loading">加载中...</div>
-        <template v-else-if="previewMe">
+      <div v-loading="previewLoading" class="permission-preview-body">
+        <template v-if="previewMe">
           <p class="drawer-sec">生效角色</p>
-          <div class="drawer-fields">
+          <div class="preview-roles">
             <div
               v-for="r in previewMe.roles"
               :key="r.id"
-              class="wide preview-role"
+              class="preview-role"
             >
-              <span class="status" :class="r.status === 'active' ? 'info' : 'warning'"
-                >{{ r.name }}</span
-              >
+              <ElTag :type="r.status === 'active' ? 'info' : 'warning'">{{ r.name }}</ElTag>
               <small>
                 {{ r.scope === "platform" ? "平台/跨校区" : `校区 · ${campusLabel(r.campusId)}` }}
                 {{ r.builtin ? "· 内置" : "" }}
                 {{ r.status === "active" ? "" : "· 已停用" }}
               </small>
             </div>
-            <div v-if="!previewMe.roles.length" class="wide muted">
-              未挂任何角色（无后台权限）
-            </div>
+            <ElEmpty v-if="!previewMe.roles.length" description="未挂任何角色（无后台权限）" :image-size="72" />
           </div>
           <p class="drawer-sec">可见菜单</p>
           <div class="preview-perms">
-            <span
-              v-for="m in previewMe.menus ?? []"
-              :key="m.code"
-              class="status info"
-              >{{ m.name }}</span
-            >
+            <ElTag v-for="m in previewMe.menus ?? []" :key="m.code" type="info">{{ m.name }}</ElTag>
             <span v-if="!(previewMe.menus ?? []).length" class="muted"
               >无可见菜单</span
             >
@@ -691,72 +648,63 @@ async function confirmDelete() {
           >
             <h3>{{ group.group }}</h3>
             <div class="preview-perms">
-              <span
-                v-for="p in group.perms"
-                :key="p"
-                class="status info"
-                >{{ p }}</span
-              >
+              <ElTag v-for="permission in group.perms" :key="permission" type="info">
+                {{ permission }}
+              </ElTag>
             </div>
           </div>
         </template>
-      </aside>
-    </div>
+      </div>
+    </ElDrawer>
   
     <!-- 删除确认弹窗（与角色管理同款） -->
-    <div
-      v-if="deleteTarget"
-      class="drawer-mask confirm-mask"
-      @click.self="deleteTarget = null"
+    <ElDialog
+      v-model="deleteDialogOpen"
+      title="删除账号"
+      width="min(420px, 92vw)"
+      align-center
+      :show-close="!deleteSaving"
+      :close-on-click-modal="!deleteSaving"
+      :close-on-press-escape="!deleteSaving"
     >
-      <div class="confirm-card">
-        <h3>删除账号</h3>
-        <p>
-          确认删除账号「{{ deleteTarget.username }}」？删除后该账号立即无法登录，
-          已授角色与数据边界一并失效。
-        </p>
-        <div class="confirm-actions">
-          <button class="btn ghost" @click="deleteTarget = null">取消</button>
-          <button class="btn danger-btn" @click="confirmDelete">
-            确认删除
-          </button>
-        </div>
-      </div>
-    </div>
+      <p class="delete-copy">
+        确认删除账号「{{ deleteTarget?.username }}」？删除后该账号立即无法登录，
+        已授角色与数据边界一并失效。
+      </p>
+      <template #footer>
+        <ElButton :disabled="deleteSaving" @click="deleteDialogOpen = false">取消</ElButton>
+        <ElButton type="danger" :loading="deleteSaving" @click="confirmDelete">确认删除</ElButton>
+      </template>
+    </ElDialog>
 </div>
 </template>
 <style scoped>
 /* 样式对齐 FeaturedPage：全局 .workspace/.page-head/.data-panel/table/.btn 不重写，
    scoped 只留本页私有（行内提示条含错误态 / 授权徽章 / 授权编辑行 / 预览分块）。 */
-/* 删除确认弹窗：复用全局 mask+toast；卡片走站点 token */
-.confirm-card {
-  width: min(400px, 92vw);
-  background: #fff;
-  border-radius: 16px;
-  padding: 22px 24px 18px;
-  box-shadow: 0 18px 48px #062e2326;
-}
-.confirm-card h3 {
-  margin: 0 0 10px;
-  font-size: 15px;
-  color: #153628;
-}
-.confirm-card p {
-  margin: 0 0 18px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #4c5c53;
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
 .toolbar {
   padding: 14px 16px;
   display: flex;
   gap: 10px;
 }
+.account-search { width: min(420px, 100%); }
+.load-alert { margin: 0 14px 12px; width: auto; }
+.account-table { width: 100%; }
+.account-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.full-width,
+.scope-select { width: 100%; }
+.drawer-error { margin-top: 16px; }
+.delete-copy {
+  margin: 0;
+  color: #4c5c53;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.permission-preview-body { min-height: 120px; }
+.preview-roles { display: grid; gap: 8px; }
 .grant-badges {
   display: flex;
   flex-wrap: wrap;
@@ -873,8 +821,7 @@ async function confirmDelete() {
 }
 .role-choice:focus-visible,
 .campus-choice:focus-visible,
-.scope-options button:focus-visible,
-.text-button:focus-visible {
+.scope-options button:focus-visible {
   outline: 3px solid #3b82f640;
   outline-offset: 2px;
 }
@@ -962,32 +909,8 @@ async function confirmDelete() {
   font-size: 12px;
   font-weight: 700;
 }
-.scope-detail > select,
-.campus-picker-actions select {
-  width: 100%;
-  min-height: 44px;
-  margin-top: 7px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #fff;
-  padding: 0 10px;
-  color: #153628;
-}
-.campus-picker-actions select {
-  width: auto;
-  min-width: 128px;
-  margin-top: 0;
-}
-.text-button {
-  min-height: 44px;
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  padding: 0 4px;
-  color: #17674d;
-  font-size: 12px;
-  font-weight: 700;
-}
+.scope-select { margin-top: 7px; }
+.campus-filter { width: 160px; }
 .campus-choice-grid {
   display: grid;
   max-height: 210px;
@@ -1036,11 +959,6 @@ async function confirmDelete() {
 }
 .authorization-summary strong { color: #174f3c; font-size: 12px; }
 .authorization-summary p { margin: 3px 0 0; color: #3f5d50; font-size: 12px; line-height: 1.55; }
-.preview-loading {
-  color: var(--muted);
-  font-size: 12px;
-  padding: 20px 0;
-}
 .preview-role {
   display: flex;
   align-items: center;
@@ -1063,15 +981,20 @@ async function confirmDelete() {
   gap: 6px;
 }
 @media (max-width: 720px) {
+  .account-form-grid,
   .role-choice-grid,
   .scope-options,
   .campus-choice-grid { grid-template-columns: 1fr; }
   .permission-heading,
   .campus-picker-toolbar { align-items: flex-start; flex-direction: column; }
   .campus-picker-actions { width: 100%; }
-  .campus-picker-actions select { flex: 1; min-width: 0; }
+  .campus-filter { flex: 1; min-width: 0; }
   .step-help { margin-left: 0; }
 }
+
+:deep(.account-drawer .el-drawer__body) { padding-top: 6px; }
+:deep(.account-drawer .el-drawer__footer) { border-top: 1px solid var(--line); padding-top: 16px; }
+:deep(.account-table .el-table__cell) { padding-block: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
   .role-choice,
