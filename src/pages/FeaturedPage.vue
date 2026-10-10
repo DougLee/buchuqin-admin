@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
-import { hasPerm } from "../session";
+import { activeCampus, hasPerm, isPlatform, isSuper, switchableCampuses } from "../session";
 const canEdit = computed(() => hasPerm("PUT /admin/featured"));
 import ProductPickerField from "../components/ProductPickerField.vue";
 import type { Product } from "../types";
@@ -25,6 +25,16 @@ interface FeatRow {
 }
 const candidates = ref<Product[]>([]);
 const loadingCands = ref(true);
+/* IKKKBT：页内校区切换（运营口径）——写全局 activeCampus，候选池/保存自动跟随 */
+const canSwitchCampus = computed(
+  () => isSuper.value || isPlatform.value || switchableCampuses.value.length > 1,
+);
+const campusFilter = ref(activeCampus.value);
+const campusOptions = ref<{ id: string; name: string; shortName: string }[]>([]);
+async function onCampusChange() {
+  activeCampus.value = campusFilter.value;
+  await loadCandidates(false);
+}
 const picked = ref<FeatRow[]>([]);
 /** 隐藏分类的商品不进推荐位候选池（C 端全链路不露出，勾了不显示） */
 const hiddenCategoryIds = ref<Set<string>>(new Set());
@@ -104,6 +114,12 @@ function onFilterChange(f: { categoryId: string; keyword: string }) {
   void loadCandidates();
 }
 onMounted(async () => {
+  if (canSwitchCampus.value) {
+    import("../dicts")
+      .then(({ fetchOperationalCampuses }) => fetchOperationalCampuses())
+      .then((list) => (campusOptions.value = list))
+      .catch(() => {});
+  }
   void loadHiddenCategories();
   try {
     const [, feat] = await Promise.all([loadCandidates(), api.featured()]);
@@ -185,6 +201,19 @@ async function save() {
         <button v-if="canEdit" class="btn primary" :disabled="!dirty || saving" @click="save">
           {{ saving ? "保存中…" : "保存推荐位" }}
         </button>
+      </div>
+      <div class="head-actions">
+        <select
+          v-if="canSwitchCampus && campusOptions.length"
+          v-model="campusFilter"
+          aria-label="校区筛选"
+          @change="onCampusChange"
+        >
+          <option value="">全校区（落点校区）</option>
+          <option v-for="c in campusOptions" :key="c.id" :value="c.id">
+            {{ c.shortName || c.name }}
+          </option>
+        </select>
       </div>
     </div>
 

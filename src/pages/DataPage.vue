@@ -1765,9 +1765,9 @@ const mapBuildingId = ref(""),
   mapData = ref<MarketingMapData | null>(null),
   mapLoading = ref(false),
   mapError = ref("");
-const isMktMapTab = computed(
-  () => section.value === "marketing" && mktTab.value === "map",
-);
+// IKKKBT：marketing 聚合板块退役——地图视图入口已移除，此常量恒 false
+// （模板分支保留防大范围删除出错，v-if false 不渲染零运行风险；下版可清）
+const isMktMapTab = computed(() => false);
 async function loadMarketingMap() {
   if (!mapBuildingId.value) {
     mapData.value = null;
@@ -1822,19 +1822,25 @@ const productView = computed<"official" | "campus">(() => {
 const productCampusParam = computed(() =>
   productView.value === "campus" ? campusFilter.value || undefined : undefined,
 );
-// IKAJSS 深链：/marketing?tab=promotions 直达指定 tab（工作台动态流跳转用）
-// IKDFIN：去 immediate——初值已在 mktTab 声明处读取；immediate 会在 setup 期
-// （section 尚未声明）触发回调，dev 模式直接 TDZ 崩掉整页
+// IKKKBT：marketing 聚合板块已退役——旧深链 /marketing?tab=X 重定向到对应独立菜单
 watch(
-  () => route.query.tab,
-  (tab) => {
-    if (
-      section.value === "marketing" &&
-      (MKT_TABS as readonly string[]).includes(String(tab))
-    )
-      mktTab.value = String(tab) as "coupons" | "promotions" | "map";
-  },
+  () => window.location.hash,
+  () => checkLegacyMarketingLink(),
+  { immediate: true },
 );
+function checkLegacyMarketingLink() {
+  // hash 路由：#/marketing?tab=X → 对应独立菜单
+  const m = /^#\/marketing(\?.*)?$/.exec(window.location.hash);
+  if (!m) return;
+  const tab = new URLSearchParams(m[1] ?? "").get("tab") ?? "";
+  const target =
+    tab === "promotions"
+      ? "/promotions"
+      : tab === "map"
+        ? "/battle-map"
+        : "/coupons";
+  window.location.hash = `#${target}`;
+}
 /** Banner 主题色展示：预置键转中文，自定义 hex 原样。 */
 // Banner 主题色/位置字典见 src/dicts/marketing（BANNER_COLOR_TEXT/BANNER_PLACEMENT_TEXT）
 function bannerPayload(d: Record<string, FormValue>) {
@@ -3356,33 +3362,7 @@ const configs: Record<string, SectionConfig> = {
       ["staffName", "楼长"],
     ],
   },
-  marketing: {
-    title: "营销活动",
-    eyebrow: "GROWTH CAMPAIGNS",
-    desc: "配置优惠券预算、领取门槛与核销效果。",
-    // IKB5PA：状态 Tab 化（发放中/已暂停），服务端过滤 + 角标
-    loader: (query) =>
-      api.coupons(query, tabStatusOf(COUPON_STATUS_TABS)).then(unwrap),
-    statusTabs: COUPON_STATUS_TABS,
-    countsLoader: () =>
-      countByStatus(
-        (s) => api.coupons({ page: 1, pageSize: 1 }, s),
-        ["active", "paused"],
-      ),
-    columns: [
-      ["name", "优惠券"],
-      ["kind", "类型"],
-      ["trigger", "发放"],
-      ["amount", "面额"],
-      ["threshold", "门槛"],
-      ["total", "总量"],
-      ["remain", "剩余"],
-      ["claimed", "领取"],
-      ["used", "核销"],
-      ["expiresAt", "有效期"],
-      ["status", "状态"],
-    ],
-  },
+  // IKKKBT：marketing 聚合板块已退役（六菜单独立入口）
   /* IKB5PB：优惠券独立菜单（营销板块 coupons tab 拆出），列与表单复用 marketing 口径 */
   coupons: {
     title: "优惠券配置",
@@ -3576,11 +3556,7 @@ const section = computed(() => props.fixedSection ?? String(route.meta.section ?
       return dispTab.value === "leaves"
         ? dispatchLeavesConfig
         : dispatchInvitesConfig;
-    if (section.value === "marketing") {
-      if (mktTab.value === "promotions") return promotionConfig;
-      // IKD6FI：营销地图非表格视图，空 loader 防误拉券列表
-      if (mktTab.value === "map") return marketingMapConfig;
-    }
+    // IKKKBT：marketing 聚合板块已退役（六菜单独立入口 + 作战地图页内切换）
     // IKBDK7：/promotions 独立菜单（IKB5PB 拆分）——漏接会回落 orders 列表
     if (section.value === "promotions") return promotionConfig;
     // IKAJSL：Banner 独立板块（总部导航）；校区 hq 分流校区配置
@@ -3606,11 +3582,7 @@ const section = computed(() => props.fixedSection ?? String(route.meta.section ?
   canEditProductStatus = computed(() => hasPerm("POST /admin/products/batch-status")),
   /** 当前生效的新建按钮文案（营销板块按 tab 分：优惠券/Banner/促销）。 */
   createLabel = computed(() => {
-    if (section.value === "marketing") {
-      // IKD6FI：营销地图视图无新建语义（返回空串隐藏主按钮）
-      if (mktTab.value === "map") return "";
-      if (mktTab.value === "promotions") return createLabels.promotions;
-    }
+    // IKKKBT：marketing 聚合板块已退役（createLabel 由各独立菜单分支处理）
     // IKCRS8：campuses 板块校区建档限平台管理员（operations 无菜单入口，
     // 直敲路由仅只读，无新建按钮）
     if (section.value === "campuses" && isPlatformAdmin.value)
@@ -3664,9 +3636,12 @@ const campusFilterVisible = computed(() => {
     return true;
   // IKJCJF：商品类别按校区隔离（平台切校区管理各校区类别）
   if (section.value === "categories") return true;
+  // IKKKBT：营销六菜单页内校区切换（优惠券/秒杀/转盘/Banner/广告位）
+  if (["coupons", "promotions", "wheel", "banners", "pay-ads"].includes(section.value))
+    return true;
   // IKFOPY：库存板块全视图（总览/流水/采购申请）校区可筛选——聚焦总部仓复用仓储页
   if (section.value === "inventory") return true;
-  if (section.value === "marketing") return mktTab.value === "map";
+  // IKKKBT：marketing 聚合板块已退役（地图入口在作战地图菜单）
   // 校区商品跨校区管理（道哥 2026-09-22）：平台账号选校区改该校区的商品，
   // 官方库视角不显示（官方档案全网共享无校区维度）
   if (section.value === "products" && productView.value === "campus")
@@ -3753,6 +3728,8 @@ async function load() {
       "products",
       // IKJCJF：商品类别按校区隔离，进板块时备好校区下拉
       "categories",
+      // IKKKBT：营销六菜单校区下拉
+      "coupons", "promotions", "wheel", "banners", "pay-ads",
     ].includes(section.value)
   )
     void ensureCampusOptions().catch(() => {});
@@ -3799,6 +3776,12 @@ async function loadCategories() {
 watch(
   section,
   (s) => {
+    // IKKKBT：进板块时下拉初值同步全局注入值（修跨板块残留暗参）
+    if (canSwitchCampus.value) {
+      const current = activeCampus.value;
+      if (current !== (campusFilter.value ?? ""))
+        campusFilter.value = current;
+    }
     // IKD6FG：分类筛选覆盖官方商品库/商品管理/库存，进页时备好类别字典；
     // 切板块重置三个筛选 ref，防跨板块选项串入（IKB5PA 同教训）
     if (["products", "official-products", "inventory", "categories", "promotions"].includes(s))
@@ -4477,11 +4460,7 @@ function openCreate() {
     openProductCreate();
   } else if (section.value === "categories") openCategoryCreate();
   else if (section.value === "locations") openLocationCreate();
-  else if (section.value === "marketing") {
-    // IKAJSL：Banner 已拆独立板块（/banners），营销板块只剩券/促销
-    if (mktTab.value === "promotions") openPromotionCreate();
-    else openCouponCreate();
-  }
+  // IKKKBT：marketing 聚合板块已退役；IBB5PB 各独立菜单自管新建
   // IKB5PB：营销拆分独立菜单
   else if (section.value === "coupons") openCouponCreate();
   else if (section.value === "promotions") openPromotionCreate();
@@ -5393,18 +5372,7 @@ async function cancelInviteRow(row: AdminRow) {
           调配邀请
         </button>
       </div>
-      <div v-if="section === 'marketing'" class="segmented inv-tabs">
-        <button :class="{ active: mktTab === 'coupons' }" @click="switchMktTab('coupons')">
-          优惠券
-        </button>
-        <button :class="{ active: mktTab === 'promotions' }" @click="switchMktTab('promotions')">
-          促销活动
-        </button>
-        <!-- IKD6FI：营销地图（楼栋×楼层×寝室下单热力） -->
-        <button :class="{ active: mktTab === 'map' }" @click="switchMktTab('map')">
-          营销地图
-        </button>
-      </div>
+      <!-- IKKKBT：marketing 聚合 Tab 已随板块退役 -->
       <!-- IKD6FJ：库存板块子视图——库存总览 / 采购申请审核台 -->
       <!-- IKCRS8：campusTab 双视角切换拆除——校区管理/楼栋管理已拆独立菜单 -->
       <!-- IKCHEW → IKCJ46：商品双视角改为独立菜单（官方商品库/商品管理），页内切换已移除 -->
