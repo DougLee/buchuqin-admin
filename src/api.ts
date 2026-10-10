@@ -347,6 +347,7 @@ export const api = {
       originalPrice: number;
       costPrice: number;
       wholesalePrice: number;
+      localPurchasePrice: number;
     }>,
     /** 同 updateProduct：仅 admin 生效（official 官方库 / campus 本校区） */
     view?: string,

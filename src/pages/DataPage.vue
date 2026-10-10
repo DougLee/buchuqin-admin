@@ -126,6 +126,8 @@ const rows = ref<AdminRow[]>([]),
     // IKC1AC 价格三层：进货价/批发价仅 hq 编辑；status 上下架（IKC1AB）
     costPrice: 0,
     wholesalePrice: 0,
+    procurementMode: "UNSET" as "HQ" | "LOCAL" | "UNSET",
+    localPurchasePrice: 0,
     status: "on-sale" as "on-sale" | "off-sale",
     stock: 0,
     image: "",
@@ -149,6 +151,8 @@ const rows = ref<AdminRow[]>([]),
     // IKC1AC：官方库建档的三层价格（进货价/批发价格）
     costPrice: 0,
     wholesalePrice: 0,
+    procurementMode: "LOCAL" as "HQ" | "LOCAL",
+    localPurchasePrice: 0,
     stock: 0,
     tag: "新品",
     image: "",
@@ -4272,6 +4276,10 @@ function openDetail(row: AdminRow) {
       // IKC1AC 价格三层 + IKC1AB 状态回填
       costPrice: Number(fenToYuan(Number(product.costPrice ?? 0))),
       wholesalePrice: Number(fenToYuan(Number(product.wholesalePrice ?? 0))),
+      procurementMode: product.procurementMode ?? "UNSET",
+      localPurchasePrice: Number(
+        fenToYuan(Number(product.localPurchasePrice ?? 0)),
+      ),
       status: product.status === "off-sale" ? "off-sale" : "on-sale",
       stock: Number(product.availableStock ?? product.stock ?? 0),
       // 头图（IK9RWX）：编辑抽屉可上传替换，留空 = 不改图
@@ -4302,11 +4310,23 @@ async function act(action: string) {
        * PATCH /admin/products/:id/price，主端点 body 剔除价格字段；
        * 改价口径沿用旧规则（官方库同步行建议零售价只读、进货价仅总部、
        * 批发价官方行+校区自建行）。 */
-      const priceBody: Record<string, number> = {};
+      const priceBody: Record<string, number | string> = {};
       if (isHqView.value || !record?.sourceProductId) {
         const next = yuanToFen(productEdit.value.originalPrice);
         if (next !== Number(record.originalPrice ?? 0))
           priceBody.originalPrice = next;
+      }
+      if (!isHqView.value) {
+        if (
+          productEdit.value.procurementMode !== "UNSET" &&
+          productEdit.value.procurementMode !== record.procurementMode
+        )
+          priceBody.procurementMode = productEdit.value.procurementMode;
+        if (productEdit.value.procurementMode === "LOCAL") {
+          const localCost = yuanToFen(productEdit.value.localPurchasePrice);
+          if (localCost !== Number(record.localPurchasePrice ?? 0))
+            priceBody.localPurchasePrice = localCost;
+        }
       }
       if (isHqView.value) {
         const cost = yuanToFen(productEdit.value.costPrice);
@@ -4322,6 +4342,8 @@ async function act(action: string) {
       if (Object.keys(priceBody).length && !canEditPrice.value)
         throw new Error("无改价权限，价格字段未保存");
       if (!canEditProductDetails.value) {
+        if (priceBody.procurementMode !== undefined)
+          throw new Error("切换采购方式需要商品资料编辑权限");
         if (Object.keys(priceBody).length)
           await api.updateProductPrice(selected.value.id, priceBody, productView.value, productCampusParam.value);
       } else await api.updateProduct(selected.value.id, {
@@ -4440,6 +4462,8 @@ function openProductCreate() {
     originalPrice: 0,
     costPrice: 0,
     wholesalePrice: 0,
+    procurementMode: "LOCAL",
+    localPurchasePrice: 0,
     stock: 0,
     tag: "新品",
     image: "",
@@ -4746,6 +4770,10 @@ async function saveProduct() {
     scanError.value = "请填写零售单位（如 听/瓶/包）";
     return;
   }
+  if (!isHqView.value && productForm.value.procurementMode === "LOCAL" && productForm.value.localPurchasePrice < 0) {
+    scanError.value = "本地进货价不能小于 0";
+    return;
+  }
   try {
     // 价格表单输元，提交前统一转分（IKC1AC：三层价格一并转分）
     await api.createProduct({
@@ -4758,6 +4786,10 @@ async function saveProduct() {
       originalPrice: yuanToFen(productForm.value.originalPrice),
       costPrice: yuanToFen(productForm.value.costPrice),
       wholesalePrice: yuanToFen(productForm.value.wholesalePrice),
+      procurementMode: isHqView.value ? "HQ" : productForm.value.procurementMode,
+      localPurchasePrice: isHqView.value
+        ? undefined
+        : yuanToFen(productForm.value.localPurchasePrice),
     }, productView.value, productCampusParam.value);
     notify("SKU 已录入，商品数据已同步");
     closeCreate();
@@ -4854,9 +4886,9 @@ function orderMarginTotalOf(order: MarginSource | undefined | null): number | nu
   // 与首页概览/经营日报同口径。任一行缺批发快照（历史单）仍显示 —（口径不完整不误导）。
   let cost = 0;
   for (const line of items) {
-    const wholesale = line.product?.unitWholesaleCost;
-    if (wholesale == null) return null;
-    cost += wholesale * line.quantity;
+    const unitCost = line.product?.unitGrossCost ?? line.product?.unitWholesaleCost;
+    if (unitCost == null) return null;
+    cost += unitCost * line.quantity;
   }
   const payable = Number(order.payableAmount);
   if (!Number.isFinite(payable)) return null;
@@ -4870,6 +4902,7 @@ interface MarginSource {
     product?: {
       price?: number;
       unitWholesaleCost?: number;
+      unitGrossCost?: number;
     };
   }> | null;
   productAmount?: unknown;
@@ -4882,7 +4915,7 @@ const orderMarginItems = computed(() => {
   // 2026-09-20 道哥定版公式：行毛利 =（售价 − 批发价快照）× 数量——目录价差
   // 口径，优惠券属营销费用不摊进行；无快照历史单显示 —（不做估算）
   return order.items.map((line) => {
-    const cost = line.product?.unitWholesaleCost;
+    const cost = line.product?.unitGrossCost ?? line.product?.unitWholesaleCost;
     const price = line.product?.price ?? 0;
     const marginFen = cost == null ? null : (price - cost) * line.quantity;
     return {
@@ -6762,7 +6795,34 @@ async function cancelInviteRow(row: AdminRow) {
                 title="官方库同步行的建议零售价由总部维护" /></label
             ><!-- IKC1AC：进货价仅官方库行可编辑（校区不可见） --><div class="form-sec">
               价格
-            </div><label v-if="isHqView"
+            </div><label v-if="!isHqView"
+              >采购方式<select
+                v-model="productEdit.procurementMode"
+                :disabled="
+                  !canEditPrice ||
+                  ((selected as Product).procurementMode != null &&
+                    (Number((selected as Product).stock ?? 0) !== 0 ||
+                      Number((selected as Product).lockedStock ?? 0) !== 0))
+                "
+                title="库存和锁定库存清零后才能切换"
+              >
+                <option value="UNSET" disabled>待确认</option>
+                <option value="HQ">总部供货</option>
+                <option value="LOCAL">本地采购</option>
+              </select></label
+            ><label v-if="!isHqView && productEdit.procurementMode === 'LOCAL'"
+              >本地进货价（元/{{ (selected as Product).retailUnit || '零售单位' }}）<input
+                v-model.number="productEdit.localPurchasePrice"
+                type="number"
+                min="0"
+                step="0.01"
+                :disabled="!canEditPrice" /></label
+            ><label v-if="!isHqView && productEdit.procurementMode === 'HQ'"
+              >总部批发价（元/{{ (selected as Product).retailUnit || '零售单位' }}）<input
+                :value="fenToYuan(Number((selected as Product).wholesalePrice ?? 0))"
+                type="text"
+                disabled /></label
+            ><label v-if="isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
@@ -7668,6 +7728,14 @@ async function cancelInviteRow(row: AdminRow) {
             </select></label
           >
           <label>标签<input v-model.trim="productForm.tag" /></label>
+          <label v-if="!isHqView">采购方式<input value="本地采购" disabled /></label>
+          <label v-if="!isHqView && productForm.procurementMode === 'LOCAL'"
+            >本地进货价（元/{{ productForm.retailUnit || '零售单位' }}）<input
+              v-model.number="productForm.localPurchasePrice"
+              type="number"
+              min="0"
+              step="0.01"
+          /></label>
           <!-- IKC1AC：官方库建档价格三层（进货价仅总部；官方售价已更名批发价格） -->
           <label v-if="isHqView"
             >进货价（元，仅总部可见）<input
