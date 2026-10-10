@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
+import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { superViews } from "./view-catalog";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
@@ -338,8 +339,9 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <RouterView v-if="isLogin" />
-  <div v-else class="shell" :class="{ collapsed }">
+  <ElConfigProvider :locale="zhCn">
+    <RouterView v-if="isLogin" />
+    <div v-else class="shell" :class="{ collapsed }">
     <button
       v-if="mobileMenuOpen"
       class="mobile-nav-backdrop"
@@ -543,5 +545,6 @@ onBeforeUnmount(() => {
       <small v-else>点击卡片去处理</small>
     </div>
   </div>
-</div>
+    </div>
+  </ElConfigProvider>
 </template>

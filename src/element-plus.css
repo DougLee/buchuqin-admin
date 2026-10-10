@@ -1,0 +1,57 @@
+/*
+ * Element Plus 只承担基础控件。业务布局与领域组件继续由项目维护。
+ * 主题令牌映射现有品牌色，避免渐进迁移期间出现两套视觉语言。
+ */
+:root {
+  --el-color-primary: #0b4b36;
+  --el-color-primary-light-3: #4f806f;
+  --el-color-primary-light-5: #85a69a;
+  --el-color-primary-light-7: #b6ccc4;
+  --el-color-primary-light-8: #d2dfda;
+  --el-color-primary-light-9: #edf3f0;
+  --el-color-primary-dark-2: #083c2b;
+  --el-color-success: #159c55;
+  --el-color-warning: #c66a25;
+  --el-color-danger: #c55239;
+  --el-color-info: #63736a;
+  --el-text-color-primary: #12241c;
+  --el-text-color-regular: #354b40;
+  --el-text-color-secondary: #63736a;
+  --el-border-color: #dfe7e1;
+  --el-border-color-light: #e8eeea;
+  --el-fill-color-light: #f5f8f6;
+  --el-fill-color-blank: #fff;
+  --el-border-radius-base: 9px;
+  --el-border-radius-small: 7px;
+  --el-font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.el-button,
+.el-input,
+.el-select,
+.el-pagination {
+  --el-component-size: 40px;
+}
+
+.el-button:focus-visible,
+.el-input__wrapper:focus-visible,
+.el-select__wrapper:focus-visible {
+  outline: 3px solid rgb(21 156 85 / 22%);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .el-button,
+  .el-input,
+  .el-select {
+    --el-component-size: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .el-button,
+  .el-input__wrapper,
+  .el-select__wrapper {
+    transition: none !important;
+  }
+}
