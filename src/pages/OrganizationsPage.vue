@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
+import AdminPagination from "../shared/ui/AdminPagination.vue";
 import { isSuper } from "../session";
 import type { AdminOrganization } from "../types";
 import { fmtDateTime } from "../utils/datetime";
@@ -18,6 +19,26 @@ import { fmtDateTime } from "../utils/datetime";
 const rows = ref<AdminOrganization[]>([]);
 const loading = ref(true);
 const loadError = ref("");
+const keyword = ref("");
+const page = ref(1);
+const pageSize = ref(10);
+const filteredRows = computed(() => {
+  const query = keyword.value.trim().toLocaleLowerCase();
+  if (!query) return rows.value;
+  return rows.value.filter((row) =>
+    [row.name, row.shortName].some((name) => name?.toLocaleLowerCase().includes(query)),
+  );
+});
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredRows.value.slice(start, start + pageSize.value);
+});
+watch(keyword, () => {
+  page.value = 1;
+});
+watch(pageSize, () => {
+  page.value = 1;
+});
 /** 两击确认（启停）：第一击亮确认文案，第二击执行 */
 const confirmStatusId = ref("");
 
@@ -194,10 +215,19 @@ function organizationRow(row: unknown): AdminOrganization {
     </div>
 
     <div class="data-panel">
+      <div class="organization-toolbar">
+        <ElInput
+          v-model="keyword"
+          clearable
+          class="organization-search"
+          placeholder="搜索组织名称或简称"
+          aria-label="搜索组织名称或简称"
+        />
+      </div>
       <ElAlert v-if="loadError" class="load-alert" type="error" show-icon :closable="false">
         <template #title>{{ loadError }} <ElButton link type="primary" @click="load">重试</ElButton></template>
       </ElAlert>
-      <ElTable v-else v-loading="loading" :data="rows" row-key="id" empty-text="暂无组织" class="organization-table">
+      <ElTable v-else v-loading="loading" :data="pagedRows" row-key="id" :empty-text="keyword.trim() ? '未找到匹配的组织' : '暂无组织'" class="organization-table">
         <ElTableColumn label="组织" min-width="170"><template #default="{ row }"><strong>{{ row.name }}</strong><small class="muted organization-short-name">{{ row.shortName || "—" }}</small></template></ElTableColumn>
         <ElTableColumn label="状态" width="90"><template #default="{ row }"><ElTag :type="row.status === 'active' ? 'success' : 'warning'">{{ row.status === "active" ? "启用" : "停用" }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="小程序 AppID" min-width="190"><template #default="{ row }"><code v-if="row.wxAppId">{{ row.wxAppId }}</code><span v-else class="muted">未登记（env 兜底）</span></template></ElTableColumn>
@@ -207,6 +237,12 @@ function organizationRow(row: unknown): AdminOrganization {
         <ElTableColumn label="创建时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
         <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><div class="row-actions"><template v-if="isSuper"><ElButton size="small" plain @click="openEdit(organizationRow(row))">编辑</ElButton><ElButton size="small" :type="confirmStatusId === row.id ? 'danger' : 'warning'" plain @click="toggleStatus(organizationRow(row))">{{ confirmStatusId === row.id ? (row.status === "active" ? "确认停用" : "确认启用") : (row.status === "active" ? "停用" : "启用") }}</ElButton></template><span v-else class="muted">只读</span></div></template></ElTableColumn>
       </ElTable>
+      <AdminPagination
+        v-if="!loadError"
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="filteredRows.length"
+      />
     </div>
 
     <!-- 新建/编辑：基本信息 + 微信配置（敏感凭据只写不回读） -->
@@ -290,6 +326,13 @@ function organizationRow(row: unknown): AdminOrganization {
 </template>
 <style scoped>
 .load-alert { margin: 14px; width: auto; }
+.organization-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.organization-search { width: min(360px, 100%); }
 .organization-table { width: 100%; }
 .organization-short-name { display: block; }
 .row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
