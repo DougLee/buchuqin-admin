@@ -37,9 +37,14 @@ function notify(msg: string, error = false) {
   toastTimer = setTimeout(() => (toast.value = ""), error ? 4200 : 2600);
 }
 
-/* ---------- 下拉数据：全量角色 + 校区 ---------- */
+/* ---------- 下拉数据：全量角色 + 组织 + 校区 ---------- */
 const roleOptions = ref<RbacRole[]>([]);
-const campusOptions = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
+type CampusOpt = Pick<Campus, "id" | "name" | "shortName"> & {
+  organizationId?: string | null;
+};
+const campusOptions = ref<Array<CampusOpt>>([]);
+/** IKKRMP 组织化：组织列表（账号层级与校区分组过滤共用） */
+const orgOptions = ref<{ id: string; name: string; shortName?: string }[]>([]);
 async function ensureOptions() {
   try {
     const [rolesRaw, campuses] = await Promise.all([
@@ -48,11 +53,27 @@ async function ensureOptions() {
     ]);
     // 超级管理员为系统内置唯一身份（道哥 2026-09-22）：授权下拉不显示、不可选
     roleOptions.value = rolesRaw.filter((r) => r.code !== "super-admin");
-    campusOptions.value = campuses;
+    campusOptions.value = campuses as typeof campusOptions.value;
+    api
+      .organizations()
+      .then((list) => (orgOptions.value = list))
+      .catch(() => {});
   } catch {
     /* 表单打开时再兜底提示 */
   }
 }
+function orgLabel(id?: string | null): string {
+  if (!id) return "—";
+  const hit = orgOptions.value.find((o) => o.id === id);
+  return hit?.shortName || hit?.name || id;
+}
+/** 校区分组（IKKRNC 授权区组织化）：先选组织，校区多选仅列该组织校区 */
+const grantOrgId = ref("");
+const groupedCampuses = computed(() =>
+  grantOrgId.value
+    ? campusOptions.value.filter((c) => c.organizationId === grantOrgId.value)
+    : campusOptions.value,
+);
 function campusLabel(id?: string | null): string {
   if (!id) return "—";
   const hit = campusOptions.value.find((c) => c.id === id);
@@ -126,6 +147,9 @@ const form = ref({
   password: "",
   nickname: "",
   status: "active" as "active" | "disabled",
+  /** IKKRMP 账号层级与组织固定（平台/组织/校区；空=历史推导） */
+  orgLevel: "" as "" | "platform" | "org" | "campus",
+  organizationId: "",
 });
 const grantDrafts = ref<GrantDraft[]>([]);
 /** 内置超管：不可编辑授权（后端通配全权限），下拉标「内置」 */
@@ -136,7 +160,7 @@ function roleOptionLabel(r: RbacRole): string {
 }
 function openCreate() {
   editingId.value = null;
-  form.value = { username: "", password: "", nickname: "", status: "active" };
+  form.value = { username: "", password: "", nickname: "", status: "active", orgLevel: "", organizationId: "" };
   grantDrafts.value = [{ roleCode: "", scope: "campus", campusIds: [] }];
   drawerError.value = "";
   drawerOpen.value = true;
@@ -149,6 +173,8 @@ function openEdit(row: AdminAccount) {
     password: "",
     nickname: row.nickname,
     status: row.status,
+    orgLevel: row.orgLevel ?? "",
+    organizationId: row.organizationId ?? "",
   };
   const grouped = new Map<string, GrantDraft>();
   for (const g of row.grants ?? []) {
@@ -193,6 +219,8 @@ async function submitDrawer() {
   } else if (form.value.password && form.value.password.length < 8) {
     return (drawerError.value = "重置密码至少 8 位");
   }
+  if (form.value.orgLevel === "org" && !form.value.organizationId)
+    return (drawerError.value = "组织级账号必须选择所属组织");
   const grantError = validateGrants();
   if (grantError) return (drawerError.value = grantError);
   const grants: AccountGrant[] = grantDrafts.value.flatMap(g =>
@@ -208,6 +236,9 @@ async function submitDrawer() {
         nickname: form.value.nickname.trim(),
         status: form.value.status,
         ...(form.value.password ? { password: form.value.password } : {}),
+        orgLevel: form.value.orgLevel || null,
+        organizationId:
+          form.value.orgLevel === "org" ? form.value.organizationId : null,
         grants,
       });
       notify("账号已更新");
@@ -455,6 +486,24 @@ async function confirmDelete() {
               <option value="disabled">停用（立即失去后台访问）</option>
             </select>
           </label>
+          <label>
+            账号层级
+            <select v-model="form.orgLevel">
+              <option value="">默认（按现有逻辑推导）</option>
+              <option value="platform">平台（全组织）</option>
+              <option value="org">组织（固定一个组织）</option>
+              <option value="campus">校区</option>
+            </select>
+          </label>
+          <label v-if="form.orgLevel === 'org'">
+            所属组织
+            <select v-model="form.organizationId">
+              <option value="">请选择组织</option>
+              <option v-for="o in orgOptions" :key="o.id" :value="o.id">
+                {{ o.shortName || o.name }}
+              </option>
+            </select>
+          </label>
         </div>
         <p class="drawer-sec">角色授权</p>
         <p class="drawer-note">
@@ -480,7 +529,15 @@ async function confirmDelete() {
             <option value="campus">校区</option>
             <option value="platform">平台（跨校区）</option>
           </select>
-          <select
+          <div class="grant-campus-group">
+              <select v-model="grantOrgId" aria-label="按组织过滤校区">
+                <option value="">全部组织</option>
+                <option v-for="o in orgOptions" :key="o.id" :value="o.id">
+                  {{ o.shortName || o.name }}
+                </option>
+              </select>
+            </div>
+            <select
             v-if="g.scope === 'campus'"
             v-model="g.campusIds"
             multiple
@@ -488,7 +545,7 @@ async function confirmDelete() {
             aria-label="生效校区（可多选）"
           >
 
-            <option v-for="c in campusOptions" :key="c.id" :value="c.id">
+            <option v-for="c in groupedCampuses" :key="c.id" :value="c.id">
               {{ c.shortName || c.name }}
             </option>
           </select>
@@ -705,5 +762,18 @@ async function confirmDelete() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+.grant-campus-group {
+  display: block;
+  margin-bottom: 7px;
+}
+.grant-campus-group select {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: #fff;
+  outline: 0;
 }
 </style>

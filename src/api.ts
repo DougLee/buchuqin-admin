@@ -1350,6 +1350,8 @@ export const api = {
     username: string;
     password: string;
     nickname?: string;
+    orgLevel?: "platform" | "org" | "campus" | null;
+    organizationId?: string | null;
     grants?: AccountGrant[];
   }) =>
     request<AdminAccount>("/admin/accounts", {
@@ -1363,7 +1365,9 @@ export const api = {
       password?: string;
       status?: "active" | "disabled";
       /** 全量重设授权（整体替换）。 */
-      grants?: AccountGrant[];
+      orgLevel?: "platform" | "org" | "campus" | null;
+    organizationId?: string | null;
+    grants?: AccountGrant[];
     },
   ) =>
     request<AdminAccount>(`/admin/accounts/${id}`, {

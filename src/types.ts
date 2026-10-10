@@ -496,6 +496,10 @@ export interface AdminAccount {
   role: string;
   campusId: string;
   status: "active" | "disabled";
+  /** IKKRMP：账号层级（平台/组织/校区；null=历史账号按推导） */
+  orgLevel?: "platform" | "org" | "campus" | null;
+  /** IKKRMP：org 级账号固定组织 */
+  organizationId?: string | null;
   createdAt: string;
   grants: AccountGrant[];
   /** 校区名（campusId 当前登录校区）。 */
