@@ -786,7 +786,10 @@ function openCouponCreate() {
       submit: "保存并启用",
       done: "优惠券已创建并启用",
       fields: [
-        // IKDCVO：券品种 + 发放方式（kind × trigger）
+        /* IKKEWS 表单重排（道哥拍板消灭两列留白）：语义两连排满 + 通栏只给
+           主键/收尾项；条件隐藏字段消失后行自动回流（visible 不渲染不占位） */
+        { key: "name", label: "券名称", placeholder: "例如：满 20 减 5 寝室券", wide: true },
+        // IKDCVO：券品种 + 发放方式（kind × trigger）定位两连
         {
           key: "kind",
           label: "券品种",
@@ -796,7 +799,6 @@ function openCouponCreate() {
             { value: "partner", label: "异业券（到店出示，暂不核销）" },
           ],
         },
-        { key: "name", label: "券名称", placeholder: "例如：满 20 减 5 寝室券", wide: true },
         {
           key: "trigger",
           label: "发放方式",
@@ -836,12 +838,6 @@ function openCouponCreate() {
           step: 0.01,
           visible: (d) => d.kind === "platform",
         },
-        {
-          key: "remark",
-          label: "优惠说明（选填）",
-          placeholder: "例如：到店出示享第二杯半价",
-          wide: true,
-        },
         // IKDEN2：发放总量可选不限量（total=null），与「长期有效」同款交互
         {
           key: "totalMode",
@@ -874,13 +870,7 @@ function openCouponCreate() {
           type: "date",
           visible: (d) => d.expiryMode !== "forever",
         },
-        // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示位
-        {
-          key: "featuredAfterPay",
-          label: "支付后推荐（支付成功页展示，用户可一键领取）",
-          type: "checkbox",
-        },
-        // IKKEWS：每人限领张数（0=不限，默认 1）
+        // IKKEWS：每人限领张数（0=不限，默认 1）——与支付后推荐同行
         {
           key: "perUserLimit",
           label: "每人限领张数（0=不限制，默认 1）",
@@ -888,12 +878,25 @@ function openCouponCreate() {
           min: 0,
           visible: (d) => d.kind !== "partner",
         },
-        // IKKEWS：定向券（领券中心不显示，仅定向发放触达）
+        // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示位
+        {
+          key: "featuredAfterPay",
+          label: "支付后推荐（支付成功页展示）",
+          type: "checkbox",
+        },
+        // IKKEWS：定向券（领券中心不显示，仅定向发放触达）——条件项收尾
         {
           key: "targetedOnly",
-          label: "定向券（领券中心不显示，仅通过定向发放触达用户）",
+          label: "定向券（领券中心不显示，仅定向发放触达用户）",
           type: "checkbox",
+          wide: true,
           visible: (d) => d.kind !== "partner" && d.trigger === "manual",
+        },
+        {
+          key: "remark",
+          label: "优惠说明（选填）",
+          placeholder: "例如：到店出示享第二杯半价",
+          wide: true,
         },
       ],
       save: async (d) => {
