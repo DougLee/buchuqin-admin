@@ -2623,17 +2623,35 @@ const usersConfig: SectionConfig = {
   ],
 };
 /* ---------- 校区本体管理（IKAJSL）：hq 视角的 campuses 板块 ---------- */
+/** IKKRMM（ADR-0001）：组织名映射（id→名称）。平台端点尽力而为——校区级
+ *  账号无 GET /admin/organizations 权限会 403，失败缓存空表不重试（翻页不刷错），
+ *  列表回落显示原始 id；未分配/平台层显示「—」。 */
+let campusOrgNames: Map<string, string> | null = null;
+async function orgNameMap(): Promise<Map<string, string>> {
+  if (campusOrgNames) return campusOrgNames;
+  try {
+    const orgs = await api.organizations();
+    campusOrgNames = new Map(orgs.map((o) => [o.id, o.shortName || o.name]));
+  } catch {
+    campusOrgNames = new Map();
+  }
+  return campusOrgNames;
+}
 const hqCampusesConfig: SectionConfig = {
   title: "校区管理",
   eyebrow: "CAMPUS NETWORK",
   desc: "校区信息、启停与配送配置；楼栋与寝室由各校区后台自行维护。",
   // 非分页端点：全量拉取后前端切片分页（与群码同模式）
   loader: async (query) => {
-    const all = await api.campuses();
+    const [all, orgNames] = await Promise.all([api.campuses(), orgNameMap()]);
     // IKFOPY：标注校区类型——总部仓（type=hq）在列表可见可辨
     const rows = all.map((x) => ({
       ...x,
       typeText: (x as Campus & { type?: string }).type === "hq" ? "总部仓" : "校区",
+      // IKKRMM：所属组织（名称优先，取不到回落 id；空=平台层/未分配）
+      orgText: x.organizationId
+        ? orgNames.get(x.organizationId) ?? x.organizationId
+        : "—",
     }));
     const start = (query.page - 1) * query.pageSize;
     return {
@@ -2645,6 +2663,7 @@ const hqCampusesConfig: SectionConfig = {
     ["name", "校区"],
     ["shortName", "简称"],
     ["typeText", "类型"],
+    ["orgText", "所属组织"],
     ["warehouseName", "仓库"],
     ["status", "状态"],
     ["buildings", "楼栋数"],

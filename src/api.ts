@@ -8,6 +8,7 @@ import type {
   RbacRole,
   RecruitIdcard,
   AdminUser,
+  AdminOrganization,
   UserOrderRow,
   UserStats,
   WechatGroup,
@@ -806,6 +807,9 @@ export const api = {
     request<Campus[]>(
       `/admin/campuses${withQuery(listQuery(query))}`,
     ),
+  /** 组织列表（IKKRMM 基线，平台权限）：每组织含校区数/用户数聚合。 */
+  organizations: () =>
+    request<AdminOrganization[]>("/admin/organizations"),
   /** 校区本体增改（IKAJSL）：仅 hq；新校区接入入口。 */
   createCampus: (data: {
     name: string;

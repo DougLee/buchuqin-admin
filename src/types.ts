@@ -55,6 +55,19 @@ export interface Campus {
   buildings: number;
   rooms: number;
   users: number;
+  /** IKKRMM（ADR-0001 多租户基线）：所属组织 id；空=平台层（伪校区）或未分配 */
+  organizationId?: string | null;
+}
+
+/** 组织（IKKRMM 基线只读）：列表行为平台聚合口径，微信敏感凭据后端只回布尔位。 */
+export interface AdminOrganization {
+  id: string;
+  name: string;
+  shortName: string;
+  status: string;
+  createdAt: string;
+  campusCount: number;
+  userCount: number;
 }
 
 /** 商品类别（全局字典，2026-08-19 类别管理）。productCount 为关联商品数，image 为类别图（IK9RX0）。 */
