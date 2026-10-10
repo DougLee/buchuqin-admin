@@ -59,6 +59,15 @@ export interface RbacMe {
 import { ROLE_LABELS, clearCampusCache } from "./dicts";
 export { ROLE_LABELS };
 
+/** GET /admin/rbac/capabilities 行（IKKRMR 字典+本人持有情况）。 */
+export interface RbacCapabilityEntry {
+  code: string;
+  name: string;
+  remark: string;
+  patterns: string[];
+  granted: boolean;
+}
+
 /**
  * 路由/菜单 section → write URL 模式串（any-of 命中即可写）。
  * 口径与后端各端点 requirePerm 登记（蛋词 perms）一一对应；
@@ -193,12 +202,40 @@ export const activeCampus = ref<string>("");
 export const rbacVersion = ref(0);
 export const rbacLoaded = ref(false);
 export const authorizationEpoch = ref(0);
+/* ---------- 业务 capability 字典（IKKRMY）：登录后拉一次存 ref ---------- */
+/** GET /admin/rbac/capabilities 字典+本人持有情况（登录可读白名单）。
+ *  空数组=未加载/拉取失败 → canCapability 恒 false（fail closed，与服务端
+ *  输出裁剪同向——最多多隐藏列，绝不放行）。 */
+export const capabilities = ref<RbacCapabilityEntry[]>([]);
 let sessionGeneration = 0;
 let authorizationRequest = 0;
 let authorizationSignature = "";
+let capabilitiesRequest = 0;
 
 export function getSessionGeneration(): number {
   return sessionGeneration;
+}
+
+/** 业务 capability 持有判定（前端显隐用；判权真源在服务端输出裁剪）。 */
+export function canCapability(code: string): boolean {
+  return capabilities.value.some((c) => c.code === code && c.granted);
+}
+
+/** 拉取 capability 字典（loadRbac 成功后调用；世代+请求号双护栏防串账号）。 */
+export async function loadCapabilities(): Promise<void> {
+  const generation = sessionGeneration;
+  const request = ++capabilitiesRequest;
+  try {
+    const { api } = await import("./api");
+    if (generation !== sessionGeneration) return;
+    const list = await api.rbacCapabilities();
+    if (request !== capabilitiesRequest || generation !== sessionGeneration)
+      return;
+    capabilities.value = Array.isArray(list) ? list : [];
+  } catch {
+    if (request !== capabilitiesRequest) return;
+    capabilities.value = []; // 失败=拒绝一切 capability（默认隐藏，不回退宽松）
+  }
 }
 
 /** 与服务端相同：HTTP 方法一致、参数匹配单段、尾斜杠归一。 */
@@ -296,6 +333,8 @@ export async function loadRbac(): Promise<boolean> {
     if (request !== authorizationRequest) return rbacLoaded.value;
     if (generation !== sessionGeneration || me.account.id !== sessionUser.value?.id) return false;
     applyRbac(me);
+    // IKKRMY：capability 字典随授权上下文刷新（一次拉取存 ref，失败静默 fail closed）
+    void loadCapabilities();
     return true;
   } catch {
     if (request !== authorizationRequest) return rbacLoaded.value;
@@ -307,6 +346,7 @@ export async function loadRbac(): Promise<boolean> {
     isSuper.value = false;
     isPlatform.value = false;
     rbacLoaded.value = false;
+    capabilities.value = [];
     return false;
   }
 }
@@ -324,6 +364,7 @@ export function clearSession() {
   rbacRoles.value = [];
   switchableCampuses.value = [];
   activeCampus.value = "";
+  capabilities.value = [];
   clearCampusCache();
   rbacLoaded.value = false;
   ["adminToken", "adminUser", "adminRbac"].forEach((key) =>

@@ -3,6 +3,7 @@ import { compressToWebp } from "./utils/image";
 import type {
   AccountGrant,
   AdminAccount,
+  AdminCapability,
   AdminPermission,
   RbacMenuRow,
   RbacRole,
@@ -1245,6 +1246,10 @@ export const api = {
   /* ---------- RBAC 蛋词体系（2026-09-19，对齐 cool-admin）：授权上下文/角色/菜单 ---------- */
   /** 当前账号有效授权（登录/切校区后拉取，session.loadRbac 消费）。 */
   rbacPermmenu: () => request<RbacMe>("/admin/rbac/permmenu"),
+  /** 业务 capability 字典+当前账号持有情况（IKKRMR 下发 / IKKRMY 前端消费：
+   *  判权唯一真源在服务端输出裁剪，此处仅驱动列/区块隐藏与目录展示）。 */
+  rbacCapabilities: () =>
+    request<AdminCapability[]>("/admin/rbac/capabilities"),
   /** 权限目录（蛋词体系下已并入菜单树；旧权限目录页兜底保留，后端下线即 404 休眠）。 */
   rbacPermissions: () =>
     request<AdminPermission[]>("/admin/rbac/permissions"),

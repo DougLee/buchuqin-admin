@@ -43,6 +43,7 @@ import ProductImagesField from "../components/ProductImagesField.vue";
 import ProductPickerField from "../components/ProductPickerField.vue";
 import {
   activeCampus,
+  canCapability,
   canWrite,
   hasPerm,
   isPlatform,
@@ -2558,12 +2559,28 @@ const campusOptionsData = ref<Pick<Campus, "id" | "name" | "shortName">[]>([]);
  *  → isSuper||isPlatform；isHqView 恒等于官方库视角。 */
 const isHqRole = computed(() => isPlatform.value);
 const isPlatformAdmin = computed(() => isSuper.value || isPlatform.value);
+/** IKKRMY 成本读取 capability：无 cost.read 隐藏成本/毛利列与详情毛利区
+ *  （session 侧 capability 字典，与服务端输出裁剪同源；fail closed——字典
+ *  未加载时按无权限隐藏）。存量校区角色模板均含 dashboard/日报（cost.read
+ *  授权锚点），行为零变化；仅自定义无成本角色受影响。 */
+const costReadable = computed(() => canCapability("cost.read"));
+/** 成本口径列（无 cost.read 时从列表与 CSV 导出一并剔除，同服务端裁剪） */
+const COST_COLUMN_KEYS = new Set([
+  "costPrice",
+  "wholesalePrice",
+  "localPurchasePrice",
+  "marginTotal",
+]);
 function cols(config: { columns: [string, string][] }): [string, string][] {
   // contactText/deliveryFee（IKJ92S）为详情专用列，不进列表
   const list = config.columns.filter(
     (c) => c[0] !== "contactText" && c[0] !== "deliveryFee",
   );
-  return isPlatformAdmin.value ? list : list.filter((c) => c[0] !== "costPrice");
+  // IKKRMY：成本列显隐换 capability 判权（原 isPlatformAdmin/costPrice 局部
+  // 规则并入——无 cost.read 全部隐藏；持 cost.read（含校区角色）全量可见）
+  return costReadable.value
+    ? list
+    : list.filter((c) => !COST_COLUMN_KEYS.has(c[0]));
 }
 /** IKCHEW：官方库视角 UI——平台账号随商品视角切换；校区账号恒假。
  *  商品列表/表单/三层价格/建档弹窗按此分流；校区上下文 UI 用 !isHqView。 */
@@ -4444,10 +4461,15 @@ async function exportData() {
         })),
     100,
   );
+  // IKKRMY：导出列与列表同口径——无 cost.read 时成本/毛利列不进 CSV
+  //（服务端已裁剪字段值，此处再剔列头，防「有列无值」对账噪音）
+  const exportColumns = costReadable.value
+    ? config.value.columns
+    : config.value.columns.filter((c) => !COST_COLUMN_KEYS.has(c[0]));
   const csv = [
-    config.value.columns.map((c) => c[1]),
+    exportColumns.map((c) => c[1]),
     ...all.map((row) =>
-      config.value.columns.map((c) =>
+      exportColumns.map((c) =>
         c[0] === "quantity" && section.value === "inventory"
           ? txnQuantity(row)
           : String(display(row, c[0])),
@@ -6829,27 +6851,29 @@ async function cancelInviteRow(row: AdminRow) {
                 <option value="HQ">总部供货</option>
                 <option value="LOCAL">本地采购</option>
               </select></label
-            ><label v-if="!isHqView && productEdit.procurementMode === 'LOCAL'"
+            ><label v-if="costReadable && !isHqView && productEdit.procurementMode === 'LOCAL'"
               >本地进货价（元/{{ (selected as Product).retailUnit || '零售单位' }}）<input
                 v-model.number="productEdit.localPurchasePrice"
                 type="number"
                 min="0"
                 step="0.01"
                 :disabled="!canEditPrice" /></label
-            ><label v-if="!isHqView && productEdit.procurementMode === 'HQ'"
+            ><label v-if="costReadable && !isHqView && productEdit.procurementMode === 'HQ'"
               >总部批发价（元/{{ (selected as Product).retailUnit || '零售单位' }}）<input
                 :value="fenToYuan(Number((selected as Product).wholesalePrice ?? 0))"
                 type="text"
                 disabled /></label
-            ><label v-if="isHqView"
+            ><label v-if="costReadable && isHqView"
               >进货价（元，仅总部可见）<input
                 v-model.number="productEdit.costPrice"
                 type="number"
                 min="0"
                 :disabled="!canEditPrice" /></label
             ><!-- IKFOPQ：批发价格官方行可编辑；校区自建行（无来源）放开自报，
-                 行内毛利=售价−自报批发价；同步行仍只读 --><label
-              v-if="isHqView || !(selected as Product)?.sourceProductId"
+                 行内毛利=售价−自报批发价；同步行仍只读；
+                 IKKRMY：无 cost.read 成本输入一并隐藏（服务端已裁剪行值，
+                 表单不显示 0 兜底防误导） --><label
+              v-if="costReadable && (isHqView || !(selected as Product)?.sourceProductId)"
               >批发价格（元）<input
                 v-model.number="productEdit.wholesalePrice"
                 type="number"
@@ -6984,8 +7008,9 @@ async function cancelInviteRow(row: AdminRow) {
             </div></template
           >
           <!-- 订单明细毛利（IKFOPQ）：校区账=售价−批发快照；快照前历史单显示 — -->
+          <!-- IKKRMY：无 cost.read 整区隐藏（服务端已裁剪行内快照，双保险） -->
           <div
-            v-if="section === 'orders' && orderMarginItems.length"
+            v-if="costReadable && section === 'orders' && orderMarginItems.length"
             class="wide pick-list-wrap"
           >
             <span class="field-label"

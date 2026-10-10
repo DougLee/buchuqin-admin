@@ -553,6 +553,21 @@ export interface AdminPermission {
   remark: string;
 }
 
+/** 业务 capability（GET /admin/rbac/capabilities 行，IKKRMR/IKKRMY）：
+ *  高风险域（订单动作/成本读写）的稳定业务能力标识 + 当前账号持有情况。
+ *  判权语义=URL 模式集 ANY-of（持任一模式即持有）；服务端输出裁剪为唯一
+ *  闸门，前端只做列/区块隐藏（与服务端同源字典，不自行推导）。 */
+export interface AdminCapability {
+  /** 稳定业务能力标识（域.动作；跨端契约锚点）。 */
+  code: string;
+  name: string;
+  remark: string;
+  /** 授权锚点：URL 模式集（'METHOD /admin/…'）。 */
+  patterns: string[];
+  /** 当前账号是否持有（超管恒真）。 */
+  granted: boolean;
+}
+
 /** 招募证件资料（GET /admin/recruit-applications/:id/idcard，照片为 5 分钟签名 URL）。 */
 export interface RecruitIdcard {
   id: string;
