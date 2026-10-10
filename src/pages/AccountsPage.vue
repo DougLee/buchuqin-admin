@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
 import { isSuper, type RbacMe } from "../session";
 import type {
@@ -158,7 +159,6 @@ function changePageSize(nextPageSize: number) {
 /* ---------- 新建/编辑抽屉 ---------- */
 const drawerOpen = ref(false);
 const drawerSaving = ref(false);
-const drawerError = ref("");
 const editingId = ref<string | null>(null); // null = 新建
 const form = ref({
   username: "",
@@ -175,6 +175,9 @@ const form = ref({
  */
 const selectedRoleCodes = ref<string[]>([]);
 const selectedCampusIds = ref<string[]>([]);
+function showDrawerError(message: string) {
+  ElMessage({ message, type: "error", duration: 3500, showClose: true });
+}
 /** 内置超管：不可编辑授权（后端通配全权限），下拉标「内置」 */
 function roleOptionLabel(r: RbacRole): string {
   return r.builtin && r.code === "super-admin"
@@ -187,7 +190,6 @@ function openCreate() {
   selectedRoleCodes.value = [];
   selectedCampusIds.value = [];
   campusFilterOrgId.value = "";
-  drawerError.value = "";
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
 }
@@ -205,7 +207,6 @@ function openEdit(row: AdminAccount) {
   selectedCampusIds.value = [...new Set((row.grants ?? []).flatMap((g) => g.campusId ? [g.campusId] : []))];
   campusFilterOrgId.value =
     row.organizationId ?? inferCampusOrganization(selectedCampusIds.value);
-  drawerError.value = "";
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
 }
@@ -257,19 +258,18 @@ const authorizationSummary = computed(() => {
     : `${roleText}，已选择 ${orgLabel(campusFilterOrgId.value)}，请继续选择校区`;
 });
 async function submitDrawer() {
-  drawerError.value = "";
   if (!editingId.value) {
     if (!form.value.username.trim())
-      return (drawerError.value = "请输入账号名");
+      return showDrawerError("请输入账号名");
     if (form.value.password.length < 8)
-      return (drawerError.value = "初始密码至少 8 位");
+      return showDrawerError("初始密码至少 8 位");
   } else if (form.value.password && form.value.password.length < 8) {
-    return (drawerError.value = "重置密码至少 8 位");
+    return showDrawerError("重置密码至少 8 位");
   }
   if (form.value.orgLevel === "org" && !form.value.organizationId)
-    return (drawerError.value = "组织级账号必须选择所属组织");
+    return showDrawerError("组织级账号必须选择所属组织");
   const grantError = validateGrants();
-  if (grantError) return (drawerError.value = grantError);
+  if (grantError) return showDrawerError(grantError);
   const scope = form.value.orgLevel === "campus" ? "campus" : "platform";
   const grantCampuses = scope === "campus" ? selectedCampusIds.value : [null];
   const grants: AccountGrant[] = selectedRoleCodes.value.flatMap(roleCode =>
@@ -306,7 +306,7 @@ async function submitDrawer() {
     drawerOpen.value = false;
     await load();
   } catch (e) {
-    drawerError.value = e instanceof Error ? e.message : "保存失败";
+    showDrawerError(e instanceof Error ? e.message : "保存失败");
   } finally {
     drawerSaving.value = false;
   }
@@ -649,7 +649,6 @@ async function confirmDelete() {
             <div><strong>授权结果</strong><p>{{ authorizationSummary }}</p></div>
           </div>
         </section>
-      <ElAlert v-if="drawerError" class="drawer-error" type="error" show-icon :closable="false" :title="drawerError" />
       <template #footer>
         <div class="account-dialog-actions">
           <ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton>
@@ -760,7 +759,6 @@ async function confirmDelete() {
 }
 .full-width,
 .scope-select { width: 100%; }
-.drawer-error { margin-top: 16px; }
 .delete-copy {
   margin: 0;
   color: #4c5c53;
