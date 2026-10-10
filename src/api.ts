@@ -1385,7 +1385,7 @@ export const api = {
   /** IKB3KG 方案A：我的可运营校区（>1 时顶栏出现切换下拉）。 */
   adminCampuses: (purpose?: "filter") =>
     request<
-      { id: string; name: string; shortName: string; current: boolean }[]
+      { id: string; name: string; shortName: string; organizationId?: string | null; current: boolean }[]
     >(`/auth/admin/campuses${purpose ? "?purpose=filter" : ""}`),
   /** IKB3KG 方案A：切换运营校区（授权范围内），换发 token 后整页刷新。 */
   switchAdminCampus: async (campusId: string) => {
