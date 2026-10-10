@@ -235,6 +235,11 @@ async function toggleStatus(row: AdminOrganization) {
     notify(e instanceof Error ? e.message : "操作失败", true);
   }
 }
+function organizationRow(row: unknown): AdminOrganization {
+  if (!row || typeof row !== "object" || typeof (row as { id?: unknown }).id !== "string")
+    throw new TypeError("组织列表返回了无效的行数据");
+  return row as AdminOrganization;
+}
 </script>
 <template>
   <div class="workspace rbac-workspace">
@@ -248,254 +253,149 @@ async function toggleStatus(row: AdminOrganization) {
         </p>
       </div>
       <div class="head-actions">
-        <button v-if="isSuper" class="btn primary" @click="openCreate">
-          ＋ 新建组织
-        </button>
+        <ElButton v-if="isSuper" type="primary" @click="openCreate">新建组织</ElButton>
       </div>
     </div>
 
-    <p v-if="toast" class="feat-toast" :class="{ error: toastError }">
-      {{ toast }}
-    </p>
+    <ElAlert v-if="toast" class="organization-alert" :type="toastError ? 'error' : 'success'" show-icon :closable="false" :title="toast" />
 
     <div class="data-panel">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>组织</th>
-              <th>状态</th>
-              <th>小程序 AppID</th>
-              <th>微信配置</th>
-              <th>校区</th>
-              <th>用户</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading">
-              <td colspan="8"><div class="row-skeleton"></div></td>
-            </tr>
-            <tr v-else-if="loadError">
-              <td colspan="8" class="empty-cell">
-                {{ loadError }}
-                <button class="btn mini ghost" @click="load">重试</button>
-              </td>
-            </tr>
-            <tr v-else-if="!rows.length">
-              <td colspan="8" class="empty-cell">暂无组织</td>
-            </tr>
-            <tr v-for="row in rows" v-else :key="row.id">
-              <td>
-                <strong>{{ row.name }}</strong>
-                <small class="muted">{{ row.shortName || "—" }}</small>
-              </td>
-              <td>
-                <span
-                  class="status"
-                  :class="row.status === 'active' ? 'success' : 'warning'"
-                  >{{ row.status === "active" ? "启用" : "停用" }}</span
-                >
-              </td>
-              <td>
-                <code v-if="row.wxAppId">{{ row.wxAppId }}</code>
-                <span v-else class="muted">未登记（env 兜底）</span>
-              </td>
-              <td>
-                <div class="wx-badges">
-                  <span class="status" :class="row.hasWxSecret ? 'success' : 'warning'">Secret</span>
-                  <span class="status" :class="row.hasMchApiV3Key ? 'success' : 'warning'">APIv3密钥</span>
-                  <span class="status" :class="row.hasPrivateKey ? 'success' : 'warning'">商户私钥</span>
-                  <span class="status" :class="row.mchId ? 'info' : 'warning'">{{
-                    row.mchId ? `商户号 ${row.mchId}` : "商户号未配"
-                  }}</span>
-                </div>
-              </td>
-              <td>
-                {{ row.campusCount }}
-                <small v-if="row.campusCount === 0" class="muted">（未开通）</small>
-              </td>
-              <td>{{ row.userCount }}</td>
-              <td>{{ fmtDateTime(row.createdAt) }}</td>
-              <td class="row-actions">
-                <template v-if="isSuper">
-                  <button class="btn mini primary" @click="openWizard(row)">
-                    开通组织
-                  </button>
-                  <button class="btn mini ghost" @click="openEdit(row)">编辑</button>
-                  <button class="btn mini danger-btn" @click="toggleStatus(row)">
-                    {{ confirmStatusId === row.id
-                      ? (row.status === "active" ? "确认停用" : "确认启用")
-                      : (row.status === "active" ? "停用" : "启用") }}
-                  </button>
-                </template>
-                <span v-else class="muted">只读</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <ElAlert v-if="loadError" class="load-alert" type="error" show-icon :closable="false">
+        <template #title>{{ loadError }} <ElButton link type="primary" @click="load">重试</ElButton></template>
+      </ElAlert>
+      <ElTable v-else v-loading="loading" :data="rows" row-key="id" empty-text="暂无组织" class="organization-table">
+        <ElTableColumn label="组织" min-width="170"><template #default="{ row }"><strong>{{ row.name }}</strong><small class="muted organization-short-name">{{ row.shortName || "—" }}</small></template></ElTableColumn>
+        <ElTableColumn label="状态" width="90"><template #default="{ row }"><ElTag :type="row.status === 'active' ? 'success' : 'warning'">{{ row.status === "active" ? "启用" : "停用" }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="小程序 AppID" min-width="190"><template #default="{ row }"><code v-if="row.wxAppId">{{ row.wxAppId }}</code><span v-else class="muted">未登记（env 兜底）</span></template></ElTableColumn>
+        <ElTableColumn label="微信配置" min-width="280"><template #default="{ row }"><div class="wx-badges"><ElTag :type="row.hasWxSecret ? 'success' : 'warning'">Secret</ElTag><ElTag :type="row.hasMchApiV3Key ? 'success' : 'warning'">APIv3密钥</ElTag><ElTag :type="row.hasPrivateKey ? 'success' : 'warning'">商户私钥</ElTag><ElTag :type="row.mchId ? 'info' : 'warning'">{{ row.mchId ? `商户号 ${row.mchId}` : "商户号未配" }}</ElTag></div></template></ElTableColumn>
+        <ElTableColumn prop="campusCount" label="校区" width="100"><template #default="{ row }">{{ row.campusCount }}<small v-if="row.campusCount === 0" class="muted">（未开通）</small></template></ElTableColumn>
+        <ElTableColumn prop="userCount" label="用户" width="80" />
+        <ElTableColumn label="创建时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="260"><template #default="{ row }"><div class="row-actions"><template v-if="isSuper"><ElButton size="small" type="primary" plain @click="openWizard(organizationRow(row))">开通组织</ElButton><ElButton size="small" plain @click="openEdit(organizationRow(row))">编辑</ElButton><ElButton size="small" :type="confirmStatusId === row.id ? 'danger' : 'warning'" plain @click="toggleStatus(organizationRow(row))">{{ confirmStatusId === row.id ? (row.status === "active" ? "确认停用" : "确认启用") : (row.status === "active" ? "停用" : "启用") }}</ElButton></template><span v-else class="muted">只读</span></div></template></ElTableColumn>
+      </ElTable>
     </div>
 
-    <!-- 新建/编辑抽屉：基本信息 + 微信配置（敏感凭据只写不回读） -->
-    <div v-if="drawerOpen" class="drawer-mask" @click.self="drawerOpen = false">
-      <aside class="drawer product-create">
-        <div class="drawer-head">
-          <div>
-            <h2>{{ editing ? `编辑组织 ${editing.name}` : "新建组织" }}</h2>
-          </div>
-          <button aria-label="关闭" @click="drawerOpen = false">×</button>
-        </div>
+    <!-- 新建/编辑：基本信息 + 微信配置（敏感凭据只写不回读） -->
+    <ElDialog v-model="drawerOpen" class="organization-dialog" :title="editing ? `编辑组织 ${editing.name}` : '新建组织'" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close modal-class="organization-dialog-overlay" :show-close="!drawerSaving" :close-on-click-modal="!drawerSaving" :close-on-press-escape="!drawerSaving">
         <p class="drawer-note">
           AppID 一经登记即生效（该小程序登录直接进本组织）；名称/简称/AppID
           全局唯一。敏感凭据只写不回读——留空=保留现状，填写=覆盖，勾选清除=置空。
         </p>
-        <div class="product-form">
+        <div class="organization-form-grid">
           <label>
             组织名称
-            <input v-model.trim="form.name" placeholder="2-50 字，如：某某餐饮管理公司" />
+            <ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" />
           </label>
           <label>
             组织简称
-            <input v-model.trim="form.shortName" placeholder="1-20 字，如：某食社" />
+            <ElInput v-model="form.shortName" placeholder="1-20 字，如：某食社" />
           </label>
           <label>
             小程序 AppID{{ editing ? "（清空=回落平台 env 兜底）" : "" }}
-            <input v-model.trim="form.wxAppId" placeholder="wx 开头 18 位" />
+            <ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" />
           </label>
         </div>
         <p class="drawer-sec">微信支付与回调</p>
-        <div class="product-form">
+        <div class="organization-form-grid">
           <label>
             商户号 mchId（组织 B 独立商户号）
-            <input v-model.trim="form.mchId" placeholder="未配可留空" />
+            <ElInput v-model="form.mchId" placeholder="未配可留空" />
           </label>
           <label>
             证书序列号
-            <input v-model.trim="form.serialNo" placeholder="未配可留空" />
+            <ElInput v-model="form.serialNo" placeholder="未配可留空" />
           </label>
           <label>
             回调域名
-            <input v-model.trim="form.notifyDomain" placeholder="如 https://api-b.example.com" />
+            <ElInput v-model="form.notifyDomain" placeholder="如 https://api-b.example.com" />
           </label>
         </div>
         <p class="drawer-sec">敏感凭据（只写不回读）</p>
         <div class="sens-list">
           <div class="sens-row">
-            <input
+            <ElInput
               v-model="form.wxSecret"
               type="password"
+              show-password
               :disabled="clearFlags.wxSecret"
               placeholder="小程序 Secret"
               autocomplete="new-password"
             />
-            <span class="status" :class="editing && editing.hasWxSecret ? 'success' : 'warning'">{{
-              editing && editing.hasWxSecret ? "已配置" : "未配置"
-            }}</span>
-            <label class="checkbox-row">
-              <input v-model="clearFlags.wxSecret" class="raw-checkbox" type="checkbox" />
-              清除
-            </label>
+            <ElTag :type="editing && editing.hasWxSecret ? 'success' : 'warning'">{{ editing && editing.hasWxSecret ? "已配置" : "未配置" }}</ElTag>
+            <ElCheckbox v-model="clearFlags.wxSecret">清除</ElCheckbox>
           </div>
           <div class="sens-row">
-            <input
+            <ElInput
               v-model="form.mchApiV3Key"
               type="password"
+              show-password
               :disabled="clearFlags.mchApiV3Key"
               placeholder="商户 APIv3 密钥"
               autocomplete="new-password"
             />
-            <span class="status" :class="editing && editing.hasMchApiV3Key ? 'success' : 'warning'">{{
-              editing && editing.hasMchApiV3Key ? "已配置" : "未配置"
-            }}</span>
-            <label class="checkbox-row">
-              <input v-model="clearFlags.mchApiV3Key" class="raw-checkbox" type="checkbox" />
-              清除
-            </label>
+            <ElTag :type="editing && editing.hasMchApiV3Key ? 'success' : 'warning'">{{ editing && editing.hasMchApiV3Key ? "已配置" : "未配置" }}</ElTag>
+            <ElCheckbox v-model="clearFlags.mchApiV3Key">清除</ElCheckbox>
           </div>
           <div class="sens-row sens-tall">
-            <textarea
+            <ElInput
               v-model="form.privateKey"
+              type="textarea"
               :disabled="clearFlags.privateKey"
-              rows="3"
+              :rows="3"
               placeholder="商户私钥 PEM（-----BEGIN PRIVATE KEY-----）"
-            ></textarea>
-            <span class="status" :class="editing && editing.hasPrivateKey ? 'success' : 'warning'">{{
-              editing && editing.hasPrivateKey ? "已配置" : "未配置"
-            }}</span>
-            <label class="checkbox-row">
-              <input v-model="clearFlags.privateKey" class="raw-checkbox" type="checkbox" />
-              清除
-            </label>
+            />
+            <ElTag :type="editing && editing.hasPrivateKey ? 'success' : 'warning'">{{ editing && editing.hasPrivateKey ? "已配置" : "未配置" }}</ElTag>
+            <ElCheckbox v-model="clearFlags.privateKey">清除</ElCheckbox>
           </div>
         </div>
-        <p v-if="drawerError" class="form-hint">{{ drawerError }}</p>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="drawerOpen = false">取消</button>
-          <button class="btn primary" :disabled="drawerSaving" @click="submitDrawer">
-            {{ drawerSaving ? "保存中..." : editing ? "保存修改" : "创建组织" }}
-          </button>
-        </div>
-      </aside>
-    </div>
+        <ElAlert v-if="drawerError" class="dialog-error" type="error" show-icon :closable="false" :title="drawerError" />
+        <template #footer><div class="dialog-actions"><ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton><ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">{{ editing ? "保存修改" : "创建组织" }}</ElButton></div></template>
+    </ElDialog>
 
     <!-- 开通组织向导：组织管理员 + 首个校区一次提交（幂等） -->
-    <div v-if="wizardOpen" class="drawer-mask" @click.self="wizardOpen = false">
-      <aside class="drawer product-create">
-        <div class="drawer-head">
-          <div>
-            <h2>开通组织 · {{ wizardOrg?.name }}</h2>
-          </div>
-          <button aria-label="关闭" @click="wizardOpen = false">×</button>
-        </div>
+    <ElDialog v-model="wizardOpen" class="organization-dialog" :title="`开通组织 · ${wizardOrg?.name ?? ''}`" width="min(700px, calc(100vw - 32px))" align-center destroy-on-close modal-class="organization-dialog-overlay" :show-close="!wizardSaving" :close-on-click-modal="!wizardSaving" :close-on-press-escape="!wizardSaving">
         <template v-if="!wizardResult">
           <p class="drawer-note">
             一条龙创建组织管理员（绑定本组织 + org-admin 预设角色）与首个校区；
             重复提交幂等——已存在的部分沿用现状，不会重复创建。
           </p>
           <p class="drawer-sec">组织管理员</p>
-          <div class="product-form">
+          <div class="organization-form-grid">
             <label>
               管理员账号
-              <input v-model.trim="wizard.adminUsername" placeholder="3-20 位字母/数字/下划线" />
+              <ElInput v-model="wizard.adminUsername" placeholder="3-20 位字母/数字/下划线" />
             </label>
             <label>
               初始密码
-              <input
+              <ElInput
                 v-model="wizard.adminPassword"
                 type="password"
+                show-password
                 placeholder="至少 8 位"
                 autocomplete="new-password"
               />
             </label>
             <label>
               昵称（可选）
-              <input v-model.trim="wizard.adminNickname" placeholder="如：组织B管理员" />
+              <ElInput v-model="wizard.adminNickname" placeholder="如：组织B管理员" />
             </label>
           </div>
           <p class="drawer-sec">首个校区</p>
-          <div class="product-form">
+          <div class="organization-form-grid">
             <label>
               校区全称
-              <input v-model.trim="wizard.campusName" placeholder="2-30 字" />
+              <ElInput v-model="wizard.campusName" placeholder="2-30 字" />
             </label>
             <label>
               校区简称
-              <input v-model.trim="wizard.campusShortName" placeholder="2-15 字" />
+              <ElInput v-model="wizard.campusShortName" placeholder="2-15 字" />
             </label>
             <label>
               仓库名
-              <input v-model.trim="wizard.campusWarehouseName" placeholder="2-30 字" />
+              <ElInput v-model="wizard.campusWarehouseName" placeholder="2-30 字" />
             </label>
           </div>
-          <p v-if="wizardError" class="form-hint">{{ wizardError }}</p>
-          <div class="drawer-actions">
-            <button class="btn ghost" @click="wizardOpen = false">取消</button>
-            <button class="btn primary" :disabled="wizardSaving" @click="submitWizard">
-              {{ wizardSaving ? "开通中..." : "确认开通" }}
-            </button>
-          </div>
+          <ElAlert v-if="wizardError" class="dialog-error" type="error" show-icon :closable="false" :title="wizardError" />
         </template>
         <template v-else>
           <p class="drawer-sec">开通结果</p>
@@ -503,45 +403,29 @@ async function toggleStatus(row: AdminOrganization) {
             <div class="result-item">
               <small>组织管理员</small>
               <strong>{{ wizardResult.admin.username }}</strong>
-              <span class="status" :class="wizardResult.created.admin ? 'info' : 'warning'">{{
-                wizardResult.created.admin ? "本次新建" : "沿用现有"
-              }}</span>
+              <ElTag :type="wizardResult.created.admin ? 'success' : 'warning'">{{ wizardResult.created.admin ? "本次新建" : "沿用现有" }}</ElTag>
             </div>
             <div class="result-item">
               <small>首个校区</small>
               <strong>{{ wizardResult.campus.name }}</strong>
-              <span class="status" :class="wizardResult.created.campus ? 'info' : 'warning'">{{
-                wizardResult.created.campus ? "本次新建" : "沿用现有"
-              }}</span>
+              <ElTag :type="wizardResult.created.campus ? 'success' : 'warning'">{{ wizardResult.created.campus ? "本次新建" : "沿用现有" }}</ElTag>
             </div>
           </div>
           <p class="drawer-note">
             管理员已绑 org-admin 预设角色（数据边界=本组织）；初始密码请线下交付并提醒尽快修改。
           </p>
-          <div class="drawer-actions">
-            <button class="btn primary" @click="wizardOpen = false">完成</button>
-          </div>
         </template>
-      </aside>
-    </div>
+        <template #footer><div class="dialog-actions"><template v-if="!wizardResult"><ElButton :disabled="wizardSaving" @click="wizardOpen = false">取消</ElButton><ElButton type="primary" :loading="wizardSaving" @click="submitWizard">确认开通</ElButton></template><ElButton v-else type="primary" @click="wizardOpen = false">完成</ElButton></div></template>
+    </ElDialog>
   </div>
 </template>
 <style scoped>
-/* 对齐 AccountsPage：全局 .workspace/.page-head/.data-panel/table/.btn/.drawer
-   不重写，scoped 只留本页私有（提示条/徽章组/敏感行/开通结果网格）。 */
-.feat-toast {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #e5f6eb;
-  color: #087641;
-  font-size: 12px;
-  width: fit-content;
-}
-.feat-toast.error {
-  background: #fdeeee;
-  color: #b42323;
-}
+.organization-alert { margin: 0 0 14px; width: fit-content; }
+.load-alert { margin: 14px; width: auto; }
+.organization-table { width: 100%; }
+.organization-short-name { display: block; }
+.row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .muted {
   color: var(--muted);
   font-size: 12px;
@@ -556,6 +440,19 @@ async function toggleStatus(row: AdminOrganization) {
   margin: 0 0 10px;
   font-size: 11px;
   color: var(--muted);
+}
+.organization-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  margin-top: 14px;
+}
+.organization-form-grid label {
+  display: grid;
+  gap: 7px;
+  color: #374b41;
+  font-size: 12px;
+  font-weight: 600;
 }
 .wx-badges {
   display: flex;
@@ -579,22 +476,9 @@ td small.muted {
 .sens-row.sens-tall {
   align-items: start;
 }
-.sens-row input,
-.sens-row textarea {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #fff;
-  padding: 0 8px;
-  color: #153628;
-  min-width: 0;
-  font-size: 12px;
-}
-.sens-row.sens-tall textarea {
-  height: auto;
-  padding: 8px;
-  font-family: monospace;
-}
+.sens-row :deep(.el-input),
+.sens-row :deep(.el-textarea) { min-width: 0; }
+.sens-row.sens-tall :deep(textarea) { font-family: monospace; }
 .result-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -610,5 +494,23 @@ td small.muted {
 }
 .result-item small {
   color: var(--muted);
+}
+.dialog-error { margin-top: 14px; }
+.dialog-actions { display: flex; gap: 10px; }
+.dialog-actions :deep(.el-button) { min-height: 44px; flex: 1; border-radius: 10px; font-weight: 700; }
+.dialog-actions :deep(.el-button + .el-button) { margin-left: 0; }
+:deep(.organization-table .el-table__cell) { padding-block: 12px; }
+:global(.organization-dialog-overlay) { background: #061d1680; backdrop-filter: blur(3px); }
+:global(.organization-dialog.el-dialog) { display: flex; max-height: min(90vh, 900px); flex-direction: column; overflow: hidden; border-radius: 18px; box-shadow: 0 24px 70px #062e2340; }
+:global(.organization-dialog .el-dialog__header) { min-height: 72px; margin: 0; padding: 24px 26px 16px; border-bottom: 1px solid var(--line); }
+:global(.organization-dialog .el-dialog__title) { color: #153628; font-size: 18px; font-weight: 750; }
+:global(.organization-dialog .el-dialog__headerbtn) { top: 18px; right: 20px; width: 36px; height: 36px; border-radius: 10px; background: #f0f4f1; }
+:global(.organization-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; padding: 22px 26px 8px; }
+:global(.organization-dialog .el-dialog__footer) { padding: 14px 26px 26px; border-top: 1px solid var(--line); background: #fff; box-shadow: 0 -10px 24px #163f2b0a; }
+@media (max-width: 720px) {
+  .organization-form-grid,
+  .result-grid { grid-template-columns: 1fr; }
+  .sens-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .sens-row :deep(.el-checkbox) { grid-column: 1 / -1; min-height: 44px; }
 }
 </style>
