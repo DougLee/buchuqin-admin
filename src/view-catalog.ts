@@ -18,14 +18,28 @@ import Roles from "./pages/RolesPage.vue";
 import Menus from "./pages/MenusPage.vue";
 import Permissions from "./pages/RbacPermissionsPage.vue";
 import Audit from "./pages/RbacAuditPage.vue";
+import { catalogViews } from "./modules/catalog";
+import { fulfillmentViews } from "./modules/fulfillment";
 // 组织管理（IKKRMS）：组织 B 平台端开通一条龙（列表/微信配置/开通向导）
 import Organizations from "./pages/OrganizationsPage.vue";
-export const views: Record<string, Component> = {
+function mergeViewRegistries(...registries: Record<string, Component>[]) {
+  const merged: Record<string, Component> = {};
+  for (const registry of registries)
+    for (const [key, view] of Object.entries(registry)) {
+      if (merged[key]) throw new Error(`重复的后台页面注册：${key}`);
+      merged[key] = view;
+    }
+  return merged;
+}
+const coreViews: Record<string, Component> = {
   dashboard: Dashboard, restock: Restock, purchase: Purchase, reports: Reports,
   "campus-report": CampusReport, "battle-map": BattleMap, featured: Featured,
   "campus-config": CampusConfig, "after-sales": AfterSales, accounts: Accounts, "rbac-roles": Roles, "rbac-menus": Menus,
   "rbac-permissions": Permissions, "rbac-audit": Audit, organizations: Organizations,
   help: HelpCenter, changelog: Changelog,
 };
-for (const key of ["orders", "official-products", "products", "categories", "inventory", "warehouse-orders", "inventory-txns", "locations", "banners", "pay-ads", "coupons", "promotions", "wheel", "wechat-groups", "staff", "recruit", "buildings", "campuses", "users", "dispatch", "finance", "rules", "audit", "printers"]) views[key] = DataPage;
+const legacyViews = Object.fromEntries(
+  ["official-products", "products", "inventory", "inventory-txns", "locations", "banners", "pay-ads", "coupons", "promotions", "wheel", "wechat-groups", "staff", "recruit", "buildings", "campuses", "users", "dispatch", "finance", "rules", "audit", "printers"].map((key) => [key, DataPage]),
+) as Record<string, Component>;
+export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, legacyViews);
 export const superViews = new Set(["rbac-roles", "rbac-menus", "rbac-permissions"]);

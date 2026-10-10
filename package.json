@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc --noEmit && vite build",
     "type-check": "vue-tsc --noEmit",
+    "test:admin-foundation": "node --test scripts/test-admin-page-foundation.mjs",
     "test:rbac-session": "node --test scripts/test-rbac-session.mjs"
   },
   "dependencies": {

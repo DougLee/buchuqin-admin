@@ -41,6 +41,8 @@ import IdCardImagesField from "../components/IdCardImagesField.vue";
 import ImageUploadField from "../components/ImageUploadField.vue";
 import ProductImagesField from "../components/ProductImagesField.vue";
 import ProductPickerField from "../components/ProductPickerField.vue";
+import PickingChecklist from "../modules/fulfillment/picking/components/PickingChecklist.vue";
+import { buildPickingLines } from "../modules/fulfillment/picking/model";
 import {
   activeCampus,
   canCapability,
@@ -4904,19 +4906,29 @@ const orderProofs = computed(() => {
 const pickingItems = computed(() => {
   const order = selected.value as unknown as Order | undefined;
   if (section.value !== "warehouse-orders" || !order?.items) return [];
-  return order.items.map((line) => ({
-    name: line.product?.name ?? "未知商品",
-    quantity: line.quantity,
-    location:
-      [
-        line.product?.location ?? "",
-        (line.product as { locationCode?: string } | undefined)
-          ?.locationCode ?? "",
-      ]
-        .filter(Boolean)
-        .join("-"),
-  }));
+  return buildPickingLines(order.items);
 });
+const pickedItemIndexes = ref<number[]>([]);
+const pickingComplete = computed(
+  () => pickingItems.value.length > 0 && pickedItemIndexes.value.length === pickingItems.value.length,
+);
+const hasPickingProgress = computed(
+  () => section.value === "warehouse-orders" && pickedItemIndexes.value.length > 0,
+);
+function closeDetail(force = false) {
+  if (!force && hasPickingProgress.value &&
+      !window.confirm("当前拣货勾选仅保存在本页面，关闭后将清空。确认离开吗？")) return;
+  selected.value = undefined;
+  pickedItemIndexes.value = [];
+}
+watch(() => selected.value?.id, () => { pickedItemIndexes.value = []; });
+function warnPickingRefresh(event: BeforeUnloadEvent) {
+  if (!hasPickingProgress.value) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+onMounted(() => window.addEventListener("beforeunload", warnPickingRefresh));
+onUnmounted(() => window.removeEventListener("beforeunload", warnPickingRefresh));
 /** 订单毛利合计（IKFTZ9）：实付分摊 − 进货成本；任一行缺成本返回 null（列表显示 —）。
  *  详情合计与列表毛利列共用同一口径。 */
 function orderMarginTotalOf(order: MarginSource | undefined | null): number | null {
@@ -4983,11 +4995,15 @@ const orderMarginTotal = computed(() =>
 /** 确认出库（IKA0UQ）：paid/picking → waiting-first-mile 一步到位 + 出库流水。 */
 async function outbound() {
   if (!selected.value) return;
+  if (!pickingComplete.value) {
+    notify("请先逐项确认全部商品，再确认出库", true);
+    return;
+  }
   try {
     await api.orderAction(selected.value.id, "outbound");
     // IKBT6N：小票已改支付成功时自动打印，出库不再重复出票
     notify("已出库，订单转待配送，配送员可接单");
-    selected.value = undefined;
+    closeDetail(true);
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "出库失败", true);
@@ -5005,16 +5021,6 @@ async function reprintReceipt() {
     notify(error instanceof Error ? error.message : "打印失败", true);
   } finally {
     printing.value = false;
-  }
-}
-/** 列表内联出库（IKA0UT）：不进抽屉，一键出库。 */
-async function outboundRow(row: AdminRow) {
-  try {
-    await api.orderAction(row.id, "outbound");
-    notify("已出库，订单转待配送");
-    await load();
-  } catch (error) {
-    notify(error instanceof Error ? error.message : "出库失败", true);
   }
 }
 /* ---------- 校区打印机（IKBW0Q）：绑定/测试打印/解绑 ---------- */
@@ -5852,8 +5858,36 @@ async function cancelInviteRow(row: AdminRow) {
           </template>
         </div>
       </div>
-      <div v-else class="table-wrap">
-        <table>
+      <div v-else class="table-wrap" :class="{ 'has-mobile-cards': ['orders', 'warehouse-orders', 'after-sales', 'inventory'].includes(section) }">
+        <div v-if="['orders', 'warehouse-orders', 'after-sales', 'inventory'].includes(section)" class="mobile-record-list">
+          <div v-if="loading" v-for="i in 4" :key="i" class="mobile-record-card"><div class="row-skeleton"></div></div>
+          <p v-else-if="!filtered.length" class="mobile-record-empty">{{ loadError ? "加载失败，请重试" : "暂无数据" }}</p>
+          <article v-for="row in loading ? [] : filtered" :key="rowKey(row)" class="mobile-record-card" @click="openDetail(row)">
+            <header>
+              <strong v-if="section === 'orders' || section === 'warehouse-orders'">订单 …{{ String(display(row, 'orderNo')).slice(-8) }}</strong>
+              <strong v-else-if="section === 'after-sales'">售后 {{ String(row.id).slice(-8) }}</strong>
+              <strong v-else>{{ display(row, 'name') }}</strong>
+              <span class="status">{{ display(row, section === 'inventory' ? 'stockText' : 'status') }}</span>
+            </header>
+            <template v-if="section === 'orders' || section === 'warehouse-orders'">
+              <p>{{ display(row, 'itemsBrief') }}</p>
+              <small>{{ String(display(row, 'userText')).split('\n').join(' · ') }}</small>
+              <footer>
+                <b>{{ display(row, 'payableAmount') }}</b>
+                <button class="btn mini primary" @click.stop="openDetail(row)">{{ section === 'warehouse-orders' ? '开始拣货' : '查看处理' }}</button>
+              </footer>
+            </template>
+            <template v-else-if="section === 'after-sales'">
+              <p>{{ display(row, 'typeText') }} · {{ display(row, 'reason') }}</p>
+              <footer><small>{{ display(row, 'createdAt') }}</small><button class="btn mini primary" @click.stop="openDetail(row)">查看处理</button></footer>
+            </template>
+            <template v-else>
+              <p>可用库存：{{ display(row, 'availableStock') }}</p>
+              <footer><small>{{ display(row, 'sku') }}</small><button class="btn mini ghost" @click.stop="openDetail(row)">详情</button></footer>
+            </template>
+          </article>
+        </div>
+        <table class="desktop-data-table">
           <thead>
             <tr>
               <!-- 批量上下架（IKCKX4）：商品域可写时出现勾选列（全选=当前页） -->
@@ -6018,9 +6052,9 @@ async function cancelInviteRow(row: AdminRow) {
                     <button
                       v-if="(['paid', 'picking'].includes(rowStatusOf(row))) && hasPerm('POST /admin/orders/:id/actions/outbound')"
                       class="btn mini primary"
-                      @click="outboundRow(row)"
+                      @click="openDetail(row)"
                     >
-                      出库
+                      开始拣货
                     </button>
                     <!-- 异常闭环：解除异常预选「订单已取消」，弹窗内原因必填 -->
                     <button
@@ -6372,7 +6406,7 @@ async function cancelInviteRow(row: AdminRow) {
         </div>
       </div>
     </div>
-    <div v-if="selected" class="drawer-mask" @click.self="selected = undefined">
+    <div v-if="selected" class="drawer-mask" @click.self="closeDetail()">
       <!-- IKFOQ4（道哥反馈「订单详情弹框窄不大方」）：订单/仓储订单详情加宽至 640 -->
       <aside
         class="drawer"
@@ -6389,7 +6423,7 @@ async function cancelInviteRow(row: AdminRow) {
           <div>
             <h2>记录详情与操作</h2>
           </div>
-          <button aria-label="关闭" @click="selected = undefined">×</button>
+          <button aria-label="关闭" @click="closeDetail()">×</button>
         </div>
         <!-- 售后详情（IK97FJ）：类型文案 + 凭证图片 + 关联订单 -->
         <template v-if="section === 'after-sales'">
@@ -7044,18 +7078,8 @@ async function cancelInviteRow(row: AdminRow) {
             </ul>
           </div>
           <!-- 拣货清单（IK9U40）：库位指引找货；IKB5P5 起订单接口回查实时库位，历史单同样有指引 -->
-          <div
-            v-if="section === 'warehouse-orders' && pickingItems.length"
-            class="wide pick-list-wrap"
-          >
-            <span class="field-label">拣货清单（按库位找货）</span>
-            <ul class="pick-list">
-              <li v-for="(line, i) in pickingItems" :key="i">
-                <em v-if="line.location" class="pick-loc">{{ line.location }}</em>
-                <span>{{ line.name }} ×{{ line.quantity }}</span>
-              </li>
-            </ul>
-          </div>
+          <PickingChecklist v-if="section === 'warehouse-orders' && pickingItems.length"
+            v-model="pickedItemIndexes" class="wide" :lines="pickingItems" />
           <!-- 履约凭证（IKA57U）：交接/送达分组展示（道哥 2026-09-24 修复送达照片不显示） -->
           <div
             v-if="orderProofs.length"
@@ -7121,7 +7145,10 @@ async function cancelInviteRow(row: AdminRow) {
               section === 'warehouse-orders' && canWriteSection
             "
           >
-            <button v-if="hasPerm('POST /admin/orders/:id/actions/outbound')" class="btn primary" @click="outbound">确认出库</button>
+            <button v-if="hasPerm('POST /admin/orders/:id/actions/outbound')" class="btn primary"
+              :disabled="!pickingComplete" @click="outbound">
+              {{ pickingComplete ? "确认出库" : `待确认 ${pickingItems.length - pickedItemIndexes.length} 项` }}
+            </button>
             <!-- 补打小票（IKBT6N） -->
             <button v-if="hasPerm('POST /admin/orders/:id/print-receipt')" class="btn ghost" :disabled="printing" @click="reprintReceipt">
               {{ printing ? "打印中..." : "补打小票" }}
@@ -7295,7 +7322,7 @@ async function cancelInviteRow(row: AdminRow) {
               {{ ruleActive ? "停用规则" : "启用规则" }}
             </button>
           </template>
-          <button class="btn ghost" @click="selected = undefined">
+          <button class="btn ghost" @click="closeDetail()">
             关闭详情
           </button>
         </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { superViews } from "./view-catalog";
 import AppIcon from "./components/AppIcon.vue";
@@ -19,7 +19,20 @@ import { isUnread as changelogUnread } from "./changelog";
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),
+  mobileMenuOpen = ref(false),
+  mobileViewport = ref(false),
+  mobileNav = ref<HTMLElement>(),
+  navButton = ref<HTMLButtonElement>(),
   globalKeyword = ref("");
+function toggleNavigation() {
+  if (mobileViewport.value) {
+    mobileMenuOpen.value = !mobileMenuOpen.value;
+    if (mobileMenuOpen.value)
+      void nextTick(() => mobileNav.value?.querySelector<HTMLElement>("a, button")?.focus());
+    return;
+  }
+  collapsed.value = !collapsed.value;
+}
 /* 更新日志红点：有未读发版即亮；进入日志页（onMounted 标已读后）刷新——
    flush post 保证在页面组件 mounted 之后执行 */
 const clUnread = ref(changelogUnread());
@@ -57,13 +70,24 @@ function onDocClick(event: MouseEvent) {
   if (!target?.closest?.(".user-menu-wrap")) userMenuOpen.value = false;
 }
 function onDocKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && mobileMenuOpen.value) {
+    mobileMenuOpen.value = false;
+    navButton.value?.focus();
+  }
   if (event.key === "Escape") userMenuOpen.value = false;
 }
+let viewportCleanup: (() => void) | undefined;
 onMounted(() => {
+  const query = window.matchMedia("(max-width: 760px)");
+  const syncViewport = () => { mobileViewport.value = query.matches; };
+  syncViewport();
+  query.addEventListener("change", syncViewport);
+  viewportCleanup = () => query.removeEventListener("change", syncViewport);
   document.addEventListener("click", onDocClick);
   document.addEventListener("keydown", onDocKeydown);
 });
 onBeforeUnmount(() => {
+  viewportCleanup?.();
   document.removeEventListener("click", onDocClick);
   document.removeEventListener("keydown", onDocKeydown);
 });
@@ -169,6 +193,7 @@ function toggleGroup(label: string) {
 watch(
   () => route.path,
   (path) => {
+    mobileMenuOpen.value = false;
     const label = groupLabelOf(path);
     if (label && !expandedGroups.value.includes(label))
       expandedGroups.value = [...expandedGroups.value, label];
@@ -315,7 +340,15 @@ onBeforeUnmount(() => {
 <template>
   <RouterView v-if="isLogin" />
   <div v-else class="shell" :class="{ collapsed }">
-    <aside>
+    <button
+      v-if="mobileMenuOpen"
+      class="mobile-nav-backdrop"
+      type="button"
+      aria-label="关闭导航菜单"
+      @click="mobileMenuOpen = false"
+    />
+    <aside id="admin-navigation" ref="mobileNav" :class="{ 'mobile-open': mobileMenuOpen }"
+      :aria-hidden="mobileViewport && !mobileMenuOpen" :inert="mobileViewport && !mobileMenuOpen ? true : undefined">
       <div class="brand">
         <div class="brand-mark"><span></span></div>
         <div class="brand-copy"><b>不出寝食社</b></div>
@@ -350,14 +383,17 @@ onBeforeUnmount(() => {
         </section>
       </nav>
     </aside>
-    <main>
+    <main :inert="mobileViewport && mobileMenuOpen ? true : undefined">
       <header>
         <button
+          ref="navButton"
           class="icon-button"
-          :aria-pressed="collapsed"
-          :aria-label="collapsed ? '展开菜单' : '折叠菜单'"
-          :title="collapsed ? '展开菜单' : '折叠菜单'"
-          @click="collapsed = !collapsed"
+          aria-controls="admin-navigation"
+          :aria-pressed="mobileViewport ? mobileMenuOpen : collapsed"
+          :aria-expanded="mobileViewport ? mobileMenuOpen : undefined"
+          :aria-label="mobileViewport ? (mobileMenuOpen ? '关闭菜单' : '打开菜单') : (collapsed ? '展开菜单' : '折叠菜单')"
+          :title="mobileViewport ? (mobileMenuOpen ? '关闭菜单' : '打开菜单') : (collapsed ? '展开菜单' : '折叠菜单')"
+          @click="toggleNavigation"
         >
           <span></span><span></span><span></span>
         </button>

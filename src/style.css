@@ -1291,6 +1291,7 @@ td {
 .table-wrap {
   overflow-x: auto;
 }
+.mobile-record-list { display: none; }
 /* 操作列（IKD6FG 道哥反馈）：贴内容宽 + 按钮居中。
    ⚠️ drawer.css 里同名 .row-actions 是 display:flex（旧行内按钮布局），
    flex 会把 td 脱离 table-cell（浏览器套匿名 cell 包裹），再叠 width:1%
@@ -1436,30 +1437,77 @@ td.row-actions {
   .shell {
     grid-template-columns: 1fr;
   }
+  .shell.collapsed {
+    grid-template-columns: 1fr;
+  }
   .shell > aside {
-    display: none;
+    display: flex;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 70;
+    width: min(86vw, 320px);
+    height: 100dvh;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: 18px 0 48px #061d1638;
+  }
+  .shell > aside.mobile-open {
+    transform: translateX(0);
+  }
+  .shell.collapsed > aside .brand {
+    justify-content: flex-start;
+    padding: 0 8px 24px;
+  }
+  .shell.collapsed > aside .brand-copy,
+  .shell.collapsed > aside nav .group-head,
+  .shell.collapsed > aside nav a span,
+  .shell.collapsed > aside nav a i {
+    display: initial;
+  }
+  .shell.collapsed > aside nav .group-head {
+    display: flex;
+  }
+  .shell.collapsed > aside nav a {
+    justify-content: flex-start;
+    min-height: 42px;
+    margin: 1px 8px;
+    padding: 0 12px;
+  }
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    border: 0;
+    background: #061d1680;
+    backdrop-filter: blur(2px);
   }
   .shell header {
-    padding: 0 16px;
+    height: 60px;
+    padding: 0 12px;
   }
   .search {
     display: none;
   }
   .workspace {
-    padding: 20px 14px;
+    padding: 16px 12px 28px;
   }
   .page-head {
     align-items: flex-start;
     gap: 18px;
   }
   .head-actions {
-    display: none;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .kpi-grid {
     grid-template-columns: 1fr;
   }
   .toolbar {
     flex-wrap: wrap;
+    gap: 8px;
   }
   .filter-search {
     width: 100%;
@@ -1473,6 +1521,75 @@ td.row-actions {
   .chart-panel {
     overflow: hidden;
   }
+  .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+  .table-wrap table {
+    min-width: 720px;
+  }
+  .table-wrap.has-mobile-cards {
+    overflow: visible;
+  }
+  .has-mobile-cards > .desktop-data-table {
+    display: none;
+  }
+  .mobile-record-list {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+    background: #eef3ef;
+  }
+  .mobile-record-card {
+    display: grid;
+    gap: 9px;
+    padding: 14px;
+    background: #fff;
+    border: 1px solid #dfe8e2;
+    border-radius: 14px;
+    box-shadow: 0 5px 16px #123c2810;
+  }
+  .mobile-record-card > header,
+  .mobile-record-card > footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mobile-record-card p,
+  .mobile-record-card small { margin: 0; }
+  .mobile-record-card p { color: #294a3c; font-size: 14px; }
+  .mobile-record-card small { color: var(--muted); }
+  .mobile-record-card footer b { color: var(--orange); font-size: 17px; }
+  .mobile-record-empty { margin: 0; padding: 28px; text-align: center; color: var(--muted); }
+  button,
+  .btn,
+  select {
+    min-height: 44px;
+  }
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  .pagination {
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 12px;
+  }
+  .pager-right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+.mobile-nav-backdrop {
+  display: none;
+}
+@media (max-width: 760px) {
+  .mobile-nav-backdrop { display: block; }
 }
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -1491,12 +1608,16 @@ td.row-actions {
     linear-gradient(160deg, #062e23, #052b21 60%, #04211a);
 }
 .login-card {
-  width: min(430px, 94vw);
+  width: min(430px, 100%);
   background: #f7faf7;
   border-radius: 22px;
   padding: 34px 32px 26px;
   box-shadow: 0 30px 80px #04150f59;
   text-align: center;
+}
+@media (max-width: 480px) {
+  .login-shell { padding: 12px; }
+  .login-card { padding: 28px 18px 22px; border-radius: 18px; }
 }
 .brand-mark.big {
   margin: 0 auto 16px;

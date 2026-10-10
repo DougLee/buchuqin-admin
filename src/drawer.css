@@ -1251,6 +1251,60 @@
   color: #b33a3a;
   cursor: pointer;
 }
+
+/* 手机端统一采用贴底工作面板：保留标题和操作条，表单改单列，避免横向挤压。 */
+@media (max-width: 760px) {
+  .drawer-mask {
+    align-items: flex-end;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .drawer,
+  .drawer.product-create,
+  .drawer.order-detail,
+  .drawer.product-detail {
+    width: 100vw;
+    max-width: none;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+    border-radius: 20px 20px 0 0;
+    animation: mobile-sheet-in 0.2s ease;
+  }
+  .drawer-head {
+    padding: 18px 16px 12px;
+  }
+  .drawer > :not(.drawer-head):not(.drawer-actions) {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+  .drawer-fields,
+  .drawer-fields--three {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .drawer-actions {
+    gap: 8px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .drawer-actions.wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .drawer-actions.wrap .btn.primary:first-child {
+    grid-column: 1 / -1;
+  }
+  .drawer input,
+  .drawer textarea,
+  .drawer select {
+    font-size: 16px;
+  }
+  .drawer .btn {
+    min-height: 46px;
+  }
+}
+@keyframes mobile-sheet-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
 /* 终态/查看视角只读状态条：已通过绿 / 已拒绝红 / 其余中性浅绿 */
 .recruit-readonly-bar {
   margin-top: 12px;
