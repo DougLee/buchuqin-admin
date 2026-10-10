@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
 import { isSuper } from "../session";
-import type { AdminOrganization, OrganizationBootstrapResult } from "../types";
+import type { AdminOrganization } from "../types";
 import { fmtDateTime } from "../utils/datetime";
 
 /**
- * 组织管理（IKKRMS，ADR-0001）：组织 B 平台端开通流程。
+ * 组织管理（IKKRMS，ADR-0001）：平台组织档案与微信配置。
  * - 列表：每组织聚合校区数/用户数 + 微信配置 hasXxx 状态位（敏感凭据永不回读）；
- * - 新建/编辑抽屉：name/shortName/wxAppId 必填唯一（wxAppId 一经登记，
+ * - 新建/编辑弹窗：name/shortName/wxAppId 必填唯一（wxAppId 一经登记，
  *   AppID→组织映射即生效——错登记=组织 B 小程序登录串组织）；
- * - 开通向导抽屉：组织管理员+首个校区一次提交（后端幂等，重复提交返回现状）；
  * - 启停：两击确认。
  * 写操作全部后端超管专属（isSuperOnlyOperation），页内 isSuper 双保险；
  * 组织管理员（org-admin 预设）经菜单授权只读可见本页。
@@ -18,14 +18,16 @@ import { fmtDateTime } from "../utils/datetime";
 const rows = ref<AdminOrganization[]>([]);
 const loading = ref(true);
 const loadError = ref("");
-const toast = ref("");
-const toastError = ref(false);
 /** 两击确认（启停）：第一击亮确认文案，第二击执行 */
 const confirmStatusId = ref("");
 
 function notify(msg: string, error = false) {
-  toast.value = msg;
-  toastError.value = error;
+  ElMessage({
+    message: msg,
+    type: error ? "error" : "success",
+    duration: 2500,
+    showClose: true,
+  });
 }
 
 async function load() {
@@ -43,7 +45,7 @@ onMounted(() => {
   void load();
 });
 
-/* ---------- 新建/编辑抽屉 ---------- */
+/* ---------- 新建/编辑弹窗 ---------- */
 const WX_APPID_RE = /^wx[0-9a-f]{16}$/;
 const drawerOpen = ref(false);
 const drawerSaving = ref(false);
@@ -153,72 +155,6 @@ async function submitDrawer() {
   }
 }
 
-/* ---------- 开通组织向导（管理员+首校区一次提交，后端幂等） ---------- */
-const wizardOpen = ref(false);
-const wizardSaving = ref(false);
-const wizardError = ref("");
-const wizardOrg = ref<AdminOrganization | null>(null);
-const wizardResult = ref<OrganizationBootstrapResult | null>(null);
-const wizard = ref({
-  adminUsername: "",
-  adminPassword: "",
-  adminNickname: "",
-  campusName: "",
-  campusShortName: "",
-  campusWarehouseName: "",
-});
-function openWizard(row: AdminOrganization) {
-  wizardOrg.value = row;
-  wizardResult.value = null;
-  wizard.value = {
-    adminUsername: "",
-    adminPassword: "",
-    adminNickname: "",
-    campusName: "",
-    campusShortName: "",
-    campusWarehouseName: "",
-  };
-  wizardError.value = "";
-  wizardOpen.value = true;
-}
-async function submitWizard() {
-  wizardError.value = "";
-  if (!/^[a-zA-Z0-9_]{3,20}$/.test(wizard.value.adminUsername.trim()))
-    return (wizardError.value = "管理员账号需为 3-20 位字母/数字/下划线");
-  if (wizard.value.adminPassword.length < 8)
-    return (wizardError.value = "管理员密码至少 8 位");
-  if (wizard.value.campusName.trim().length < 2)
-    return (wizardError.value = "校区全称至少 2 字");
-  if (wizard.value.campusShortName.trim().length < 2)
-    return (wizardError.value = "校区简称至少 2 字");
-  if (wizard.value.campusWarehouseName.trim().length < 2)
-    return (wizardError.value = "仓库名至少 2 字");
-  wizardSaving.value = true;
-  try {
-    wizardResult.value = await api.bootstrapOrganization(wizardOrg.value!.id, {
-      adminUsername: wizard.value.adminUsername.trim(),
-      adminPassword: wizard.value.adminPassword,
-      ...(wizard.value.adminNickname.trim()
-        ? { adminNickname: wizard.value.adminNickname.trim() }
-        : {}),
-      campusName: wizard.value.campusName.trim(),
-      campusShortName: wizard.value.campusShortName.trim(),
-      campusWarehouseName: wizard.value.campusWarehouseName.trim(),
-    });
-    const c = wizardResult.value.created;
-    notify(
-      c.admin && c.campus
-        ? "开通完成：管理员与首校区已建齐"
-        : `返回现状（未重复建）：管理员${c.admin ? "新建" : "沿用现有"}、校区${c.campus ? "新建" : "沿用现有"}`,
-    );
-    await load();
-  } catch (e) {
-    wizardError.value = e instanceof Error ? e.message : "开通失败";
-  } finally {
-    wizardSaving.value = false;
-  }
-}
-
 /* ---------- 启停（两击确认） ---------- */
 async function toggleStatus(row: AdminOrganization) {
   if (confirmStatusId.value !== row.id) {
@@ -248,16 +184,14 @@ function organizationRow(row: unknown): AdminOrganization {
       <div>
         <h1>组织管理</h1>
         <p>
-          多租户组织与组织 B 开通（建组登记小程序 AppID 即生效映射；开通=
-          组织管理员+首校区一条龙，重复提交幂等）。写操作仅超级管理员。
+          维护多租户组织档案、微信小程序与支付配置；登记 AppID 后立即生效组织映射。
+          写操作仅超级管理员。
         </p>
       </div>
       <div class="head-actions">
         <ElButton v-if="isSuper" type="primary" @click="openCreate">新建组织</ElButton>
       </div>
     </div>
-
-    <ElAlert v-if="toast" class="organization-alert" :type="toastError ? 'error' : 'success'" show-icon :closable="false" :title="toast" />
 
     <div class="data-panel">
       <ElAlert v-if="loadError" class="load-alert" type="error" show-icon :closable="false">
@@ -271,7 +205,7 @@ function organizationRow(row: unknown): AdminOrganization {
         <ElTableColumn prop="campusCount" label="校区" width="100"><template #default="{ row }">{{ row.campusCount }}<small v-if="row.campusCount === 0" class="muted">（未开通）</small></template></ElTableColumn>
         <ElTableColumn prop="userCount" label="用户" width="80" />
         <ElTableColumn label="创建时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="260"><template #default="{ row }"><div class="row-actions"><template v-if="isSuper"><ElButton size="small" type="primary" plain @click="openWizard(organizationRow(row))">开通组织</ElButton><ElButton size="small" plain @click="openEdit(organizationRow(row))">编辑</ElButton><ElButton size="small" :type="confirmStatusId === row.id ? 'danger' : 'warning'" plain @click="toggleStatus(organizationRow(row))">{{ confirmStatusId === row.id ? (row.status === "active" ? "确认停用" : "确认启用") : (row.status === "active" ? "停用" : "启用") }}</ElButton></template><span v-else class="muted">只读</span></div></template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><div class="row-actions"><template v-if="isSuper"><ElButton size="small" plain @click="openEdit(organizationRow(row))">编辑</ElButton><ElButton size="small" :type="confirmStatusId === row.id ? 'danger' : 'warning'" plain @click="toggleStatus(organizationRow(row))">{{ confirmStatusId === row.id ? (row.status === "active" ? "确认停用" : "确认启用") : (row.status === "active" ? "停用" : "启用") }}</ElButton></template><span v-else class="muted">只读</span></div></template></ElTableColumn>
       </ElTable>
     </div>
 
@@ -352,75 +286,9 @@ function organizationRow(row: unknown): AdminOrganization {
         <template #footer><div class="dialog-actions"><ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton><ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">{{ editing ? "保存修改" : "创建组织" }}</ElButton></div></template>
     </ElDialog>
 
-    <!-- 开通组织向导：组织管理员 + 首个校区一次提交（幂等） -->
-    <ElDialog v-model="wizardOpen" class="organization-dialog" :title="`开通组织 · ${wizardOrg?.name ?? ''}`" width="min(700px, calc(100vw - 32px))" align-center destroy-on-close modal-class="organization-dialog-overlay" :show-close="!wizardSaving" :close-on-click-modal="!wizardSaving" :close-on-press-escape="!wizardSaving">
-        <template v-if="!wizardResult">
-          <p class="drawer-note">
-            一条龙创建组织管理员（绑定本组织 + org-admin 预设角色）与首个校区；
-            重复提交幂等——已存在的部分沿用现状，不会重复创建。
-          </p>
-          <p class="drawer-sec">组织管理员</p>
-          <div class="organization-form-grid">
-            <label>
-              管理员账号
-              <ElInput v-model="wizard.adminUsername" placeholder="3-20 位字母/数字/下划线" />
-            </label>
-            <label>
-              初始密码
-              <ElInput
-                v-model="wizard.adminPassword"
-                type="password"
-                show-password
-                placeholder="至少 8 位"
-                autocomplete="new-password"
-              />
-            </label>
-            <label>
-              昵称（可选）
-              <ElInput v-model="wizard.adminNickname" placeholder="如：组织B管理员" />
-            </label>
-          </div>
-          <p class="drawer-sec">首个校区</p>
-          <div class="organization-form-grid">
-            <label>
-              校区全称
-              <ElInput v-model="wizard.campusName" placeholder="2-30 字" />
-            </label>
-            <label>
-              校区简称
-              <ElInput v-model="wizard.campusShortName" placeholder="2-15 字" />
-            </label>
-            <label>
-              仓库名
-              <ElInput v-model="wizard.campusWarehouseName" placeholder="2-30 字" />
-            </label>
-          </div>
-          <ElAlert v-if="wizardError" class="dialog-error" type="error" show-icon :closable="false" :title="wizardError" />
-        </template>
-        <template v-else>
-          <p class="drawer-sec">开通结果</p>
-          <div class="result-grid">
-            <div class="result-item">
-              <small>组织管理员</small>
-              <strong>{{ wizardResult.admin.username }}</strong>
-              <ElTag :type="wizardResult.created.admin ? 'success' : 'warning'">{{ wizardResult.created.admin ? "本次新建" : "沿用现有" }}</ElTag>
-            </div>
-            <div class="result-item">
-              <small>首个校区</small>
-              <strong>{{ wizardResult.campus.name }}</strong>
-              <ElTag :type="wizardResult.created.campus ? 'success' : 'warning'">{{ wizardResult.created.campus ? "本次新建" : "沿用现有" }}</ElTag>
-            </div>
-          </div>
-          <p class="drawer-note">
-            管理员已绑 org-admin 预设角色（数据边界=本组织）；初始密码请线下交付并提醒尽快修改。
-          </p>
-        </template>
-        <template #footer><div class="dialog-actions"><template v-if="!wizardResult"><ElButton :disabled="wizardSaving" @click="wizardOpen = false">取消</ElButton><ElButton type="primary" :loading="wizardSaving" @click="submitWizard">确认开通</ElButton></template><ElButton v-else type="primary" @click="wizardOpen = false">完成</ElButton></div></template>
-    </ElDialog>
   </div>
 </template>
 <style scoped>
-.organization-alert { margin: 0 0 14px; width: fit-content; }
 .load-alert { margin: 14px; width: auto; }
 .organization-table { width: 100%; }
 .organization-short-name { display: block; }
@@ -479,22 +347,6 @@ td small.muted {
 .sens-row :deep(.el-input),
 .sens-row :deep(.el-textarea) { min-width: 0; }
 .sens-row.sens-tall :deep(textarea) { font-family: monospace; }
-.result-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.result-item {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.result-item small {
-  color: var(--muted);
-}
 .dialog-error { margin-top: 14px; }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions :deep(.el-button) { min-height: 44px; flex: 1; border-radius: 10px; font-weight: 700; }
@@ -508,8 +360,7 @@ td small.muted {
 :global(.organization-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; padding: 22px 26px 8px; }
 :global(.organization-dialog .el-dialog__footer) { padding: 14px 26px 26px; border-top: 1px solid var(--line); background: #fff; box-shadow: 0 -10px 24px #163f2b0a; }
 @media (max-width: 720px) {
-  .organization-form-grid,
-  .result-grid { grid-template-columns: 1fr; }
+  .organization-form-grid { grid-template-columns: 1fr; }
   .sens-row { grid-template-columns: minmax(0, 1fr) auto; }
   .sens-row :deep(.el-checkbox) { grid-column: 1 / -1; min-height: 44px; }
 }
