@@ -428,13 +428,13 @@ async function confirmDelete() {
         <ElTableColumn prop="createdAt" label="创建时间" min-width="170">
           <template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="220">
+        <ElTableColumn label="操作" fixed="right" width="250">
           <template #default="{ row }">
             <div class="row-actions">
-              <ElButton link type="primary" @click="openPreview(accountRow(row))">预览权限</ElButton>
+              <ElButton size="small" plain @click="openPreview(accountRow(row))">预览权限</ElButton>
               <template v-if="isSuper && row.username !== 'admin'">
-                <ElButton link type="primary" @click="openEdit(accountRow(row))">编辑</ElButton>
-                <ElButton link type="danger" @click="removeRow(accountRow(row))">删除</ElButton>
+                <ElButton size="small" type="primary" plain @click="openEdit(accountRow(row))">编辑</ElButton>
+                <ElButton size="small" type="danger" plain @click="removeRow(accountRow(row))">删除</ElButton>
               </template>
             </div>
           </template>
@@ -452,11 +452,13 @@ async function confirmDelete() {
     </div>
 
     <!-- 新建/编辑抽屉：基本信息 + 授权编辑器（多行 角色×范围×校区） -->
-    <ElDrawer
+    <ElDialog
       v-model="drawerOpen"
-      class="account-drawer"
+      class="account-dialog account-edit-dialog"
       :title="editingId ? `编辑账号 ${form.username}` : '新建账号'"
-      size="min(760px, 100%)"
+      width="min(760px, calc(100vw - 32px))"
+      align-center
+      modal-class="account-dialog-overlay"
       :show-close="!drawerSaving"
       :close-on-click-modal="!drawerSaving"
       :close-on-press-escape="!drawerSaving"
@@ -599,21 +601,23 @@ async function confirmDelete() {
         </section>
       <ElAlert v-if="drawerError" class="drawer-error" type="error" show-icon :closable="false" :title="drawerError" />
       <template #footer>
-        <div class="drawer-actions">
+        <div class="account-dialog-actions">
           <ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton>
           <ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">
             {{ editingId ? "保存修改" : "创建账号" }}
           </ElButton>
         </div>
       </template>
-    </ElDrawer>
+    </ElDialog>
 
     <!-- 有效权限预览：角色 + 权限码按目录组分块 -->
-    <ElDrawer
+    <ElDialog
       v-model="previewOpen"
-      class="account-drawer permission-preview-drawer"
+      class="account-dialog permission-preview-dialog"
       :title="`有效权限 · ${previewAccount?.username ?? ''}`"
-      size="min(680px, 100%)"
+      width="min(680px, calc(100vw - 32px))"
+      align-center
+      modal-class="account-dialog-overlay"
     >
       <div v-loading="previewLoading" class="permission-preview-body">
         <template v-if="previewMe">
@@ -655,14 +659,16 @@ async function confirmDelete() {
           </div>
         </template>
       </div>
-    </ElDrawer>
+    </ElDialog>
   
     <!-- 删除确认弹窗（与角色管理同款） -->
     <ElDialog
       v-model="deleteDialogOpen"
+      class="account-dialog delete-account-dialog"
       title="删除账号"
       width="min(420px, 92vw)"
       align-center
+      modal-class="account-dialog-overlay"
       :show-close="!deleteSaving"
       :close-on-click-modal="!deleteSaving"
       :close-on-press-escape="!deleteSaving"
@@ -689,6 +695,13 @@ async function confirmDelete() {
 .account-search { width: min(420px, 100%); }
 .load-alert { margin: 0 14px 12px; width: auto; }
 .account-table { width: 100%; }
+.row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+.row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .account-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -705,6 +718,17 @@ async function confirmDelete() {
 }
 .permission-preview-body { min-height: 120px; }
 .preview-roles { display: grid; gap: 8px; }
+.account-dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+.account-dialog-actions :deep(.el-button) {
+  min-height: 44px;
+  flex: 1;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.account-dialog-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .grant-badges {
   display: flex;
   flex-wrap: wrap;
@@ -992,9 +1016,62 @@ async function confirmDelete() {
   .step-help { margin-left: 0; }
 }
 
-:deep(.account-drawer .el-drawer__body) { padding-top: 6px; }
-:deep(.account-drawer .el-drawer__footer) { border-top: 1px solid var(--line); padding-top: 16px; }
 :deep(.account-table .el-table__cell) { padding-block: 12px; }
+
+/* Element Plus 保留行为与可访问性，视觉延续旧版居中弹框。 */
+:global(.account-dialog-overlay) {
+  background: #061d1680;
+  backdrop-filter: blur(3px);
+}
+:global(.account-dialog.el-dialog) {
+  display: flex;
+  max-height: min(90vh, 900px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+}
+:global(.account-dialog .el-dialog__header) {
+  min-height: 72px;
+  margin: 0;
+  padding: 24px 26px 16px;
+  border-bottom: 1px solid var(--line);
+}
+:global(.account-dialog .el-dialog__title) {
+  color: #153628;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+:global(.account-dialog .el-dialog__headerbtn) {
+  top: 18px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f0f4f1;
+}
+:global(.account-dialog .el-dialog__headerbtn:hover) { background: #e3ece6; }
+:global(.account-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #52645a;
+  font-size: 20px;
+}
+:global(.account-dialog .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 8px;
+  scrollbar-color: #c2d4c9 transparent;
+  scrollbar-width: thin;
+}
+:global(.account-dialog .el-dialog__footer) {
+  padding: 14px 26px 26px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 -10px 24px #163f2b0a;
+}
+:global(.permission-preview-dialog .el-dialog__body) { padding-bottom: 26px; }
+:global(.delete-account-dialog .el-dialog__header) { min-height: 64px; padding-top: 20px; }
+:global(.delete-account-dialog .el-dialog__body) { padding: 18px 26px 8px; }
 
 @media (prefers-reduced-motion: reduce) {
   .role-choice,
