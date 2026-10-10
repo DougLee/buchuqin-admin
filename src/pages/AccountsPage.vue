@@ -26,12 +26,15 @@ const pageSize = ref(20);
 const total = ref(0);
 const toast = ref("");
 const toastError = ref(false);
-/** 行内两击删除确认（IKCJ3M 惯例：第一击亮确认文案，第二击执行） */
-const confirmRowId = ref("");
+/** 删除确认弹窗目标账号（道哥 2026-10-10：弃两击改统一弹窗） */
+const deleteTarget = ref<AdminAccount | null>(null);
 
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(msg: string, error = false) {
   toast.value = msg;
   toastError.value = error;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toast.value = ""), error ? 4200 : 2600);
 }
 
 /* ---------- 下拉数据：全量角色 + 校区 ---------- */
@@ -259,18 +262,20 @@ const previewGroups = computed(() => {
   return [...byGroup.entries()].map(([group, perms]) => ({ group, perms }));
 });
 
-/* ---------- 删除（两击确认；后端 403 人话 toast） ---------- */
-async function removeRow(row: AdminAccount) {
-  if (confirmRowId.value !== row.id) {
-    confirmRowId.value = row.id;
-    return;
-  }
-  confirmRowId.value = "";
+/* ---------- 删除（确认弹窗；后端 403 人话 toast） ---------- */
+function removeRow(row: AdminAccount) {
+  deleteTarget.value = row;
+}
+async function confirmDelete() {
+  const row = deleteTarget.value;
+  if (!row) return;
   try {
     await api.deleteAccount(row.id);
+    deleteTarget.value = null;
     notify("账号已删除");
     await load();
   } catch (e) {
+    deleteTarget.value = null;
     notify(e instanceof Error ? e.message : "删除失败", true);
   }
 }
@@ -297,9 +302,9 @@ async function removeRow(row: AdminAccount) {
       </div>
     </div>
 
-    <p v-if="toast" class="feat-toast" :class="{ error: toastError }">
+    <div v-if="toast" class="toast" :class="{ error: toastError }" role="status">
       {{ toast }}
-    </p>
+    </div>
 
     <div class="data-panel">
       <div class="panel-head toolbar">
@@ -371,7 +376,7 @@ async function removeRow(row: AdminAccount) {
                     编辑
                   </button>
                   <button class="btn mini danger-btn" @click="removeRow(row)">
-                    {{ confirmRowId === row.id ? "确认删除" : "删除" }}
+                    删除
                   </button>
                 </template>
               </td>
@@ -579,23 +584,55 @@ async function removeRow(row: AdminAccount) {
         </template>
       </aside>
     </div>
-  </div>
+  
+    <!-- 删除确认弹窗（与角色管理同款） -->
+    <div
+      v-if="deleteTarget"
+      class="drawer-mask confirm-mask"
+      @click.self="deleteTarget = null"
+    >
+      <div class="confirm-card">
+        <h3>删除账号</h3>
+        <p>
+          确认删除账号「{{ deleteTarget.username }}」？删除后该账号立即无法登录，
+          已授角色与数据边界一并失效。
+        </p>
+        <div class="confirm-actions">
+          <button class="btn ghost" @click="deleteTarget = null">取消</button>
+          <button class="btn danger-btn" @click="confirmDelete">
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+</div>
 </template>
 <style scoped>
 /* 样式对齐 FeaturedPage：全局 .workspace/.page-head/.data-panel/table/.btn 不重写，
    scoped 只留本页私有（行内提示条含错误态 / 授权徽章 / 授权编辑行 / 预览分块）。 */
-.feat-toast {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #e5f6eb;
-  color: #087641;
-  font-size: 12px;
-  width: fit-content;
+/* 删除确认弹窗：复用全局 mask+toast；卡片走站点 token */
+.confirm-card {
+  width: min(400px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px 24px 18px;
+  box-shadow: 0 18px 48px #062e2326;
 }
-.feat-toast.error {
-  background: #fdeeee;
-  color: #b42323;
+.confirm-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #153628;
+}
+.confirm-card p {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4c5c53;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 .toolbar {
   padding: 14px 16px;
