@@ -1148,9 +1148,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  adminUsers: (query?: ListQuery) =>
+  adminUsers: (query?: ListQuery, plainPhone = false) =>
     request<PagedResponse<AdminUser>>(
-      `/admin/users${withQuery(listQuery(query))}`,
+      `/admin/users${withQuery(
+        listQuery(query),
+        plainPhone ? "plainPhone=1" : undefined,
+      )}`,
     ),
   /* C 端用户管理（IKAJSW）：统计 + 单用户订单流水；hq 可带校区（IKAJSL） */
   userStats: (campusId?: string) =>

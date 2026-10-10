@@ -534,6 +534,8 @@ export interface AdminUser {
   nickname: string;
   openidMasked: string;
   phoneMasked: string;
+  /** IKKKC2：明文手机号（仅定向发券抽屉 plainPhone=1 请求时下发） */
+  phone?: string;
   buildingName: string;
   room: string;
   createdAt: string;

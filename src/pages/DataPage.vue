@@ -1132,11 +1132,12 @@ async function toggleCoupon() {
 const issueOpen = ref(false),
   issueCouponRow = ref<Coupon>(),
   issueCountInput = ref(""),
+  issueUserSearch = ref(""),
+  issueSearchTimer: ReturnType<typeof setTimeout> | undefined = undefined,
   users = ref<AdminUser[]>([]),
   usersLoading = ref(false),
   usersError = ref(""),
   issueChecked = ref<Record<string, boolean>>({}),
-  manualUserIds = ref(""),
   // IKD6FI：定向方式——用户多选之外新增「按手机号」「按寝室」（楼栋+楼层+寝室号）
   issueMode = ref<"users" | "phones" | "rooms">("users"),
   issuePhones = ref(""),
@@ -1149,10 +1150,10 @@ async function openIssue(coupon: Coupon) {
   issueOpen.value = true;
   usersError.value = "";
   issueChecked.value = {};
-  manualUserIds.value = "";
   // IKD6FI：寝室定向的楼栋下拉
   issueMode.value = "users";
   issuePhones.value = "";
+  issueUserSearch.value = "";
   issueBuildingId.value = "";
   issueFloor.value = "";
   issueRoomNos.value = "";
@@ -1167,22 +1168,16 @@ async function openIssue(coupon: Coupon) {
     usersLoading.value = false;
   }
 }
-const selectedUserIds = computed(() => {
-  const checked = Object.keys(issueChecked.value).filter(
-    (id) => issueChecked.value[id],
-  );
-  const manual = manualUserIds.value
-    .split(/[\s,，;；]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return [...new Set([...checked, ...manual])];
-});
+const selectedUserIds = computed(() =>
+  Object.keys(issueChecked.value).filter((id) => issueChecked.value[id]),
+);
 function userLabel(u: AdminUser) {
   // IKAJSW 起列表手机号脱敏（phoneMasked），原 phone 字段已下线
   return u.nickname || u.id;
 }
 function userSub(u: AdminUser) {
-  return u.phoneMasked || u.id;
+  // IKKKC2：定向发券场景明文优先（plainPhone=1 下发），列表页仍走脱敏
+  return u.phone || u.phoneMasked || u.id;
 }
 /* IKDG8V：点击打码手机号按需查看明文——后端单查 + 审计留痕，本地缓存
  * 到刷新（Map ref），再点收回打码；无号用户列渲染层已不可点。 */
@@ -7462,6 +7457,13 @@ async function cancelInviteRow(row: AdminRow) {
             </p>
 
             <template v-if="issueMode === 'users'">
+              <!-- IKKKC2：先搜索后勾选（昵称/手机号，后端模糊匹配） -->
+              <input
+                v-model="issueUserSearch"
+                class="issue-search"
+                type="search"
+                placeholder="搜索昵称 / 手机号"
+              />
               <p v-if="usersLoading" class="issue-empty">正在加载用户列表…</p>
               <template v-else>
                 <div v-if="users.length" class="user-check-list">
@@ -7473,15 +7475,9 @@ async function cancelInviteRow(row: AdminRow) {
                     </div>
                   </label>
                 </div>
-                <p v-else class="issue-empty">暂无可选用户。</p>
-                <label class="manual-ids"
-                  >补充用户 ID（换行或逗号分隔，可选）
-                  <textarea
-                    v-model.trim="manualUserIds"
-                    rows="2"
-                    placeholder="user-001&#10;user-002"
-                  ></textarea>
-                </label>
+                <p v-else class="issue-empty">
+                  {{ issueUserSearch ? "没有匹配的用户，换个关键词试试。" : "暂无可选用户。" }}
+                </p>
               </template>
             </template>
 
