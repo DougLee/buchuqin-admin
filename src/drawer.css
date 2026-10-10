@@ -905,9 +905,91 @@
   border: 1px solid var(--line);
   border-radius: 12px;
 }
-/* ---------- 定向发券抽屉（IKD6FI） ---------- */
+/* ---------- 定向发券抽屉（IKD6FI → IKKEWS 三步流重构） ---------- */
+/* 结构：head（券名）/ body（①方式 ②目标 ③张数 三节）/ actions 吸底 */
+.issue-drawer {
+  width: min(560px, 94vw);
+}
+.issue-coupon-name {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand, #159c55);
+}
+.issue-body {
+  padding: 18px 22px 8px;
+  overflow-y: auto;
+}
+.issue-section {
+  padding: 14px 0 18px;
+  border-bottom: 1px dashed var(--line);
+}
+.issue-section--last {
+  border-bottom: 0;
+  padding-bottom: 10px;
+}
+.issue-step-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #37423c;
+  letter-spacing: 0.02em;
+}
+.issue-step-meta {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.issue-empty {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: #f6faf7;
+  border-radius: 9px;
+  padding: 9px 11px;
+}
 .issue-modes {
-  margin-top: 12px;
+  margin-top: 0;
+}
+/* 寝室：楼栋+楼层同排（窄屏折行） */
+.issue-room-row {
+  display: flex;
+  gap: 10px;
+}
+.issue-room-col {
+  flex: 1;
+}
+.issue-room-col--narrow {
+  flex: 0 0 128px;
+}
+/* 张数：输入+说明同排 */
+.issue-count-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.issue-count-input {
+  width: 96px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 11px;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+  color: #153628;
+}
+.issue-count-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px #159c5515;
+}
+.issue-count-hint {
+  font-size: 11px;
+  color: var(--muted);
 }
 .issue-select {
   display: block;
@@ -924,6 +1006,24 @@
 .issue-select:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px #159c5515;
+}
+.user-check-list {
+  margin-top: 0;
+}
+.manual-ids {
+  margin-top: 12px;
+}
+.manual-ids:first-child {
+  margin-top: 0;
+}
+@media (max-width: 560px) {
+  .issue-room-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  .issue-room-col--narrow {
+    flex: 1;
+  }
 }
 /* ---------- 营销地图（IKD6FI）：楼层卡 × 寝室格热力 ---------- */
 .marketing-map {

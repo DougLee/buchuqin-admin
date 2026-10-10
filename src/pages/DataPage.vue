@@ -7405,107 +7405,139 @@ async function cancelInviteRow(row: AdminRow) {
     </div>
     <!-- 定向发放抽屉 -->
     <div v-if="issueOpen" class="drawer-mask" @click.self="issueOpen = false">
-      <aside class="drawer product-create">
+      <aside class="drawer issue-drawer">
         <div class="drawer-head">
           <div>
-            <h2>定向发放 · {{ issueCouponRow?.name }}</h2>
+            <p class="eyebrow">TARGETED ISSUE</p>
+            <h2>定向发放</h2>
+            <p class="issue-coupon-name">{{ issueCouponRow?.name }}</p>
           </div>
           <button aria-label="关闭" @click="issueOpen = false">×</button>
         </div>
-        <p class="form-hint plain">
-          勾选目标用户后发放，同一用户不会重复获得未使用的券。
-        </p>
-        <!-- IKD6FI：定向方式——按用户勾选 / 按手机号 / 按寝室（楼栋+楼层+寝室号） -->
-        <div class="segmented inv-tabs issue-modes">
-          <button
-            :class="{ active: issueMode === 'users' }"
-            @click="issueMode = 'users'"
-          >
-            按用户
-          </button>
-          <button
-            :class="{ active: issueMode === 'phones' }"
-            @click="issueMode = 'phones'"
-          >
-            按手机号
-          </button>
-          <button
-            :class="{ active: issueMode === 'rooms' }"
-            @click="issueMode = 'rooms'"
-          >
-            按寝室
-          </button>
-        </div>
-        <template v-if="issueMode === 'users'">
-          <p v-if="usersLoading" class="form-hint plain">
-            正在加载用户列表...
-          </p>
-          <div v-else class="user-check-list">
-            <label v-for="user in users" :key="user.id" class="user-check">
-              <input v-model="issueChecked[user.id]" type="checkbox" />
-              <div>
-                <strong>{{ userLabel(user) }}</strong>
-                <small>{{ userSub(user) }}</small>
-              </div>
-            </label>
-            <div v-if="!users.length" class="form-hint plain">
-              暂无可选用户列表。
+        <div class="drawer-body issue-body">
+          <!-- ① 发放方式 -->
+          <section class="issue-section">
+            <p class="issue-step-label">① 选择发放方式</p>
+            <div class="segmented inv-tabs issue-modes">
+              <button
+                :class="{ active: issueMode === 'users' }"
+                @click="issueMode = 'users'"
+              >
+                按用户
+              </button>
+              <button
+                :class="{ active: issueMode === 'phones' }"
+                @click="issueMode = 'phones'"
+              >
+                按手机号
+              </button>
+              <button
+                :class="{ active: issueMode === 'rooms' }"
+                @click="issueMode = 'rooms'"
+              >
+                按寝室
+              </button>
             </div>
-          </div>
-          <label class="manual-ids"
-            >手工指定用户 ID（换行或逗号分隔，可选）
-            <textarea
-              v-model.trim="manualUserIds"
-              rows="3"
-              placeholder="user-001&#10;user-002"
-            ></textarea>
-          </label>
-        </template>
-        <!-- IKD6FI：按手机号定向（用户绑定手机号，后端最多 500 个） -->
-        <label v-else-if="issueMode === 'phones'" class="manual-ids"
-          >按手机号发放（每行一个或逗号分隔，最多 500 个）
-          <textarea
-            v-model.trim="issuePhones"
-            rows="6"
-            placeholder="13800000001&#10;13800000002"
-          ></textarea>
-        </label>
-        <!-- IKD6FI：按寝室定向——楼栋必填，楼层/寝室号选填收窄范围 -->
-        <template v-else>
-          <label class="manual-ids">楼栋
-            <select v-model="issueBuildingId" class="issue-select">
-              <option value="">选择楼栋</option>
-              <option v-for="b in buildings" :key="b.id" :value="b.id">
-                {{ b.name }}
-              </option>
-            </select>
-          </label>
-          <label class="manual-ids"
-            >楼层（选填，收窄范围）
-            <input
-              v-model.number="issueFloor"
-              class="issue-select"
-              type="number"
-              min="1"
-              placeholder="例如：6"
-            />
-          </label>
-          <label class="manual-ids"
-            >寝室号（选填，逗号或换行分隔）
-            <textarea
-              v-model.trim="issueRoomNos"
-              rows="3"
-              placeholder="612, 613&#10;701"
-            ></textarea>
-          </label>
-          <p class="form-hint plain">
-            按用户填过的收货地址匹配，未填地址的用户无法按寝室触达。
-          </p>
-        </template>
-        <p v-if="usersError" class="form-hint">{{ usersError }}</p>
-        <p v-if="issueMode === 'users'" class="form-hint plain">
-          已选择 {{ selectedUserIds.length }} 名用户
-        </p>
+          </section>
+
+          <!-- ② 目标 -->
+          <section class="issue-section">
+            <p class="issue-step-label">
+              ② 圈定目标
+              <span v-if="issueMode === 'users'" class="issue-step-meta">
+                已选 {{ selectedUserIds.length }} 人
+              </span>
+              <span v-else-if="issueMode === 'phones'" class="issue-step-meta">
+                按用户绑定的手机号匹配，最多 500 个
+              </span>
+              <span v-else class="issue-step-meta"> 按收货地址匹配 </span>
+            </p>
+
+            <template v-if="issueMode === 'users'">
+              <p v-if="usersLoading" class="issue-empty">正在加载用户列表…</p>
+              <template v-else>
+                <div v-if="users.length" class="user-check-list">
+                  <label v-for="user in users" :key="user.id" class="user-check">
+                    <input v-model="issueChecked[user.id]" type="checkbox" />
+                    <div>
+                      <strong>{{ userLabel(user) }}</strong>
+                      <small>{{ userSub(user) }}</small>
+                    </div>
+                  </label>
+                </div>
+                <p v-else class="issue-empty">暂无可选用户。</p>
+                <label class="manual-ids"
+                  >补充用户 ID（换行或逗号分隔，可选）
+                  <textarea
+                    v-model.trim="manualUserIds"
+                    rows="2"
+                    placeholder="user-001&#10;user-002"
+                  ></textarea>
+                </label>
+              </template>
+            </template>
+
+            <label v-else-if="issueMode === 'phones'" class="manual-ids"
+              >手机号列表
+              <textarea
+                v-model.trim="issuePhones"
+                rows="5"
+                placeholder="每行一个或逗号分隔&#10;13800000001&#10;13800000002"
+              ></textarea>
+            </label>
+
+            <template v-else>
+              <div class="issue-room-row">
+                <label class="manual-ids issue-room-col"
+                  >楼栋
+                  <select v-model="issueBuildingId" class="issue-select">
+                    <option value="">选择楼栋</option>
+                    <option v-for="b in buildings" :key="b.id" :value="b.id">
+                      {{ b.name }}
+                    </option>
+                  </select>
+                </label>
+                <label class="manual-ids issue-room-col issue-room-col--narrow"
+                  >楼层（选填）
+                  <input
+                    v-model.number="issueFloor"
+                    class="issue-select"
+                    type="number"
+                    min="1"
+                    placeholder="如 6"
+                  />
+                </label>
+              </div>
+              <label class="manual-ids"
+                >寝室号（选填，收窄范围）
+                <textarea
+                  v-model.trim="issueRoomNos"
+                  rows="2"
+                  placeholder="612, 613&#10;701"
+                ></textarea>
+              </label>
+              <p class="issue-empty">未填过收货地址的用户无法按寝室触达。</p>
+            </template>
+            <p v-if="usersError" class="form-hint">{{ usersError }}</p>
+          </section>
+
+          <!-- ③ 张数 -->
+          <section class="issue-section issue-section--last">
+            <p class="issue-step-label">③ 发放张数（每人）</p>
+            <div class="issue-count-row">
+              <input
+                v-model="issueCountInput"
+                class="issue-count-input"
+                type="number"
+                min="1"
+                placeholder="默认 1"
+              />
+              <span class="issue-count-hint">
+                张 / 每人 · 上限受「每人限领」约束
+              </span>
+            </div>
+          </section>
+        </div>
         <div class="drawer-actions">
           <button class="btn ghost" @click="issueOpen = false">取消</button
           ><button v-if="hasPerm('POST /admin/coupons/:id/issue')"
