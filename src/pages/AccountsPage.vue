@@ -458,6 +458,7 @@ async function confirmDelete() {
       :title="editingId ? `编辑账号 ${form.username}` : '新建账号'"
       width="min(760px, calc(100vw - 32px))"
       align-center
+      destroy-on-close
       modal-class="account-dialog-overlay"
       :show-close="!drawerSaving"
       :close-on-click-modal="!drawerSaving"
@@ -617,6 +618,7 @@ async function confirmDelete() {
       :title="`有效权限 · ${previewAccount?.username ?? ''}`"
       width="min(680px, calc(100vw - 32px))"
       align-center
+      destroy-on-close
       modal-class="account-dialog-overlay"
     >
       <div v-loading="previewLoading" class="permission-preview-body">
