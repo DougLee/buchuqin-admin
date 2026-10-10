@@ -46,11 +46,28 @@ async function save() {
   } catch(e) { error.value = e instanceof Error ? e.message : "保存失败"; }
   finally { saving.value = false; }
 }
-const deleting = ref("");
-async function remove(row: RbacMenuRow) {
-  if (deleting.value !== row.id) { deleting.value = row.id; return; }
-  try { await api.rbacDeleteMenu(row.id); deleting.value = ""; await load(); await loadRbac(); }
-  catch(e) { error.value = e instanceof Error ? e.message : "删除失败"; }
+/** 删除确认弹窗目标菜单（道哥 2026-10-10：弃两击改统一弹窗） */
+const deleteTarget = ref<RbacMenuRow | null>(null);
+const deleteBusy = ref(false);
+function remove(row: RbacMenuRow) {
+  deleteTarget.value = row;
+}
+async function confirmDelete() {
+  const row = deleteTarget.value;
+  if (!row || deleteBusy.value) return;
+  deleteBusy.value = true;
+  try {
+    await api.rbacDeleteMenu(row.id);
+    deleteTarget.value = null;
+    notice.value = "菜单已删除";
+    await load();
+    await loadRbac();
+  } catch (e) {
+    deleteTarget.value = null;
+    error.value = e instanceof Error ? e.message : "删除失败";
+  } finally {
+    deleteBusy.value = false;
+  }
 }
 </script>
 <template>
@@ -60,7 +77,7 @@ async function remove(row: RbacMenuRow) {
     <div class="rbac-toolbar"><label class="rbac-search"><span>查找菜单</span><input v-model="search" placeholder="输入菜单名称、路由或编码" aria-label="搜索菜单" /></label><span class="rbac-count">{{ flat.length }} 个节点</span></div>
     <div class="data-panel table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>路由 / 页面</th><th>显示</th><th>操作</th></tr></thead><tbody>
       <tr v-for="{row,depth} in flat" :key="row.id"><td :style="{paddingLeft: `${16 + depth * 20}px`}">{{ row.name }}</td><td><span class="rbac-node-kind" :data-kind="row.type">{{ types[row.type] }}</span></td><td>{{ row.path }}<small class="view-key">{{ row.viewPath }}</small></td><td>{{ row.isShow ? '显示' : '隐藏' }}</td><td>
-        <button class="btn mini" @click="open(row)">编辑</button><button v-if="row.type !== 2" class="btn mini" @click="open(undefined, row.id)">添加子项</button><button v-if="!row.builtin" class="btn mini" @click="remove(row)">{{ deleting === row.id ? '确认删除整个子树？' : '删除' }}</button>
+        <button class="btn mini" @click="open(row)">编辑</button><button v-if="row.type !== 2" class="btn mini" @click="open(undefined, row.id)">添加子项</button><button class="btn mini danger-btn" :disabled="row.builtin" :title="row.builtin ? '内置菜单不可删除（代码登记）' : undefined" @click="remove(row)">删除</button>
       </td></tr>
     </tbody></table></div>
     <div v-if="opened" class="modal-backdrop" @click.self="opened = false"><form class="menu-dialog" @submit.prevent="save">
@@ -85,7 +102,28 @@ async function remove(row: RbacMenuRow) {
       </fieldset>
       <p v-if="error" class="form-hint" role="alert">{{ error }}</p><div class="drawer-actions"><button type="button" class="btn ghost" @click="opened = false">取消</button><button type="submit" class="btn primary" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button></div>
     </form></div>
-  </div>
+  
+    <!-- 删除确认弹窗（与角色/账号管理同款） -->
+    <div
+      v-if="deleteTarget"
+      class="drawer-mask confirm-mask"
+      @click.self="deleteTarget = null"
+    >
+      <div class="confirm-card">
+        <h3>删除菜单</h3>
+        <p>
+          确认删除「{{ deleteTarget.name }}」？将删除整个子树（含下级菜单与按钮），
+          挂在角色上的对应授权一并失效。
+        </p>
+        <div class="confirm-actions">
+          <button class="btn ghost" @click="deleteTarget = null">取消</button>
+          <button class="btn danger-btn" :disabled="deleteBusy" @click="confirmDelete">
+            {{ deleteBusy ? "删除中…" : "确认删除" }}
+          </button>
+        </div>
+      </div>
+    </div>
+</div>
 </template>
 <style scoped>
 .modal-backdrop { position:fixed; inset:0; z-index:120; background:#10201966; display:flex; align-items:center; justify-content:center; padding:24px }
@@ -97,4 +135,15 @@ input[type=checkbox] { width:auto; min-height:0 }
 .permission-options label { display:flex; align-items:center; gap:10px; margin:8px 0 }
 small { display:block; color:#64746b; font-size:12px }.view-key { margin-top:4px } fieldset { border:1px solid #dce5df; border-radius:8px }
 @media(max-width:640px) { .menu-fields { grid-template-columns:1fr } .modal-backdrop { padding:8px } }
+/* 删除确认弹窗：全局 mask+toast 复用；卡片站点 token */
+.confirm-card {
+  width: min(400px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px 24px 18px;
+  box-shadow: 0 18px 48px #062e2326;
+}
+.confirm-card h3 { margin: 0 0 10px; font-size: 15px; color: #153628; }
+.confirm-card p { margin: 0 0 18px; font-size: 13px; line-height: 1.7; color: #4c5c53; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>
