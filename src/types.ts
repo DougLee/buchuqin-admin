@@ -542,8 +542,6 @@ export interface RbacMenuRow {
   perms?: string[];
   orderNum?: number;
   isShow?: boolean;
-  /** 内置行（结构字段不可改，仅 name/icon/orderNum/isShow 可编辑）。 */
-  builtin?: boolean;
 }
 
 /** RBAC 权限目录（GET /admin/rbac/permissions 行；蛋词体系下权限目录已并入菜单树，此类型仅旧页兜底）。 */

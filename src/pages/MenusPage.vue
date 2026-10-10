@@ -77,7 +77,7 @@ async function confirmDelete() {
     <div class="rbac-toolbar"><label class="rbac-search"><span>查找菜单</span><input v-model="search" placeholder="输入菜单名称、路由或编码" aria-label="搜索菜单" /></label><span class="rbac-count">{{ flat.length }} 个节点</span></div>
     <div class="data-panel table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>路由 / 页面</th><th>显示</th><th>操作</th></tr></thead><tbody>
       <tr v-for="{row,depth} in flat" :key="row.id"><td :style="{paddingLeft: `${16 + depth * 20}px`}">{{ row.name }}</td><td><span class="rbac-node-kind" :data-kind="row.type">{{ types[row.type] }}</span></td><td>{{ row.path }}<small class="view-key">{{ row.viewPath }}</small></td><td>{{ row.isShow ? '显示' : '隐藏' }}</td><td>
-        <button class="btn mini" @click="open(row)">编辑</button><button v-if="row.type !== 2" class="btn mini" @click="open(undefined, row.id)">添加子项</button><button class="btn mini danger-btn" :disabled="row.builtin" :title="row.builtin ? '内置菜单不可删除（代码登记）' : undefined" @click="remove(row)">删除</button>
+        <button class="btn mini" @click="open(row)">编辑</button><button v-if="row.type !== 2" class="btn mini" @click="open(undefined, row.id)">添加子项</button><button class="btn mini danger-btn" @click="remove(row)">删除</button>
       </td></tr>
     </tbody></table></div>
     <div v-if="opened" class="modal-backdrop" @click.self="opened = false"><form class="menu-dialog" @submit.prevent="save">
