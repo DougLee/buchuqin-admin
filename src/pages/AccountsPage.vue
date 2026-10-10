@@ -62,6 +62,14 @@ async function ensureOptions() {
     // 超级管理员为系统内置唯一身份（道哥 2026-09-22）：授权下拉不显示、不可选
     roleOptions.value = rolesRaw.filter((r) => r.code !== "super-admin");
     campusOptions.value = campuses as typeof campusOptions.value;
+    if (
+      drawerOpen.value &&
+      form.value.orgLevel === "campus" &&
+      !campusFilterOrgId.value &&
+      selectedCampusIds.value.length
+    ) {
+      campusFilterOrgId.value = inferCampusOrganization(selectedCampusIds.value);
+    }
     api
       .organizations()
       .then((list) => (orgOptions.value = list))
@@ -80,8 +88,27 @@ const campusFilterOrgId = ref("");
 const groupedCampuses = computed(() =>
   campusFilterOrgId.value
     ? campusOptions.value.filter((c) => c.organizationId === campusFilterOrgId.value)
-    : campusOptions.value,
+    : [],
 );
+function inferCampusOrganization(campusIds: string[]): string {
+  const organizationIds = new Set(
+    campusOptions.value
+      .filter((campus) => campusIds.includes(campus.id))
+      .map((campus) => campus.organizationId)
+      .filter((organizationId): organizationId is string => Boolean(organizationId)),
+  );
+  return organizationIds.size === 1 ? [...organizationIds][0] : "";
+}
+function changeCampusOrganization(organizationId: string) {
+  campusFilterOrgId.value = organizationId;
+  selectedCampusIds.value = organizationId
+    ? selectedCampusIds.value.filter((campusId) =>
+        campusOptions.value.some(
+          (campus) => campus.id === campusId && campus.organizationId === organizationId,
+        ),
+      )
+    : [];
+}
 function campusLabel(id?: string | null): string {
   if (!id) return "—";
   const hit = campusOptions.value.find((c) => c.id === id);
@@ -176,13 +203,16 @@ function openEdit(row: AdminAccount) {
   };
   selectedRoleCodes.value = [...new Set((row.grants ?? []).map((g) => g.roleCode))];
   selectedCampusIds.value = [...new Set((row.grants ?? []).flatMap((g) => g.campusId ? [g.campusId] : []))];
-  campusFilterOrgId.value = row.organizationId ?? "";
+  campusFilterOrgId.value =
+    row.organizationId ?? inferCampusOrganization(selectedCampusIds.value);
   drawerError.value = "";
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
 }
 function validateGrants(): string | null {
   if (!selectedRoleCodes.value.length) return "请至少选择一个角色";
+  if (form.value.orgLevel === "campus" && !campusFilterOrgId.value)
+    return "请先选择校区所属组织";
   if (form.value.orgLevel === "campus" && !selectedCampusIds.value.length)
     return "请选择该账号可以管理的校区";
   return null;
@@ -220,8 +250,11 @@ const authorizationSummary = computed(() => {
   const roleText = roles.length ? roles.join("、") : "尚未选择角色";
   if (form.value.orgLevel === "platform") return `${roleText}，可在平台全部组织和校区生效`;
   if (form.value.orgLevel === "org") return `${roleText}，仅在 ${form.value.organizationId ? orgLabel(form.value.organizationId) : "所选组织"} 内生效`;
+  if (!campusFilterOrgId.value) return `${roleText}，请先选择组织，再选择该组织下的校区`;
   const campuses = selectedCampusIds.value.map(campusLabel);
-  return `${roleText}，仅在${campuses.length ? ` ${campuses.join("、")} ` : "所选校区"}生效`;
+  return campuses.length
+    ? `${roleText}，仅在 ${orgLabel(campusFilterOrgId.value)} 的 ${campuses.join("、")} 生效`
+    : `${roleText}，已选择 ${orgLabel(campusFilterOrgId.value)}，请继续选择校区`;
 });
 async function submitDrawer() {
   drawerError.value = "";
@@ -535,10 +568,10 @@ async function confirmDelete() {
               <button
                 type="button"
                 role="radio"
-                :aria-checked="form.orgLevel === 'campus'"
-                :class="{ selected: form.orgLevel === 'campus' }"
-                @click="setOrgLevel('campus')"
-              ><strong>指定校区</strong><small>只访问选中的一个或多个校区</small></button>
+                :aria-checked="form.orgLevel === 'platform'"
+                :class="{ selected: form.orgLevel === 'platform' }"
+                @click="setOrgLevel('platform')"
+              ><strong>整个平台</strong><small>访问所有组织和校区</small></button>
               <button
                 type="button"
                 role="radio"
@@ -549,10 +582,10 @@ async function confirmDelete() {
               <button
                 type="button"
                 role="radio"
-                :aria-checked="form.orgLevel === 'platform'"
-                :class="{ selected: form.orgLevel === 'platform' }"
-                @click="setOrgLevel('platform')"
-              ><strong>整个平台</strong><small>访问所有组织和校区</small></button>
+                :aria-checked="form.orgLevel === 'campus'"
+                :class="{ selected: form.orgLevel === 'campus' }"
+                @click="setOrgLevel('campus')"
+              ><strong>指定校区</strong><small>先选组织，再选择其中一个或多个校区</small></button>
             </div>
 
             <div v-if="form.orgLevel === 'org'" class="scope-detail">
@@ -562,20 +595,34 @@ async function confirmDelete() {
               </ElSelect>
             </div>
 
-            <div v-if="form.orgLevel === 'campus'" class="scope-detail campus-picker">
-              <div class="campus-picker-toolbar">
-                <label for="campus-org-filter">选择校区</label>
-                <div class="campus-picker-actions">
-                  <ElSelect id="campus-org-filter" v-model="campusFilterOrgId" class="campus-filter" placeholder="全部组织" aria-label="按组织筛选校区">
-                    <ElOption label="全部组织" value="" />
+            <div v-if="form.orgLevel === 'campus'" class="scope-detail campus-cascade">
+              <div class="cascade-step">
+                <div class="cascade-step-heading">
+                  <span>1</span>
+                  <div><strong>选择组织</strong><small>校区必须属于同一个组织</small></div>
+                </div>
+                <ElSelect
+                  id="campus-org-filter"
+                  :model-value="campusFilterOrgId"
+                  class="campus-org-select"
+                  placeholder="请选择组织"
+                  aria-label="选择校区所属组织"
+                  @change="changeCampusOrganization"
+                >
                     <ElOption v-for="o in orgOptions" :key="o.id" :label="o.shortName || o.name" :value="o.id" />
-                  </ElSelect>
-                  <ElButton link type="primary" @click="toggleVisibleCampuses">
+                </ElSelect>
+              </div>
+              <div class="cascade-step" :class="{ disabled: !campusFilterOrgId }">
+                <div class="campus-picker-toolbar">
+                  <div class="cascade-step-heading">
+                    <span>2</span>
+                    <div><strong>选择校区</strong><small>{{ campusFilterOrgId ? `仅显示 ${orgLabel(campusFilterOrgId)} 的校区` : "完成上一步后可选择" }}</small></div>
+                  </div>
+                  <ElButton v-if="campusFilterOrgId && groupedCampuses.length" link type="primary" @click="toggleVisibleCampuses">
                     {{ allVisibleCampusesSelected ? "取消全选" : "全选当前结果" }}
                   </ElButton>
                 </div>
-              </div>
-              <div class="campus-choice-grid">
+                <div v-if="campusFilterOrgId" class="campus-choice-grid">
                 <button
                   v-for="c in groupedCampuses"
                   :key="c.id"
@@ -591,6 +638,8 @@ async function confirmDelete() {
                   <span><strong>{{ c.shortName || c.name }}</strong><small>{{ orgLabel(c.organizationId) }}</small></span>
                 </button>
                 <p v-if="!groupedCampuses.length" class="empty-choice">当前组织下没有可授权校区</p>
+                </div>
+                <div v-else class="campus-prerequisite">请先选择组织，再选择校区</div>
               </div>
             </div>
           </fieldset>
@@ -752,8 +801,7 @@ async function confirmDelete() {
   padding-top: 20px;
 }
 .permission-heading,
-.campus-picker-toolbar,
-.campus-picker-actions {
+.campus-picker-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -936,7 +984,52 @@ async function confirmDelete() {
   font-weight: 700;
 }
 .scope-select { margin-top: 7px; }
-.campus-filter { width: 160px; }
+.campus-cascade {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+.cascade-step {
+  border: 1px solid #dce7e1;
+  border-radius: 11px;
+  background: #fff;
+  padding: 12px;
+}
+.cascade-step.disabled {
+  border-style: dashed;
+  background: #f6f8f7;
+}
+.cascade-step-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.cascade-step-heading > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f1ec;
+  color: #175c45;
+  font-size: 11px;
+  font-weight: 800;
+}
+.cascade-step-heading > div { display: grid; min-width: 0; gap: 2px; }
+.cascade-step-heading strong { color: #294a3c; font-size: 12px; }
+.cascade-step-heading small { color: #687970; font-size: 11px; line-height: 1.4; }
+.campus-org-select { width: 100%; margin-top: 10px; }
+.campus-prerequisite {
+  margin-top: 10px;
+  border-radius: 9px;
+  background: #eef2f0;
+  padding: 18px 12px;
+  color: #687970;
+  font-size: 12px;
+  text-align: center;
+}
 .campus-choice-grid {
   display: grid;
   max-height: 210px;
@@ -1013,8 +1106,7 @@ async function confirmDelete() {
   .campus-choice-grid { grid-template-columns: 1fr; }
   .permission-heading,
   .campus-picker-toolbar { align-items: flex-start; flex-direction: column; }
-  .campus-picker-actions { width: 100%; }
-  .campus-filter { flex: 1; min-width: 0; }
+  .campus-picker-toolbar :deep(.el-button) { align-self: flex-end; min-height: 44px; }
   .step-help { margin-left: 0; }
 }
 
