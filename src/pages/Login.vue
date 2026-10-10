@@ -1,19 +1,27 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { login } from "../api";
 import { applySession, loadRbac } from "../session";
 
 const router = useRouter(),
   username = ref(""),
   password = ref(""),
-  error = ref(""),
   submitting = ref(false);
 
+function showError(message: string) {
+  ElMessage({
+    message,
+    type: "error",
+    duration: 3500,
+    showClose: true,
+  });
+}
+
 async function submit() {
-  error.value = "";
   if (!username.value.trim() || !password.value) {
-    error.value = "请输入账号和密码";
+    showError("请输入账号和密码");
     return;
   }
   submitting.value = true;
@@ -23,12 +31,12 @@ async function submit() {
     const result = await login(username.value.trim(), password.value);
     applySession(result.user);
     if (!(await loadRbac())) {
-      error.value = "权限加载失败，请重试";
+      showError("权限加载失败，请重试");
       return;
     }
     router.push("/");
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "登录失败";
+    showError(e instanceof Error ? e.message : "登录失败");
   } finally {
     submitting.value = false;
   }
@@ -59,7 +67,6 @@ async function submit() {
             placeholder="密码"
             autocomplete="current-password"
         /></label>
-        <p v-if="error" class="form-hint">{{ error }}</p>
         <button class="btn primary login-btn" type="submit" :disabled="submitting">
           {{ submitting ? "登录中..." : "登录后台" }}
         </button>
