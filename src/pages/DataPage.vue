@@ -1229,6 +1229,7 @@ async function confirmIssue() {
     buildingId?: string;
     floor?: number;
     roomNos?: string[];
+    count?: number;
   } = {};
   if (issueMode.value === "users") {
     const ids = selectedUserIds.value;
@@ -1253,6 +1254,10 @@ async function confirmIssue() {
     if (issueFloor.value !== "") body.floor = Number(issueFloor.value);
     if (issueRoomNoList.value.length) body.roomNos = issueRoomNoList.value;
   }
+  // IKKEWS 修复：发放张数随 body 提交（抽屉重构丢失注入——后端收不到恒按默认 1 发）
+  const issueCount = Number(issueCountInput.value);
+  if (Number.isFinite(issueCount) && issueCount >= 1)
+    body.count = Math.round(issueCount);
   try {
     const res = await api.issueCoupon(issueCouponRow.value.id, body);
     notify(`已定向发放 ${res.issued} 张券`);
