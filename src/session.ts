@@ -146,6 +146,14 @@ export const ROUTE_PERM: Record<string, string[]> = {
     "POST /admin/restock/batches/:batchId/purchase-order",
   ],
   accounts: ["POST /admin/accounts", "PATCH /admin/accounts/:id"],
+  // IKKRMS：组织维护/开通写操作（后端超管专属，此处模式串对齐 registry
+  // organizations.write 按钮节点——canWrite 供页内双保险）
+  organizations: [
+    "POST /admin/organizations",
+    "PATCH /admin/organizations/:id",
+    "POST /admin/organizations/:id/status",
+    "POST /admin/organizations/:id/bootstrap",
+  ],
   "rbac-roles": ["POST /admin/rbac/roles", "PATCH /admin/rbac/roles/:id"],
   printers: ["POST /admin/printers", "DELETE /admin/printers/:id", "POST /admin/printers/:id/test-print"],
   dispatch: ["POST /admin/dispatch-invitations", "POST /admin/dispatch-invitations/:id/cancel"],

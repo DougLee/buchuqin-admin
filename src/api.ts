@@ -9,6 +9,7 @@ import type {
   RecruitIdcard,
   AdminUser,
   AdminOrganization,
+  OrganizationBootstrapResult,
   UserOrderRow,
   UserStats,
   WechatGroup,
@@ -810,6 +811,64 @@ export const api = {
   /** 组织列表（IKKRMM 基线，平台权限）：每组织含校区数/用户数聚合。 */
   organizations: () =>
     request<AdminOrganization[]>("/admin/organizations"),
+  /* ---------- 组织维护 + 开通（IKKRMS，超管） ---------- */
+  /** 新建组织：name/shortName/wxAppId 必填唯一（登记后 AppID→组织映射即生效）。 */
+  createOrganization: (data: {
+    name: string;
+    shortName: string;
+    wxAppId: string;
+    wxSecret?: string;
+    mchId?: string;
+    mchApiV3Key?: string;
+    serialNo?: string;
+    privateKey?: string;
+    notifyDomain?: string;
+  }) =>
+    request<AdminOrganization>("/admin/organizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 编辑组织/微信配置：未传不动；敏感凭据传值=覆盖、显式 null=清除。 */
+  updateOrganization: (
+    id: string,
+    data: Partial<{
+      name: string;
+      shortName: string;
+      wxAppId: string | null;
+      wxSecret: string | null;
+      mchId: string | null;
+      mchApiV3Key: string | null;
+      serialNo: string | null;
+      privateKey: string | null;
+      notifyDomain: string | null;
+    }>,
+  ) =>
+    request<AdminOrganization>(`/admin/organizations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  /** 组织启停。 */
+  setOrganizationStatus: (id: string, status: "active" | "disabled") =>
+    request<AdminOrganization>(`/admin/organizations/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+  /** 开通组织一条龙：组织管理员+首校区一次提交；幂等——已有即返回现状。 */
+  bootstrapOrganization: (
+    id: string,
+    data: {
+      adminUsername: string;
+      adminPassword: string;
+      adminNickname?: string;
+      campusName: string;
+      campusShortName: string;
+      campusWarehouseName: string;
+    },
+  ) =>
+    request<OrganizationBootstrapResult>(`/admin/organizations/${id}/bootstrap`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   /** 校区本体增改（IKAJSL）：仅 hq；新校区接入入口。 */
   createCampus: (data: {
     name: string;

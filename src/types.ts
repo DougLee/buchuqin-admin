@@ -68,6 +68,23 @@ export interface AdminOrganization {
   createdAt: string;
   campusCount: number;
   userCount: number;
+  /** IKKRMS：微信配置位（敏感凭据 wxSecret/mchApiV3Key/privateKey 只回
+   *  「已配置」布尔，明文永不回读——编辑传值=覆盖、显式 null=清除） */
+  wxAppId: string | null;
+  mchId: string | null;
+  serialNo: string | null;
+  notifyDomain: string | null;
+  hasWxSecret: boolean;
+  hasMchApiV3Key: boolean;
+  hasPrivateKey: boolean;
+}
+
+/** 开通组织一条龙结果（IKKRMS）：幂等——created=false 表示已有、返回现状。 */
+export interface OrganizationBootstrapResult {
+  organization: AdminOrganization;
+  created: { admin: boolean; campus: boolean };
+  admin: { id: string; username: string; nickname: string; status: string };
+  campus: { id: string; name: string; shortName: string; status: string };
 }
 
 /** 商品类别（全局字典，2026-08-19 类别管理）。productCount 为关联商品数，image 为类别图（IK9RX0）。 */

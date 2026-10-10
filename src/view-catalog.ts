@@ -18,11 +18,13 @@ import Roles from "./pages/RolesPage.vue";
 import Menus from "./pages/MenusPage.vue";
 import Permissions from "./pages/RbacPermissionsPage.vue";
 import Audit from "./pages/RbacAuditPage.vue";
+// 组织管理（IKKRMS）：组织 B 平台端开通一条龙（列表/微信配置/开通向导）
+import Organizations from "./pages/OrganizationsPage.vue";
 export const views: Record<string, Component> = {
   dashboard: Dashboard, restock: Restock, purchase: Purchase, reports: Reports,
   "campus-report": CampusReport, "battle-map": BattleMap, featured: Featured,
   "campus-config": CampusConfig, "after-sales": AfterSales, accounts: Accounts, "rbac-roles": Roles, "rbac-menus": Menus,
-  "rbac-permissions": Permissions, "rbac-audit": Audit,
+  "rbac-permissions": Permissions, "rbac-audit": Audit, organizations: Organizations,
   help: HelpCenter, changelog: Changelog,
 };
 for (const key of ["orders", "official-products", "products", "categories", "inventory", "warehouse-orders", "inventory-txns", "locations", "banners", "pay-ads", "coupons", "promotions", "wheel", "wechat-groups", "staff", "recruit", "buildings", "campuses", "users", "dispatch", "finance", "rules", "audit", "printers"]) views[key] = DataPage;
