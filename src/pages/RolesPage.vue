@@ -16,11 +16,15 @@ import type { RbacMenuRow, RbacRole } from "../types";
 const router = useRouter();
 const toast = ref("");
 const toastError = ref(false);
-/** 行内两击删除确认 */
-const confirmRowId = ref("");
+/** 删除确认弹窗目标角色（IKKRNC 道哥：弃两击改统一弹窗） */
+const deleteTarget = ref<RbacRole | null>(null);
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(msg: string, error = false) {
   toast.value = msg;
   toastError.value = error;
+  if (toastTimer) clearTimeout(toastTimer);
+  // 错误停留 4.2s（同 DataPage 口径）
+  toastTimer = setTimeout(() => (toast.value = ""), error ? 4200 : 2600);
 }
 
 const rows = ref<RbacRole[]>([]);
@@ -243,28 +247,22 @@ async function submitDrawer() {
   }
 }
 
-/* ---------- 删除（两击确认，文案带关联账号数；后端 403 人话 toast） ---------- */
-async function removeRow(role: RbacRole) {
-  if (confirmRowId.value !== role.id) {
-    confirmRowId.value = role.id;
-    return;
-  }
-  confirmRowId.value = "";
+/* ---------- 删除（确认弹窗，文案带关联账号数；后端 403 人话 toast） ---------- */
+function removeRow(role: RbacRole) {
+  deleteTarget.value = role;
+}
+async function confirmDelete() {
+  const role = deleteTarget.value;
+  if (!role) return;
   try {
     await api.rbacDeleteRole(role.id);
+    deleteTarget.value = null;
     notify("角色已删除");
     await load();
   } catch (e) {
+    deleteTarget.value = null;
     notify(e instanceof Error ? e.message : "删除失败", true);
   }
-}
-/** 删除提示文案（两击确认亮出）。 */
-function removeLabel(role: RbacRole): string {
-  return confirmRowId.value === role.id
-    ? role.accountCount > 0
-      ? `确认删除？将影响 ${role.accountCount} 个账号`
-      : "确认删除？"
-    : "删除";
 }
 </script>
 <template>
@@ -293,9 +291,9 @@ function removeLabel(role: RbacRole): string {
       </div>
     </div>
 
-    <p v-if="toast" class="feat-toast" :class="{ error: toastError }">
+    <div v-if="toast" class="toast" :class="{ error: toastError }" role="status">
       {{ toast }}
-    </p>
+    </div>
 
     <div class="data-panel">
       <div class="table-wrap">
@@ -367,12 +365,37 @@ function removeLabel(role: RbacRole): string {
                   class="btn mini danger-btn"
                   @click="removeRow(role)"
                 >
-                  {{ removeLabel(role) }}
+                  删除
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗（IKKRNC：与全站弹层同源——mask+卡片+主次按钮） -->
+    <div
+      v-if="deleteTarget"
+      class="drawer-mask confirm-mask"
+      @click.self="deleteTarget = null"
+    >
+      <div class="confirm-card">
+        <h3>删除角色</h3>
+        <p>
+          确认删除「{{ deleteTarget.name }}」（{{ deleteTarget.code }}）？
+          <template v-if="deleteTarget.accountCount > 0"
+            >该角色已关联
+            <strong>{{ deleteTarget.accountCount }}</strong>
+            个账号，删除后其授权一并失效。</template
+          >
+        </p>
+        <div class="confirm-actions">
+          <button class="btn ghost" @click="deleteTarget = null">取消</button>
+          <button class="btn danger-btn" @click="confirmDelete">
+            确认删除
+          </button>
+        </div>
       </div>
     </div>
 
@@ -498,18 +521,32 @@ function removeLabel(role: RbacRole): string {
 <style scoped>
 /* 全局 .workspace/.page-head/.data-panel/table/.btn/checkbox-row 不重写；
    scoped 只留本页私有。 */
-.feat-toast {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #e5f6eb;
-  color: #087641;
-  font-size: 12px;
-  width: fit-content;
+/* 删除确认弹窗：复用全局 mask，卡片走站点 token（toast 已全局 .toast 无需 scoped） */
+.confirm-card {
+  width: min(400px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px 24px 18px;
+  box-shadow: 0 18px 48px #062e2326;
 }
-.feat-toast.error {
-  background: #fdeeee;
+.confirm-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #153628;
+}
+.confirm-card p {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4c5c53;
+}
+.confirm-card p strong {
   color: #b42323;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 .role-remark {
   margin: 3px 0 0;
