@@ -880,12 +880,12 @@ function openCouponCreate() {
           label: "支付后推荐（支付成功页展示，用户可一键领取）",
           type: "checkbox",
         },
-        // IKKEWS：每人限领张数（默认 1）
+        // IKKEWS：每人限领张数（0=不限，默认 1）
         {
           key: "perUserLimit",
-          label: "每人限领张数（同券同用户可持有张数，默认 1）",
+          label: "每人限领张数（0=不限制，默认 1）",
           type: "number",
-          min: 1,
+          min: 0,
           visible: (d) => d.kind !== "partner",
         },
         // IKKEWS：定向券（领券中心不显示，仅定向发放触达）
@@ -925,7 +925,7 @@ function openCouponCreate() {
           remark: String(d.remark || "").trim(),
           featuredAfterPay: !!d.featuredAfterPay,
           // IKKEWS：每人限领与定向券
-          perUserLimit: Math.max(1, Number(d.perUserLimit) || 1),
+          perUserLimit: Math.max(0, Number(d.perUserLimit) || 0),
           targetedOnly: !!d.targetedOnly,
         });
       },
@@ -1054,12 +1054,12 @@ function openCouponEdit(c: Coupon) {
           label: "支付后推荐（支付成功页展示，用户可一键领取）",
           type: "checkbox",
         },
-        // IKKEWS：每人限领张数（默认 1）
+        // IKKEWS：每人限领张数（0=不限，默认 1）
         {
           key: "perUserLimit",
-          label: "每人限领张数（同券同用户可持有张数，默认 1）",
+          label: "每人限领张数（0=不限制，默认 1）",
           type: "number",
-          min: 1,
+          min: 0,
           visible: (d) => d.kind !== "partner",
         },
         // IKKEWS：定向券（领券中心不显示，仅定向发放触达）
@@ -1074,7 +1074,7 @@ function openCouponEdit(c: Coupon) {
         if (!String(d.name || "").trim()) throw new Error("请填写券名称");
         await api.updateCoupon(c.id, {
           featuredAfterPay: !!d.featuredAfterPay,
-          perUserLimit: Math.max(1, Number(d.perUserLimit) || 1),
+          perUserLimit: Math.max(0, Number(d.perUserLimit) || 0),
           targetedOnly: !!d.targetedOnly,
           name: String(d.name).trim(),
           remark: String(d.remark || "").trim(),
