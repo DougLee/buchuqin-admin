@@ -116,6 +116,21 @@ test('session response ordering', async t => {
     assert.equal(m.rbacLoaded.value, false);
     assert.equal(m.menuPath('orders'), undefined);
   });
+  await t.test('dashboard summary ignores the header campus while drill-down stays explicit', async () => {
+    reset(); await login();
+    m.activeCampus.value = 'campus-header';
+    const summary = m.api.dashboard(undefined, { skipActiveCampus: true });
+    const summaryRequest = await next();
+    assert.equal(summaryRequest.url, '/api/v1/admin/dashboard');
+    summaryRequest.resolve(response({ campusRows: [], kpis: {} }));
+    await summary;
+
+    const drillDown = m.api.dashboard('campus-drill', { skipActiveCampus: true });
+    const drillRequest = await next();
+    assert.equal(drillRequest.url, '/api/v1/admin/dashboard?campus=campus-drill');
+    drillRequest.resolve(response({ campus: { id: 'campus-drill' }, kpis: {} }));
+    await drillDown;
+  });
   await t.test('permission refresh cannot restore authorization after logout', async () => {
     reset(); await login(); const old = m.loadRbac(); const stale = await next();
     m.clearSession(); m.clearToken(); stale.resolve(response(me(['PATCH /admin/products/:id'])));

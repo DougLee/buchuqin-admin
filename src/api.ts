@@ -65,6 +65,11 @@ interface ApiResult<T> {
   data: T;
 }
 
+interface ApiRequestOptions extends RequestInit {
+  /** 页面自身定义数据范围时，禁止通用请求层注入顶部经营校区。 */
+  skipActiveCampus?: boolean;
+}
+
 /** HTTP 失败保留状态码，供会话层区分“明确拒绝”和“短暂不可用”。 */
 export class ApiRequestError extends Error {
   constructor(
@@ -174,21 +179,22 @@ function withQuery(...parts: (string | undefined)[]): string {
   return query ? `?${query}` : "";
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const session = requestSession();
+  const { skipActiveCampus = false, ...fetchOptions } = options;
   // IKJA7Y 页内校区切换：多校区授权账号选中的校区统一注入 ?campus=
   // （后端 scopedCampus/campusScope 校验授权集）。已带 campus 参数的请求
   // （显式聚焦）不重复注入，避免同名 query 双值。
   const campusQs =
-    activeCampus.value && !path.includes("campus=")
+    !skipActiveCampus && activeCampus.value && !path.includes("campus=")
       ? `${path.includes("?") ? "&" : "?"}campus=${encodeURIComponent(activeCampus.value)}`
       : "";
   const response = await fetch(`/api/v1${path}${campusQs}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       ...session.headers,
-      ...options.headers,
+      ...fetchOptions.headers,
     },
   });
   // body 先解析再 check：401 时透传后端明确原因（如「已在其他设备登录，您已被顶下线」）
@@ -285,9 +291,13 @@ export async function downloadRoomTemplate(buildingId: string): Promise<void> {
 
 export const api = {
   /** IKAJSL：hq 不带 campus = 跨校区汇总；带 campus = 单校区明细 */
-  dashboard: (campusId?: string) =>
+  dashboard: (
+    campusId?: string,
+    options?: { skipActiveCampus?: boolean },
+  ) =>
     request<DashboardData | HqDashboardData>(
       `/admin/dashboard${withQuery(campusId ? `campus=${encodeURIComponent(campusId)}` : "")}`,
+      { skipActiveCampus: options?.skipActiveCampus },
     ),
   /** IKH0EK 首页推荐位：本校区已选列表（featuredSort 升序）/ 全量有序保存 */
   featured: () =>

@@ -34,7 +34,11 @@ async function load() {
   try {
     if (isMultiCampusScope.value && !drillCampus.value) {
       data.value = undefined;
-      hqData.value = (await api.dashboard()) as HqDashboardData;
+      // 平台=全平台、组织=本组织汇总；顶部经营校区只服务需要按校区
+      // 筛选的业务页，不能收窄经营总览的管理范围。
+      hqData.value = (await api.dashboard(undefined, {
+        skipActiveCampus: true,
+      })) as HqDashboardData;
     } else {
       hqData.value = undefined;
       // hq 下钻带 campus 返回单校区 DashboardData（与校区角色同构）
