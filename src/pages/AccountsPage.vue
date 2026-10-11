@@ -3,12 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
 import { isSuper, type RbacMe } from "../session";
-import type {
-  AccountGrant,
-  AdminAccount,
-  Campus,
-  RbacRole,
-} from "../types";
+import type { AccountGrant, AdminAccount, Campus, RbacRole } from "../types";
 import { fmtDateTime } from "../utils/datetime";
 import AdminPagination from "../shared/ui/AdminPagination.vue";
 
@@ -69,7 +64,9 @@ async function ensureOptions() {
       !campusFilterOrgId.value &&
       selectedCampusIds.value.length
     ) {
-      campusFilterOrgId.value = inferCampusOrganization(selectedCampusIds.value);
+      campusFilterOrgId.value = inferCampusOrganization(
+        selectedCampusIds.value,
+      );
     }
     api
       .organizations()
@@ -88,7 +85,9 @@ function orgLabel(id?: string | null): string {
 const campusFilterOrgId = ref("");
 const groupedCampuses = computed(() =>
   campusFilterOrgId.value
-    ? campusOptions.value.filter((c) => c.organizationId === campusFilterOrgId.value)
+    ? campusOptions.value.filter(
+        (c) => c.organizationId === campusFilterOrgId.value,
+      )
     : [],
 );
 function inferCampusOrganization(campusIds: string[]): string {
@@ -96,7 +95,9 @@ function inferCampusOrganization(campusIds: string[]): string {
     campusOptions.value
       .filter((campus) => campusIds.includes(campus.id))
       .map((campus) => campus.organizationId)
-      .filter((organizationId): organizationId is string => Boolean(organizationId)),
+      .filter((organizationId): organizationId is string =>
+        Boolean(organizationId),
+      ),
   );
   return organizationIds.size === 1 ? [...organizationIds][0] : "";
 }
@@ -105,7 +106,8 @@ function changeCampusOrganization(organizationId: string) {
   selectedCampusIds.value = organizationId
     ? selectedCampusIds.value.filter((campusId) =>
         campusOptions.value.some(
-          (campus) => campus.id === campusId && campus.organizationId === organizationId,
+          (campus) =>
+            campus.id === campusId && campus.organizationId === organizationId,
         ),
       )
     : [];
@@ -116,13 +118,24 @@ function campusLabel(id?: string | null): string {
   return hit?.shortName || hit?.name || id;
 }
 function accountRoleNames(row: AdminAccount): string[] {
-  return [...new Set((row.grants ?? []).map((grant) => grant.roleName || grant.roleCode))];
+  return [
+    ...new Set(
+      (row.grants ?? []).map((grant) => grant.roleName || grant.roleCode),
+    ),
+  ];
 }
 function accountScopeLabel(row: AdminAccount): string {
   if (row.orgLevel === "platform") return "整个平台";
-  if (row.orgLevel === "org") return `整个组织 · ${orgLabel(row.organizationId)}`;
+  if (row.orgLevel === "org")
+    return `整个组织 · ${orgLabel(row.organizationId)}`;
   if (row.orgLevel === "campus") {
-    const campuses = [...new Set((row.grants ?? []).flatMap((grant) => grant.campusId ? [campusLabel(grant.campusId)] : []))];
+    const campuses = [
+      ...new Set(
+        (row.grants ?? []).flatMap((grant) =>
+          grant.campusId ? [campusLabel(grant.campusId)] : [],
+        ),
+      ),
+    ];
     return campuses.length ? `指定校区 · ${campuses.join("、")}` : "指定校区";
   }
   // 兼容尚未迁移 orgLevel 的历史账号，仅用于展示，不参与权限判定。
@@ -180,12 +193,19 @@ const form = ref({
   organizationId: "",
 });
 /**
- * 角色只描述“能做什么”，数据边界由账号统一描述；提交时再转成 API grants。
- * 这样同一账号的多个角色不会各自携带不同范围，避免角色意外放大数据权限。
+ * 角色只描述“能做什么”，每个账号只允许选择一个角色；
+ * 数据边界由账号统一描述，提交时再按范围展开成 API grants。
  */
 const selectedRoleCodes = ref<string[]>([]);
 const selectedCampusIds = ref<string[]>([]);
-const hasCampusAdminRole = computed(() => selectedRoleCodes.value.includes("campus-admin"));
+const singleCampusRoleCodes = new Set([
+  "campus-admin",
+  "campus-operator",
+  "campus-operations",
+]);
+const requiresSingleCampus = computed(() =>
+  selectedRoleCodes.value.some((code) => singleCampusRoleCodes.has(code)),
+);
 function showDrawerError(message: string) {
   ElMessage({ message, type: "error", duration: 3500, showClose: true });
 }
@@ -197,7 +217,14 @@ function roleOptionLabel(r: RbacRole): string {
 }
 function openCreate() {
   editingId.value = null;
-  form.value = { username: "", password: "", nickname: "", status: "active", orgLevel: "campus", organizationId: "" };
+  form.value = {
+    username: "",
+    password: "",
+    nickname: "",
+    status: "active",
+    orgLevel: "campus",
+    organizationId: "",
+  };
   selectedRoleCodes.value = [];
   selectedCampusIds.value = [];
   campusFilterOrgId.value = "";
@@ -211,26 +238,34 @@ function openEdit(row: AdminAccount) {
     password: "",
     nickname: row.nickname,
     status: row.status,
-    orgLevel: row.orgLevel ?? (row.grants?.some((g) => g.scope === "platform") ? "platform" : "campus"),
+    orgLevel:
+      row.orgLevel ??
+      (row.grants?.some((g) => g.scope === "platform") ? "platform" : "campus"),
     organizationId: row.organizationId ?? "",
   };
-  selectedRoleCodes.value = [...new Set((row.grants ?? []).map((g) => g.roleCode))];
-  selectedCampusIds.value = [...new Set((row.grants ?? []).flatMap((g) => g.campusId ? [g.campusId] : []))];
+  selectedRoleCodes.value = [
+    ...new Set((row.grants ?? []).map((g) => g.roleCode)),
+  ].slice(0, 1);
+  selectedCampusIds.value = [
+    ...new Set(
+      (row.grants ?? []).flatMap((g) => (g.campusId ? [g.campusId] : [])),
+    ),
+  ];
   campusFilterOrgId.value =
     row.organizationId ?? inferCampusOrganization(selectedCampusIds.value);
   drawerOpen.value = true;
   if (!roleOptions.value.length) void ensureOptions();
 }
 function validateGrants(): string | null {
-  if (!selectedRoleCodes.value.length) return "请至少选择一个角色";
-  if (hasCampusAdminRole.value && form.value.orgLevel !== "campus")
-    return "校区管理员的数据范围只能设置为指定校区";
+  if (selectedRoleCodes.value.length !== 1) return "请选择一个角色";
+  if (requiresSingleCampus.value && form.value.orgLevel !== "campus")
+    return "校区管理员或校区运营的数据范围只能设置为指定校区";
   if (form.value.orgLevel === "campus" && !campusFilterOrgId.value)
     return "请先选择校区所属组织";
   if (form.value.orgLevel === "campus" && !selectedCampusIds.value.length)
     return "请选择该账号可以管理的校区";
-  if (hasCampusAdminRole.value && selectedCampusIds.value.length !== 1)
-    return "校区管理员只能管理一个校区";
+  if (requiresSingleCampus.value && selectedCampusIds.value.length !== 1)
+    return "校区管理员或校区运营只能管理一个校区";
   return null;
 }
 function roleNameOf(code: string): string {
@@ -238,17 +273,15 @@ function roleNameOf(code: string): string {
 }
 function toggleRole(code: string) {
   const adding = !selectedRoleCodes.value.includes(code);
-  selectedRoleCodes.value = !adding
-    ? selectedRoleCodes.value.filter((item) => item !== code)
-    : [...selectedRoleCodes.value, code];
-  if (adding && code === "campus-admin") {
+  selectedRoleCodes.value = adding ? [code] : [];
+  if (adding && singleCampusRoleCodes.has(code)) {
     form.value.orgLevel = "campus";
     form.value.organizationId = "";
     selectedCampusIds.value = selectedCampusIds.value.slice(0, 1);
   }
 }
 function toggleCampus(id: string) {
-  if (hasCampusAdminRole.value) {
+  if (requiresSingleCampus.value) {
     selectedCampusIds.value = selectedCampusIds.value.includes(id) ? [] : [id];
     return;
   }
@@ -256,20 +289,9 @@ function toggleCampus(id: string) {
     ? selectedCampusIds.value.filter((item) => item !== id)
     : [...selectedCampusIds.value, id];
 }
-const allVisibleCampusesSelected = computed(() =>
-  groupedCampuses.value.length > 0 && groupedCampuses.value.every((c) => selectedCampusIds.value.includes(c.id)),
-);
-function toggleVisibleCampuses() {
-  const visibleIds = groupedCampuses.value.map((c) => c.id);
-  if (allVisibleCampusesSelected.value) {
-    selectedCampusIds.value = selectedCampusIds.value.filter((id) => !visibleIds.includes(id));
-  } else {
-    selectedCampusIds.value = [...new Set([...selectedCampusIds.value, ...visibleIds])];
-  }
-}
 function setOrgLevel(level: "platform" | "org" | "campus") {
-  if (hasCampusAdminRole.value && level !== "campus") {
-    showDrawerError("校区管理员只能绑定一个指定校区");
+  if (requiresSingleCampus.value && level !== "campus") {
+    showDrawerError("校区管理员或校区运营只能绑定一个指定校区");
     return;
   }
   form.value.orgLevel = level;
@@ -278,9 +300,12 @@ function setOrgLevel(level: "platform" | "org" | "campus") {
 const authorizationSummary = computed(() => {
   const roles = selectedRoleCodes.value.map(roleNameOf);
   const roleText = roles.length ? roles.join("、") : "尚未选择角色";
-  if (form.value.orgLevel === "platform") return `${roleText}，可在平台全部组织和校区生效`;
-  if (form.value.orgLevel === "org") return `${roleText}，仅在 ${form.value.organizationId ? orgLabel(form.value.organizationId) : "所选组织"} 内生效`;
-  if (!campusFilterOrgId.value) return `${roleText}，请先选择组织，再选择该组织下的校区`;
+  if (form.value.orgLevel === "platform")
+    return `${roleText}，可在平台全部组织和校区生效`;
+  if (form.value.orgLevel === "org")
+    return `${roleText}，仅在 ${form.value.organizationId ? orgLabel(form.value.organizationId) : "所选组织"} 内生效`;
+  if (!campusFilterOrgId.value)
+    return `${roleText}，请先选择组织，再选择该组织下的校区`;
   const campuses = selectedCampusIds.value.map(campusLabel);
   return campuses.length
     ? `${roleText}，仅在 ${orgLabel(campusFilterOrgId.value)} 的 ${campuses.join("、")} 生效`
@@ -288,8 +313,7 @@ const authorizationSummary = computed(() => {
 });
 async function submitDrawer() {
   if (!editingId.value) {
-    if (!form.value.username.trim())
-      return showDrawerError("请输入账号名");
+    if (!form.value.username.trim()) return showDrawerError("请输入账号名");
     if (form.value.password.length < 8)
       return showDrawerError("初始密码至少 8 位");
   } else if (form.value.password && form.value.password.length < 8) {
@@ -301,10 +325,13 @@ async function submitDrawer() {
   if (grantError) return showDrawerError(grantError);
   const scope = form.value.orgLevel === "campus" ? "campus" : "platform";
   const grantCampuses = scope === "campus" ? selectedCampusIds.value : [null];
-  const grants: AccountGrant[] = selectedRoleCodes.value.flatMap(roleCode =>
-    grantCampuses.map(campusId => ({
-      roleCode, roleName: roleNameOf(roleCode), roleStatus: "active" as const,
-      scope, campusId,
+  const grants: AccountGrant[] = selectedRoleCodes.value.flatMap((roleCode) =>
+    grantCampuses.map((campusId) => ({
+      roleCode,
+      roleName: roleNameOf(roleCode),
+      roleStatus: "active" as const,
+      scope,
+      campusId,
     })),
   );
   drawerSaving.value = true;
@@ -425,7 +452,12 @@ async function confirmDelete() {
       </div>
     </div>
 
-    <div v-if="toast" class="toast" :class="{ error: toastError }" role="status">
+    <div
+      v-if="toast"
+      class="toast"
+      :class="{ error: toastError }"
+      role="status"
+    >
       {{ toast }}
     </div>
 
@@ -445,7 +477,13 @@ async function confirmDelete() {
           </template>
         </ElInput>
       </div>
-      <ElAlert v-if="loadError" class="load-alert" type="error" show-icon :closable="false">
+      <ElAlert
+        v-if="loadError"
+        class="load-alert"
+        type="error"
+        show-icon
+        :closable="false"
+      >
         <template #title>
           {{ loadError }}
           <ElButton link type="primary" @click="load">重试</ElButton>
@@ -460,7 +498,9 @@ async function confirmDelete() {
         class="account-table"
       >
         <ElTableColumn prop="username" label="账号" min-width="150">
-          <template #default="{ row }"><strong>{{ row.username }}</strong></template>
+          <template #default="{ row }"
+            ><strong>{{ row.username }}</strong></template
+          >
         </ElTableColumn>
         <ElTableColumn prop="nickname" label="昵称" min-width="130">
           <template #default="{ row }">{{ row.nickname || "—" }}</template>
@@ -476,7 +516,9 @@ async function confirmDelete() {
               >
                 {{ roleName }}
               </ElTag>
-              <span v-if="!(row.grants ?? []).length" class="muted">未授权</span>
+              <span v-if="!(row.grants ?? []).length" class="muted"
+                >未授权</span
+              >
             </div>
           </template>
         </ElTableColumn>
@@ -493,15 +535,31 @@ async function confirmDelete() {
           </template>
         </ElTableColumn>
         <ElTableColumn prop="createdAt" label="创建时间" min-width="170">
-          <template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{
+            fmtDateTime(row.createdAt)
+          }}</template>
         </ElTableColumn>
         <ElTableColumn label="操作" fixed="right" width="250">
           <template #default="{ row }">
             <div class="row-actions">
-              <ElButton size="small" plain @click="openPreview(accountRow(row))">预览权限</ElButton>
+              <ElButton size="small" plain @click="openPreview(accountRow(row))"
+                >预览权限</ElButton
+              >
               <template v-if="isSuper && row.username !== 'admin'">
-                <ElButton size="small" type="primary" plain @click="openEdit(accountRow(row))">编辑</ElButton>
-                <ElButton size="small" type="danger" plain @click="removeRow(accountRow(row))">删除</ElButton>
+                <ElButton
+                  size="small"
+                  type="primary"
+                  plain
+                  @click="openEdit(accountRow(row))"
+                  >编辑</ElButton
+                >
+                <ElButton
+                  size="small"
+                  type="danger"
+                  plain
+                  @click="removeRow(accountRow(row))"
+                  >删除</ElButton
+                >
               </template>
             </div>
           </template>
@@ -533,164 +591,267 @@ async function confirmDelete() {
     >
       <ElForm class="account-form" label-position="top">
         <ElRow :gutter="16">
-          <ElCol :xs="24" :sm="12"><ElFormItem label="账号">
-            <ElInput
-              v-model="form.username"
-              :disabled="!!editingId"
-              placeholder="3-20 位字母/数字/下划线"
-            />
-          </ElFormItem></ElCol>
-          <ElCol :xs="24" :sm="12"><ElFormItem :label="editingId ? '重置密码（留空不改）' : '初始密码'">
-            <ElInput
-              v-model="form.password"
-              type="password"
-              show-password
-              placeholder="至少 8 位"
-              autocomplete="new-password"
-            />
-          </ElFormItem></ElCol>
-          <ElCol :xs="24" :sm="12"><ElFormItem label="昵称">
-            <ElInput v-model="form.nickname" placeholder="如：仓储小王" />
-          </ElFormItem></ElCol>
-          <ElCol v-if="editingId" :xs="24" :sm="12"><ElFormItem label="状态">
-            <ElSelect v-model="form.status" class="full-width">
-              <ElOption label="启用" value="active" />
-              <ElOption label="停用（立即失去后台访问）" value="disabled" />
-            </ElSelect>
-          </ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"
+            ><ElFormItem label="账号">
+              <ElInput
+                v-model="form.username"
+                :disabled="!!editingId"
+                placeholder="3-20 位字母/数字/下划线"
+              /> </ElFormItem
+          ></ElCol>
+          <ElCol :xs="24" :sm="12"
+            ><ElFormItem
+              :label="editingId ? '重置密码（留空不改）' : '初始密码'"
+            >
+              <ElInput
+                v-model="form.password"
+                type="password"
+                show-password
+                placeholder="至少 8 位"
+                autocomplete="new-password"
+              /> </ElFormItem
+          ></ElCol>
+          <ElCol :xs="24" :sm="12"
+            ><ElFormItem label="昵称">
+              <ElInput
+                v-model="form.nickname"
+                placeholder="如：仓储小王"
+              /> </ElFormItem
+          ></ElCol>
+          <ElCol v-if="editingId" :xs="24" :sm="12"
+            ><ElFormItem label="状态">
+              <ElSelect v-model="form.status" class="full-width">
+                <ElOption label="启用" value="active" />
+                <ElOption label="停用（立即失去后台访问）" value="disabled" />
+              </ElSelect> </ElFormItem
+          ></ElCol>
         </ElRow>
       </ElForm>
-        <section class="permission-builder" aria-labelledby="permission-heading">
-          <div class="permission-heading">
-            <div>
-              <p class="step-kicker">权限设置</p>
-              <h3 id="permission-heading">这个账号能做什么、能看哪里</h3>
-            </div>
-            <span class="selection-count">已选 {{ selectedRoleCodes.length }} 个角色</span>
+      <section class="permission-builder" aria-labelledby="permission-heading">
+        <div class="permission-heading">
+          <div>
+            <p class="step-kicker">权限设置</p>
+            <h3 id="permission-heading">这个账号能做什么、能看哪里</h3>
+          </div>
+          <span class="selection-count">{{
+            selectedRoleCodes.length
+              ? `已选择：${roleNameOf(selectedRoleCodes[0])}`
+              : "尚未选择角色"
+          }}</span>
+        </div>
+
+        <fieldset class="permission-step">
+          <legend><span>1</span>选择角色</legend>
+          <p class="step-help">
+            角色决定账号可使用的功能，每个账号只能选择一个角色。
+          </p>
+          <div class="role-choice-grid" role="radiogroup" aria-label="账号角色">
+            <button
+              v-for="r in roleOptions"
+              :key="r.code"
+              type="button"
+              role="radio"
+              class="role-choice"
+              :class="{ selected: selectedRoleCodes.includes(r.code) }"
+              :disabled="r.status === 'disabled'"
+              :aria-checked="selectedRoleCodes.includes(r.code)"
+              @click="toggleRole(r.code)"
+            >
+              <span class="choice-check" aria-hidden="true">
+                <svg
+                  v-if="selectedRoleCodes.includes(r.code)"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+              </span>
+              <span class="choice-copy">
+                <strong>{{ roleOptionLabel(r) }}</strong>
+                <small>{{
+                  r.remark || (r.builtin ? "系统预设角色" : "自定义角色")
+                }}</small>
+              </span>
+              <span v-if="r.status === 'disabled'" class="role-state"
+                >已停用</span
+              >
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset class="permission-step">
+          <legend><span>2</span>设置数据范围</legend>
+          <p class="step-help">
+            {{
+              requiresSingleCampus
+                ? "校区管理员和校区运营只能绑定一个校区。"
+                : "数据范围属于账号本身。"
+            }}
+          </p>
+          <div
+            class="scope-options"
+            role="radiogroup"
+            aria-label="账号数据范围"
+          >
+            <button
+              type="button"
+              role="radio"
+              :disabled="requiresSingleCampus"
+              :aria-checked="form.orgLevel === 'platform'"
+              :class="{ selected: form.orgLevel === 'platform' }"
+              @click="setOrgLevel('platform')"
+            >
+              <strong>整个平台</strong><small>访问所有组织和校区</small>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              :disabled="requiresSingleCampus"
+              :aria-checked="form.orgLevel === 'org'"
+              :class="{ selected: form.orgLevel === 'org' }"
+              @click="setOrgLevel('org')"
+            >
+              <strong>整个组织</strong><small>访问某个组织下的全部校区</small>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              :aria-checked="form.orgLevel === 'campus'"
+              :class="{ selected: form.orgLevel === 'campus' }"
+              @click="setOrgLevel('campus')"
+            >
+              <strong>指定校区</strong
+              ><small>{{
+                requiresSingleCampus
+                  ? "先选组织，再选择一个校区"
+                  : "先选组织，再选择其中一个或多个校区"
+              }}</small>
+            </button>
           </div>
 
-          <fieldset class="permission-step">
-            <legend><span>1</span>选择角色</legend>
-            <p class="step-help">角色只决定功能权限，可同时选择多个，最终权限会自动合并。</p>
-            <div class="role-choice-grid">
-              <button
-                v-for="r in roleOptions"
-                :key="r.code"
-                type="button"
-                class="role-choice"
-                :class="{ selected: selectedRoleCodes.includes(r.code) }"
-                :disabled="r.status === 'disabled'"
-                :aria-pressed="selectedRoleCodes.includes(r.code)"
-                @click="toggleRole(r.code)"
+          <div v-if="form.orgLevel === 'org'" class="scope-detail">
+            <label for="account-organization">选择组织</label>
+            <ElSelect
+              id="account-organization"
+              v-model="form.organizationId"
+              class="scope-select"
+              placeholder="请选择组织"
+            >
+              <ElOption
+                v-for="o in orgOptions"
+                :key="o.id"
+                :label="o.shortName || o.name"
+                :value="o.id"
+              />
+            </ElSelect>
+          </div>
+
+          <div
+            v-if="form.orgLevel === 'campus'"
+            class="scope-detail campus-cascade"
+          >
+            <div class="cascade-step">
+              <div class="cascade-step-heading">
+                <span>1</span>
+                <div>
+                  <strong>选择组织</strong><small>校区必须属于同一个组织</small>
+                </div>
+              </div>
+              <ElSelect
+                id="campus-org-filter"
+                :model-value="campusFilterOrgId"
+                class="campus-org-select"
+                placeholder="请选择组织"
+                aria-label="选择校区所属组织"
+                @change="changeCampusOrganization"
               >
-                <span class="choice-check" aria-hidden="true">
-                  <svg v-if="selectedRoleCodes.includes(r.code)" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>
-                </span>
-                <span class="choice-copy">
-                  <strong>{{ roleOptionLabel(r) }}</strong>
-                  <small>{{ r.remark || (r.builtin ? "系统预设角色" : "自定义角色") }}</small>
-                </span>
-                <span v-if="r.status === 'disabled'" class="role-state">已停用</span>
-              </button>
-            </div>
-          </fieldset>
-
-          <fieldset class="permission-step">
-            <legend><span>2</span>设置数据范围</legend>
-            <p class="step-help">
-              {{ hasCampusAdminRole ? "校区管理员只能绑定一个校区。" : "数据范围属于账号本身，不会因选择不同角色而改变。" }}
-            </p>
-            <div class="scope-options" role="radiogroup" aria-label="账号数据范围">
-              <button
-                type="button"
-                role="radio"
-                :disabled="hasCampusAdminRole"
-                :aria-checked="form.orgLevel === 'platform'"
-                :class="{ selected: form.orgLevel === 'platform' }"
-                @click="setOrgLevel('platform')"
-              ><strong>整个平台</strong><small>访问所有组织和校区</small></button>
-              <button
-                type="button"
-                role="radio"
-                :disabled="hasCampusAdminRole"
-                :aria-checked="form.orgLevel === 'org'"
-                :class="{ selected: form.orgLevel === 'org' }"
-                @click="setOrgLevel('org')"
-              ><strong>整个组织</strong><small>访问某个组织下的全部校区</small></button>
-              <button
-                type="button"
-                role="radio"
-                :aria-checked="form.orgLevel === 'campus'"
-                :class="{ selected: form.orgLevel === 'campus' }"
-                @click="setOrgLevel('campus')"
-              ><strong>指定校区</strong><small>先选组织，再选择其中一个或多个校区</small></button>
-            </div>
-
-            <div v-if="form.orgLevel === 'org'" class="scope-detail">
-              <label for="account-organization">选择组织</label>
-              <ElSelect id="account-organization" v-model="form.organizationId" class="scope-select" placeholder="请选择组织">
-                <ElOption v-for="o in orgOptions" :key="o.id" :label="o.shortName || o.name" :value="o.id" />
+                <ElOption
+                  v-for="o in orgOptions"
+                  :key="o.id"
+                  :label="o.shortName || o.name"
+                  :value="o.id"
+                />
               </ElSelect>
             </div>
-
-            <div v-if="form.orgLevel === 'campus'" class="scope-detail campus-cascade">
-              <div class="cascade-step">
+            <div class="cascade-step" :class="{ disabled: !campusFilterOrgId }">
+              <div class="campus-picker-toolbar">
                 <div class="cascade-step-heading">
-                  <span>1</span>
-                  <div><strong>选择组织</strong><small>校区必须属于同一个组织</small></div>
-                </div>
-                <ElSelect
-                  id="campus-org-filter"
-                  :model-value="campusFilterOrgId"
-                  class="campus-org-select"
-                  placeholder="请选择组织"
-                  aria-label="选择校区所属组织"
-                  @change="changeCampusOrganization"
-                >
-                    <ElOption v-for="o in orgOptions" :key="o.id" :label="o.shortName || o.name" :value="o.id" />
-                </ElSelect>
-              </div>
-              <div class="cascade-step" :class="{ disabled: !campusFilterOrgId }">
-                <div class="campus-picker-toolbar">
-                  <div class="cascade-step-heading">
-                    <span>2</span>
-                    <div><strong>选择校区</strong><small>{{ campusFilterOrgId ? `仅显示 ${orgLabel(campusFilterOrgId)} 的校区` : "完成上一步后可选择" }}</small></div>
+                  <span>2</span>
+                  <div>
+                    <strong>选择校区</strong
+                    ><small>{{
+                      campusFilterOrgId
+                        ? `仅显示 ${orgLabel(campusFilterOrgId)} 的校区`
+                        : "完成上一步后可选择"
+                    }}</small>
                   </div>
-                  <ElButton v-if="!hasCampusAdminRole && campusFilterOrgId && groupedCampuses.length" link type="primary" @click="toggleVisibleCampuses">
-                    {{ allVisibleCampusesSelected ? "取消全选" : "全选当前结果" }}
-                  </ElButton>
                 </div>
-                <div v-if="campusFilterOrgId" class="campus-choice-grid">
+              </div>
+              <div v-if="campusFilterOrgId" class="campus-choice-grid">
                 <button
                   v-for="c in groupedCampuses"
                   :key="c.id"
                   type="button"
+                  :role="requiresSingleCampus ? 'radio' : undefined"
                   class="campus-choice"
                   :class="{ selected: selectedCampusIds.includes(c.id) }"
-                  :aria-pressed="selectedCampusIds.includes(c.id)"
+                  :aria-checked="
+                    requiresSingleCampus
+                      ? selectedCampusIds.includes(c.id)
+                      : undefined
+                  "
+                  :aria-pressed="
+                    requiresSingleCampus
+                      ? undefined
+                      : selectedCampusIds.includes(c.id)
+                  "
                   @click="toggleCampus(c.id)"
                 >
                   <span class="choice-check" aria-hidden="true">
-                    <svg v-if="selectedCampusIds.includes(c.id)" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>
+                    <svg
+                      v-if="selectedCampusIds.includes(c.id)"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
                   </span>
-                  <span><strong>{{ c.shortName || c.name }}</strong><small>{{ orgLabel(c.organizationId) }}</small></span>
+                  <span
+                    ><strong>{{ c.shortName || c.name }}</strong
+                    ><small>{{ orgLabel(c.organizationId) }}</small></span
+                  >
                 </button>
-                <p v-if="!groupedCampuses.length" class="empty-choice">当前组织下没有可授权校区</p>
-                </div>
-                <div v-else class="campus-prerequisite">请先选择组织，再选择校区</div>
+                <p v-if="!groupedCampuses.length" class="empty-choice">
+                  当前组织下没有可授权校区
+                </p>
+              </div>
+              <div v-else class="campus-prerequisite">
+                请先选择组织，再选择校区
               </div>
             </div>
-          </fieldset>
-
-          <div class="authorization-summary" role="status">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v5c0 5 3.4 8.2 8 10 4.6-1.8 8-5 8-10V6l-8-3Zm-3 9 2 2 4-5" /></svg>
-            <div><strong>授权结果</strong><p>{{ authorizationSummary }}</p></div>
           </div>
-        </section>
+        </fieldset>
+
+        <div class="authorization-summary" role="status">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 3 4 6v5c0 5 3.4 8.2 8 10 4.6-1.8 8-5 8-10V6l-8-3Zm-3 9 2 2 4-5"
+            />
+          </svg>
+          <div>
+            <strong>授权结果</strong>
+            <p>{{ authorizationSummary }}</p>
+          </div>
+        </div>
+      </section>
       <template #footer>
         <div class="account-dialog-actions">
-          <ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton>
-          <ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">
+          <ElButton :disabled="drawerSaving" @click="drawerOpen = false"
+            >取消</ElButton
+          >
+          <ElButton
+            type="primary"
+            :loading="drawerSaving"
+            @click="submitDrawer"
+          >
             {{ editingId ? "保存修改" : "创建账号" }}
           </ElButton>
         </div>
@@ -711,26 +872,35 @@ async function confirmDelete() {
         <template v-if="previewMe">
           <p class="drawer-sec">账号数据范围</p>
           <div class="preview-perms">
-            <ElTag type="success">{{ previewAccount ? accountScopeLabel(previewAccount) : "—" }}</ElTag>
+            <ElTag type="success">{{
+              previewAccount ? accountScopeLabel(previewAccount) : "—"
+            }}</ElTag>
           </div>
           <p class="drawer-sec">生效角色</p>
           <div class="preview-roles">
-            <div
-              v-for="r in previewMe.roles"
-              :key="r.id"
-              class="preview-role"
-            >
-              <ElTag :type="r.status === 'active' ? 'info' : 'warning'">{{ r.name }}</ElTag>
+            <div v-for="r in previewMe.roles" :key="r.id" class="preview-role">
+              <ElTag :type="r.status === 'active' ? 'info' : 'warning'">{{
+                r.name
+              }}</ElTag>
               <small>
                 {{ r.builtin ? "系统内置角色" : "自定义角色" }}
                 {{ r.status === "active" ? "" : "· 已停用" }}
               </small>
             </div>
-            <ElEmpty v-if="!previewMe.roles.length" description="未挂任何角色（无后台权限）" :image-size="72" />
+            <ElEmpty
+              v-if="!previewMe.roles.length"
+              description="未挂任何角色（无后台权限）"
+              :image-size="72"
+            />
           </div>
           <p class="drawer-sec">可见菜单</p>
           <div class="preview-perms">
-            <ElTag v-for="m in previewMe.menus ?? []" :key="m.code" type="info">{{ m.name }}</ElTag>
+            <ElTag
+              v-for="m in previewMe.menus ?? []"
+              :key="m.code"
+              type="info"
+              >{{ m.name }}</ElTag
+            >
             <span v-if="!(previewMe.menus ?? []).length" class="muted"
               >无可见菜单</span
             >
@@ -743,7 +913,11 @@ async function confirmDelete() {
           >
             <h3>{{ group.group }}</h3>
             <div class="preview-perms">
-              <ElTag v-for="permission in group.perms" :key="permission" type="info">
+              <ElTag
+                v-for="permission in group.perms"
+                :key="permission"
+                type="info"
+              >
                 {{ permission }}
               </ElTag>
             </div>
@@ -751,7 +925,7 @@ async function confirmDelete() {
         </template>
       </div>
     </ElDialog>
-  
+
     <!-- 删除确认弹窗（与角色管理同款） -->
     <ElDialog
       v-model="deleteDialogOpen"
@@ -769,11 +943,15 @@ async function confirmDelete() {
         已授角色与数据边界一并失效。
       </p>
       <template #footer>
-        <ElButton :disabled="deleteSaving" @click="deleteDialogOpen = false">取消</ElButton>
-        <ElButton type="danger" :loading="deleteSaving" @click="confirmDelete">确认删除</ElButton>
+        <ElButton :disabled="deleteSaving" @click="deleteDialogOpen = false"
+          >取消</ElButton
+        >
+        <ElButton type="danger" :loading="deleteSaving" @click="confirmDelete"
+          >确认删除</ElButton
+        >
       </template>
     </ElDialog>
-</div>
+  </div>
 </template>
 <style scoped>
 /* 样式对齐 FeaturedPage：全局 .workspace/.page-head/.data-panel/table/.btn 不重写，
@@ -783,26 +961,42 @@ async function confirmDelete() {
   display: flex;
   gap: 10px;
 }
-.account-search { width: min(420px, 100%); }
-.load-alert { margin: 0 14px 12px; width: auto; }
-.account-table { width: 100%; }
+.account-search {
+  width: min(420px, 100%);
+}
+.load-alert {
+  margin: 0 14px 12px;
+  width: auto;
+}
+.account-table {
+  width: 100%;
+}
 .row-actions {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
 }
-.row-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.row-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
 .full-width,
-.scope-select { width: 100%; }
+.scope-select {
+  width: 100%;
+}
 .delete-copy {
   margin: 0;
   color: #4c5c53;
   font-size: 14px;
   line-height: 1.7;
 }
-.permission-preview-body { min-height: 120px; }
-.preview-roles { display: grid; gap: 8px; }
+.permission-preview-body {
+  min-height: 120px;
+}
+.preview-roles {
+  display: grid;
+  gap: 8px;
+}
 .account-dialog-actions {
   display: flex;
   gap: 10px;
@@ -813,7 +1007,9 @@ async function confirmDelete() {
   border-radius: 10px;
   font-weight: 700;
 }
-.account-dialog-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.account-dialog-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
 .grant-badges {
   display: flex;
   flex-wrap: wrap;
@@ -846,7 +1042,7 @@ async function confirmDelete() {
   color: var(--green);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
 }
 .permission-heading h3 {
   margin: 0;
@@ -901,7 +1097,10 @@ async function confirmDelete() {
 .campus-choice,
 .scope-options button {
   cursor: pointer;
-  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
 }
 .role-choice {
   display: flex;
@@ -935,7 +1134,7 @@ async function confirmDelete() {
 }
 .role-choice:disabled {
   cursor: not-allowed;
-  opacity: .55;
+  opacity: 0.55;
 }
 .choice-check {
   display: grid;
@@ -1002,8 +1201,14 @@ async function confirmDelete() {
   color: #153628;
   text-align: left;
 }
-.scope-options strong { font-size: 13px; }
-.scope-options small { color: #61736a; font-size: 10px; line-height: 1.45; }
+.scope-options strong {
+  font-size: 13px;
+}
+.scope-options small {
+  color: #61736a;
+  font-size: 10px;
+  line-height: 1.45;
+}
 .scope-detail {
   margin-top: 10px;
   border: 1px solid #dfe9e4;
@@ -1017,7 +1222,9 @@ async function confirmDelete() {
   font-size: 12px;
   font-weight: 700;
 }
-.scope-select { margin-top: 7px; }
+.scope-select {
+  margin-top: 7px;
+}
 .campus-cascade {
   display: grid;
   gap: 12px;
@@ -1051,10 +1258,24 @@ async function confirmDelete() {
   font-size: 11px;
   font-weight: 800;
 }
-.cascade-step-heading > div { display: grid; min-width: 0; gap: 2px; }
-.cascade-step-heading strong { color: #294a3c; font-size: 12px; }
-.cascade-step-heading small { color: #687970; font-size: 11px; line-height: 1.4; }
-.campus-org-select { width: 100%; margin-top: 10px; }
+.cascade-step-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.cascade-step-heading strong {
+  color: #294a3c;
+  font-size: 12px;
+}
+.cascade-step-heading small {
+  color: #687970;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.campus-org-select {
+  width: 100%;
+  margin-top: 10px;
+}
 .campus-prerequisite {
   margin-top: 10px;
   border-radius: 9px;
@@ -1110,8 +1331,16 @@ async function confirmDelete() {
   stroke-linejoin: round;
   stroke-width: 1.8;
 }
-.authorization-summary strong { color: #174f3c; font-size: 12px; }
-.authorization-summary p { margin: 3px 0 0; color: #3f5d50; font-size: 12px; line-height: 1.55; }
+.authorization-summary strong {
+  color: #174f3c;
+  font-size: 12px;
+}
+.authorization-summary p {
+  margin: 3px 0 0;
+  color: #3f5d50;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .preview-role {
   display: flex;
   align-items: center;
@@ -1136,14 +1365,26 @@ async function confirmDelete() {
 @media (max-width: 720px) {
   .role-choice-grid,
   .scope-options,
-  .campus-choice-grid { grid-template-columns: 1fr; }
+  .campus-choice-grid {
+    grid-template-columns: 1fr;
+  }
   .permission-heading,
-  .campus-picker-toolbar { align-items: flex-start; flex-direction: column; }
-  .campus-picker-toolbar :deep(.el-button) { align-self: flex-end; min-height: 44px; }
-  .step-help { margin-left: 0; }
+  .campus-picker-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .campus-picker-toolbar :deep(.el-button) {
+    align-self: flex-end;
+    min-height: 44px;
+  }
+  .step-help {
+    margin-left: 0;
+  }
 }
 
-:deep(.account-table .el-table__cell) { padding-block: 12px; }
+:deep(.account-table .el-table__cell) {
+  padding-block: 12px;
+}
 
 /* Element Plus 保留行为与可访问性，视觉延续旧版居中弹框。 */
 :global(.account-dialog-overlay) {
@@ -1178,7 +1419,9 @@ async function confirmDelete() {
   border-radius: 10px;
   background: #f0f4f1;
 }
-:global(.account-dialog .el-dialog__headerbtn:hover) { background: #e3ece6; }
+:global(.account-dialog .el-dialog__headerbtn:hover) {
+  background: #e3ece6;
+}
 :global(.account-dialog .el-dialog__headerbtn .el-dialog__close) {
   color: #52645a;
   font-size: 20px;
@@ -1196,13 +1439,22 @@ async function confirmDelete() {
   background: #fff;
   box-shadow: 0 -10px 24px #163f2b0a;
 }
-:global(.permission-preview-dialog .el-dialog__body) { padding-bottom: 26px; }
-:global(.delete-account-dialog .el-dialog__header) { min-height: 64px; padding-top: 20px; }
-:global(.delete-account-dialog .el-dialog__body) { padding: 18px 26px 8px; }
+:global(.permission-preview-dialog .el-dialog__body) {
+  padding-bottom: 26px;
+}
+:global(.delete-account-dialog .el-dialog__header) {
+  min-height: 64px;
+  padding-top: 20px;
+}
+:global(.delete-account-dialog .el-dialog__body) {
+  padding: 18px 26px 8px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .role-choice,
   .campus-choice,
-  .scope-options button { transition: none; }
+  .scope-options button {
+    transition: none;
+  }
 }
 </style>
