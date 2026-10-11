@@ -3,10 +3,8 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
-  sessionUser,
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -33,11 +31,7 @@ const form = reactive({
 });
 let generation = 0;
 let keywordTimer: number | undefined;
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const operationalCampusId = effectiveCampusId;
 const canStockIn = computed(() => hasPerm("POST /admin/inventory/stock-in"));
 const canStocktake = computed(() => hasPerm("POST /admin/inventory/stocktake"));
 const title = computed(() =>

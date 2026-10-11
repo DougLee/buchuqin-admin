@@ -3,7 +3,7 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { COUPON_STATUS_TABS } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Coupon } from "../../../../types";
@@ -40,7 +40,7 @@ function asCoupon(row: unknown) {
   return row as Coupon;
 }
 async function load() {
-  if (!activeCampus.value) {
+  if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
     return;
@@ -52,7 +52,7 @@ async function load() {
         page: page.value,
         pageSize: pageSize.value,
         keyword: keyword.value.trim() || undefined,
-        campusId: activeCampus.value,
+        campusId: effectiveCampusId.value,
       },
       status.value === "all" ? undefined : status.value,
     );
@@ -159,7 +159,7 @@ async function remove(row: Coupon) {
       notify(e instanceof Error ? e.message : "删除失败", "error");
   }
 }
-watch([page, pageSize, status, activeCampus], load);
+watch([page, pageSize, status, effectiveCampusId], load);
 onMounted(load);
 </script>
 <template>
@@ -169,13 +169,13 @@ onMounted(load);
     description="配置当前顶部校区的优惠券预算、领取门槛与核销效果。"
     ><template #actions
       ><ElButton
-        v-if="activeCampus && hasPerm('POST /admin/coupons')"
+        v-if="effectiveCampusId && hasPerm('POST /admin/coupons')"
         type="primary"
         @click="edit()"
         >新建优惠券</ElButton
       ></template
     >
-    <div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div>
+    <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
       <section
         class="admin-filter-panel admin-filter-panel--split"

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
-import { accountOrgLevel, activeCampus, hasPerm, sessionUser } from "../session";
+import { effectiveCampusId, hasPerm } from "../session";
 import type { RefundApplication } from "../types";
 import { fenToYuan } from "../utils/money";
 
@@ -41,11 +41,7 @@ watch(toast, (message) => {
   toast.value = "";
 });
 /** 顶部校区是订单/退款唯一数据上下文；校区账号使用其固有校区。 */
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
-);
+const operationalCampusId = effectiveCampusId;
 
 const canAudit = computed(() =>
   hasPerm("POST /admin/refunds/:id/audit"),

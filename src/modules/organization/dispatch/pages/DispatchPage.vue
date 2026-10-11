@@ -6,7 +6,7 @@ import {
   INVITE_STATUS_TABS,
   LEAVE_STATUS_TABS,
 } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type {
@@ -42,7 +42,7 @@ function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
 }
 async function load() {
-  if (!activeCampus.value) {
+  if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
     return;
@@ -53,7 +53,7 @@ async function load() {
       page: page.value,
       pageSize: pageSize.value,
       keyword: keyword.value.trim() || undefined,
-      campusId: activeCampus.value,
+      campusId: effectiveCampusId.value,
     };
     const r =
       mode.value === "leaves"
@@ -76,8 +76,8 @@ async function load() {
 async function prepare() {
   try {
     const [s, b] = await Promise.all([
-      api.staff({ page: 1, pageSize: 1000, campusId: activeCampus.value }),
-      api.buildings({ page: 1, pageSize: 1000, campusId: activeCampus.value }),
+      api.staff({ page: 1, pageSize: 1000, campusId: effectiveCampusId.value }),
+      api.buildings({ page: 1, pageSize: 1000, campusId: effectiveCampusId.value }),
     ]);
     staff.value = s.items.filter((x) =>
       ["building-manager", "intern-building-manager"].includes(x.role),
@@ -137,7 +137,7 @@ function leave(row: unknown) {
 function invite(row: unknown) {
   return row as DispatchInvitation;
 }
-watch([mode, status, page, pageSize, activeCampus], () => {
+watch([mode, status, page, pageSize, effectiveCampusId], () => {
   page.value = Math.max(1, page.value);
   void load();
 });
@@ -154,13 +154,13 @@ onMounted(load);
     description="按顶部校区查看楼长请假和跨楼调配邀请。"
     ><template #actions
       ><ElButton
-        v-if="activeCampus && hasPerm('POST /admin/dispatch-invitations')"
+        v-if="effectiveCampusId && hasPerm('POST /admin/dispatch-invitations')"
         type="primary"
         @click="prepare"
         >发起调配邀请</ElButton
       ></template
     >
-    <div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div>
+    <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
       <section class="admin-filter-panel" aria-label="调配与请假筛选">
         <div class="dispatch-filter-head">

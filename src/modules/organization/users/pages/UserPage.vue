@@ -3,10 +3,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
-  sessionUser,
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -26,11 +24,7 @@ const rows = ref<AdminUser[]>([]),
   keyword = ref("");
 let timer: number | undefined,
   generation = 0;
-const campusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const campusId = effectiveCampusId;
 function asUser(row: unknown) {
   return row as AdminUser;
 }

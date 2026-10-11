@@ -4,10 +4,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { PICKING_STATUS_TABS } from "../../../../dicts";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
-  sessionUser,
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -30,11 +28,7 @@ const rows = ref<Order[]>([]),
   keyword = ref("");
 let timer: number | undefined,
   generation = 0;
-const campusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const campusId = effectiveCampusId;
 const tab = computed(
   () =>
     PICKING_STATUS_TABS.find((t) => t.key === statusKey.value) ??

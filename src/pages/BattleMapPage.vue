@@ -10,7 +10,7 @@ import type {
   Building,
 } from "../types";
 import { fenToYuan } from "../utils/money";
-import { accountOrgLevel, activeCampus, sessionUser } from "../session";
+import { effectiveCampusId } from "../session";
 // 寝室三色字典见 src/dicts/misc（BATTLE_ROOM_STATUS_TEXT，IKIYMM 集中化）
 import { BATTLE_ROOM_STATUS_TEXT } from "../dicts";
 
@@ -28,11 +28,7 @@ const buildingId = ref("");
 const map = ref<BattleMapBuilding | null>(null);
 const floorNo = ref<number | null>(null);
 
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
-);
+const operationalCampusId = effectiveCampusId;
 
 const drawerOpen = ref(false);
 const roomLoading = ref(false);

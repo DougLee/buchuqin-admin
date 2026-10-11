@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import { api, downloadRoomTemplate, fetchAllPages } from "../../../../api";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Building, Room } from "../../../../types";
@@ -44,7 +44,7 @@ async function load() {
       page: page.value,
       pageSize: pageSize.value,
       keyword: keyword.value.trim() || undefined,
-      campusId: activeCampus.value || undefined,
+      campusId: effectiveCampusId.value || undefined,
     });
     rows.value = result.items;
     total.value = result.total;
@@ -172,7 +172,7 @@ async function pickFile(uploadFile: UploadFile) {
     importing.value = false;
   }
 }
-watch([page, pageSize, activeCampus], load);
+watch([page, pageSize, effectiveCampusId], load);
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
   timer = window.setTimeout(() => {

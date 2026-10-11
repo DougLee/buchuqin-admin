@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { ORDER_STATUS_TABS } from "../../../../dicts";
-import { accountOrgLevel, activeCampus, hasPerm, sessionUser } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Order } from "../../../../types";
@@ -30,11 +30,7 @@ const statusForm = reactive({ status: "", reason: "" });
 let generation = 0;
 let timer: number | undefined;
 
-const campusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
-);
+const campusId = effectiveCampusId;
 const currentTab = computed(
   () => ORDER_STATUS_TABS.find((tab) => tab.key === statusKey.value) ?? ORDER_STATUS_TABS[0],
 );

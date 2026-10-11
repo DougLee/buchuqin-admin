@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { BILL_STATUS_TABS, STATUS_TEXT } from "../../../../dicts";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Settlement } from "../../../../types";
@@ -43,7 +43,7 @@ async function load() {
         page: page.value,
         pageSize: pageSize.value,
         keyword: keyword.value.trim() || undefined,
-        campusId: activeCampus.value || undefined,
+        campusId: effectiveCampusId.value || undefined,
       },
       status.value === "all" ? undefined : status.value,
     );
@@ -78,7 +78,7 @@ async function act(row: Settlement, type: "confirm" | "pay") {
     notify(error instanceof Error ? error.message : "操作失败", "error");
   }
 }
-watch([month, status, page, pageSize, activeCampus], load);
+watch([month, status, page, pageSize, effectiveCampusId], load);
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
   timer = window.setTimeout(() => {

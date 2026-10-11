@@ -32,6 +32,19 @@ function reset() { assert.equal(pending.length, 0); m.clearSession(); m.clearTok
 function me(perms = []) { return { account: { id: 'A' }, contextCampusId: 'campus-A', perms, menus: [], super: false, platform: false, roles: [], switchableCampuses: [], rbacVersion: 1 }; }
 
 test('session response ordering', async t => {
+  await t.test('effective campus uses account campus for single-campus accounts and header selection for multi-campus accounts', () => {
+    reset();
+    m.applySession({ id: 'A', campusId: 'campus-owned', role: 'rbac' });
+    m.accountOrgLevel.value = 'campus';
+    m.activeCampus.value = '';
+    assert.equal(m.effectiveCampusId.value, 'campus-owned');
+    m.activeCampus.value = 'campus-header-ignored';
+    assert.equal(m.effectiveCampusId.value, 'campus-owned');
+    m.accountOrgLevel.value = 'org';
+    assert.equal(m.effectiveCampusId.value, 'campus-header-ignored');
+    m.activeCampus.value = '';
+    assert.equal(m.effectiveCampusId.value, '');
+  });
   for (const [name, request] of [
     ['JSON', () => m.api.adminCampuses()],
     ['upload', () => m.uploadImage(new File(['fake'], 'test.webp', { type: 'image/webp' }))],

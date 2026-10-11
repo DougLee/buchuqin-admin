@@ -3,7 +3,7 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { PROMOTION_STATE_TABS } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Product, Promotion } from "../../../../types";
@@ -40,7 +40,7 @@ function stateText(p: Promotion) {
   return "进行中";
 }
 async function load() {
-  if (!activeCampus.value) {
+  if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
     return;
@@ -52,7 +52,7 @@ async function load() {
         page: page.value,
         pageSize: pageSize.value,
         keyword: keyword.value.trim() || undefined,
-        campusId: activeCampus.value,
+        campusId: effectiveCampusId.value,
       },
       state.value === "all" ? undefined : state.value,
     );
@@ -74,7 +74,7 @@ async function edit(row?: Promotion) {
             page: 1,
             pageSize: 1000,
             status: "on-sale",
-            campusId: activeCampus.value,
+            campusId: effectiveCampusId.value,
           },
           "campus",
         )
@@ -138,7 +138,7 @@ async function toggle(row: Promotion) {
     notify(e instanceof Error ? e.message : "操作失败", "error");
   }
 }
-watch([page, pageSize, state, activeCampus], load);
+watch([page, pageSize, state, effectiveCampusId], load);
 onMounted(load);
 </script>
 <template>
@@ -148,13 +148,13 @@ onMounted(load);
     description="管理当前顶部校区的限时秒杀和临期特惠。"
     ><template #actions
       ><ElButton
-        v-if="activeCampus && hasPerm('POST /admin/promotions')"
+        v-if="effectiveCampusId && hasPerm('POST /admin/promotions')"
         type="primary"
         @click="edit()"
         >新建活动</ElButton
       ></template
     >
-    <div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div>
+    <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
       <section
         class="admin-filter-panel admin-filter-panel--split"

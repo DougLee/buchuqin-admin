@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
-import { activeCampus, canWrite, hasPerm } from "../../../../session";
+import { effectiveCampusId, canWrite, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import { fmtDateTime } from "../../../../utils/datetime";
 
@@ -52,7 +52,7 @@ async function remove(row: LocationItem) {
   catch (error) { ElMessage.error(error instanceof Error ? error.message : "删除失败"); }
 }
 onMounted(load);
-watch(activeCampus, () => void load());
+watch(effectiveCampusId, () => void load());
 </script>
 
 <template>

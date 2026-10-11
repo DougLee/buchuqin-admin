@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Building, CommissionRule } from "../../../../types";
@@ -40,7 +40,7 @@ async function load() {
       api.commissionRules({
         page: page.value,
         pageSize: pageSize.value,
-        campusId: activeCampus.value || undefined,
+        campusId: effectiveCampusId.value || undefined,
       }),
       api.buildings({ page: 1, pageSize: 1000 }),
     ]);
@@ -110,7 +110,7 @@ async function toggle(row: CommissionRule) {
     notify(error instanceof Error ? error.message : "操作失败", "error");
   }
 }
-watch([page, pageSize, activeCampus], load);
+watch([page, pageSize, effectiveCampusId], load);
 onMounted(load);
 </script>
 <template>

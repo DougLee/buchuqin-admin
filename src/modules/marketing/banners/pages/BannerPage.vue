@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import { BANNER_COLOR_TEXT, BANNER_PLACEMENT_TEXT } from "../../../../dicts";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Banner } from "../../../../types";
@@ -157,7 +157,7 @@ async function remove(row: Banner) {
     notify(error instanceof Error ? error.message : "删除失败", "error");
   }
 }
-watch([page, pageSize, status, activeCampus], load);
+watch([page, pageSize, status, effectiveCampusId], load);
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
   timer = window.setTimeout(() => {

@@ -5,7 +5,7 @@ import { api } from "../../../../api";
 import IdCardImagesField from "../../../../components/IdCardImagesField.vue";
 import { RECRUIT_STATUS_LABEL } from "../../../../dicts/staff";
 import { RECRUIT_STATUS_TABS } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { RecruitIdcard, RecruitingApplication } from "../../../../types";
@@ -46,7 +46,7 @@ function asRow(row: unknown) {
   return row as RecruitingApplication;
 }
 async function load() {
-  if (!activeCampus.value) {
+  if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
     return;
@@ -58,7 +58,7 @@ async function load() {
         page: page.value,
         pageSize: pageSize.value,
         keyword: keyword.value.trim() || undefined,
-        campusId: activeCampus.value,
+        campusId: effectiveCampusId.value,
       },
       status.value === "all" ? undefined : status.value,
     );
@@ -158,7 +158,7 @@ async function reject() {
       notify(e instanceof Error ? e.message : "操作失败", "error");
   }
 }
-watch([page, pageSize, status, activeCampus], load);
+watch([page, pageSize, status, effectiveCampusId], load);
 onMounted(load);
 </script>
 <template>
@@ -166,7 +166,7 @@ onMounted(load);
     title="楼长招募"
     eyebrow="RECRUITING"
     description="处理当前顶部校区的小程序报名、资料补录和入职审批。"
-    ><div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div>
+    ><div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
       <section
         class="admin-filter-panel admin-filter-panel--split"

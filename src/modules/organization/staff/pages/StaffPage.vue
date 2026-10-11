@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { ROLE_OPTIONS, STAFF_STATUS_LABEL } from "../../../../dicts/staff";
 import { STAFF_STATUS_TABS } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Building, Campus, Staff } from "../../../../types";
@@ -76,7 +76,7 @@ async function loadBuildings() {
 async function showForm(row?: Staff) {
   editing.value = row ?? null;
   Object.assign(form, {
-    campusId: row?.campusId ?? activeCampus.value ?? "",
+    campusId: row?.campusId ?? effectiveCampusId.value,
     name: row?.name ?? "",
     staffNo: row?.staffNo ?? "",
     role: row?.role ?? "building-manager",

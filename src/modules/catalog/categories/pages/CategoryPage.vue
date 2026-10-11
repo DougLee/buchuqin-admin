@@ -3,10 +3,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
-  sessionUser,
 } from "../../../../session";
 import type { Category } from "../../../../types";
 import { resolveImageUrl } from "../../../../utils/image";
@@ -41,11 +39,7 @@ const canCreate = computed(() => hasPerm("POST /admin/categories"));
 const canUpdate = computed(() => hasPerm("PATCH /admin/categories/:id"));
 const canDelete = computed(() => hasPerm("DELETE /admin/categories/:id"));
 const asCategory = (row: unknown) => row as Category;
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const operationalCampusId = effectiveCampusId;
 const filtered = computed(() => {
   const query = keyword.value.trim();
   return query

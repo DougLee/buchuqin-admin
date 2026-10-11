@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
-import { activeCampus, canWrite, hasPerm } from "../../../../session";
+import { effectiveCampusId, canWrite, hasPerm } from "../../../../session";
 import type { Printer } from "../../../../types";
 import { fmtDateTime } from "../../../../utils/datetime";
 
@@ -108,7 +108,7 @@ function copiesLabel(value: Printer) {
 }
 
 onMounted(load);
-watch(activeCampus, load);
+watch(effectiveCampusId, load);
 </script>
 
 <template>

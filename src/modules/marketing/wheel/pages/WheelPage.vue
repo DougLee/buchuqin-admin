@@ -3,7 +3,7 @@ import { onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import type { Coupon, WheelPrizeInput } from "../../../../types";
 
@@ -93,7 +93,7 @@ async function save() {
   }
 }
 onMounted(load);
-watch(activeCampus, load);
+watch(effectiveCampusId, load);
 </script>
 <template>
   <AdminPageShell

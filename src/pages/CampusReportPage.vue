@@ -4,7 +4,7 @@ import { ElMessage } from "element-plus";
 import { api } from "../api";
 import type { Building, CampusDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
-import { accountOrgLevel, activeCampus, sessionUser } from "../session";
+import { accountOrgLevel, effectiveCampusId } from "../session";
 
 /**
  * 校区经营日报（IKFOPS，2026-09-16 grilling 定版）：
@@ -20,11 +20,7 @@ const buildings = ref<Building[]>([]);
 /* 数据范围与后端 isHqScope 同口径：平台上下文跨校区，其余锁本校区
    （RBAC V1：role 判断换服务端 platform 上下文） */
 const isHqScope = computed(() => accountOrgLevel.value !== "campus");
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
-);
+const operationalCampusId = effectiveCampusId;
 
 function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");

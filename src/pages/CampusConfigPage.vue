@@ -4,11 +4,9 @@ import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import { api, uploadImage } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
   hasPlatformPerm,
-  sessionUser,
   switchableCampuses,
 } from "../session";
 import PrinterPage from "../modules/settings/printers/pages/PrinterPage.vue";
@@ -67,11 +65,7 @@ const TABS = computed(() => {
   return list;
 });
 const activeTab = ref("profile");
-const selectedCampus = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const selectedCampus = effectiveCampusId;
 const bundle = ref<CampusConfigBundle | null>(null);
 const loading = ref(false);
 const saving = ref(false);

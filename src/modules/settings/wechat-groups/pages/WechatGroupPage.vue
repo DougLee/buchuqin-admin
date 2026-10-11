@@ -3,7 +3,7 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import type { Building, WechatGroup } from "../../../../types";
 import { fmtDateTime } from "../../../../utils/datetime";
@@ -88,7 +88,7 @@ async function remove(row: WechatGroup) {
   }
 }
 onMounted(load);
-watch(activeCampus, load);
+watch(effectiveCampusId, load);
 </script>
 <template>
   <AdminPageShell

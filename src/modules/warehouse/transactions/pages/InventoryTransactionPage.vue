@@ -4,9 +4,7 @@ import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { TXN_TYPE_TEXT } from "../../../../dicts";
 import {
-  accountOrgLevel,
-  activeCampus,
-  sessionUser,
+  effectiveCampusId,
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -21,11 +19,7 @@ const pageSize = ref(10);
 const total = ref(0);
 let generation = 0;
 let keywordTimer: number | undefined;
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const operationalCampusId = effectiveCampusId;
 
 function quantityText(row: InventoryTxn) {
   const value = row.quantity ?? row.delta;

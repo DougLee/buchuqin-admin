@@ -3,9 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import {
-  accountOrgLevel,
-  activeCampus,
-  sessionUser,
+  effectiveCampusId,
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -25,11 +23,7 @@ const page = ref(1),
   total = ref(0);
 let generation = 0,
   keywordTimer: number | undefined;
-const campusId = computed(() =>
-  accountOrgLevel.value === "campus"
-    ? (sessionUser.value?.campusId ?? "")
-    : activeCampus.value,
-);
+const campusId = effectiveCampusId;
 async function load() {
   const request = ++generation;
   loading.value = true;

@@ -219,6 +219,13 @@ export const isMultiCampusAccount = computed(
 /** IKJA7Y 页内校区切换：api.request 统一注入 ?campus=（多校区授权账号的数据
  *  视角）。空串=不注入（单校区账号/平台全量语义不受影响）。切换账号时清空。 */
 export const activeCampus = ref<string>("");
+/** 当前业务页面实际使用的校区。
+ * 平台/组织账号跟随顶部选择；单校区账号始终使用账号所属校区。 */
+export const effectiveCampusId = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : (sessionUser.value?.campusId ?? ""),
+);
 export const rbacVersion = ref(0);
 export const rbacLoaded = ref(false);
 export const authorizationEpoch = ref(0);

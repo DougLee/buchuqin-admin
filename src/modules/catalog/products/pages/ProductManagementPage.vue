@@ -299,7 +299,7 @@ import {
   HQ_PRODUCT_STATUS_TABS,
   PRODUCT_STATUS_TABS,
 } from "../../../../dicts/status-tab";
-import { activeCampus, hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Category, Product } from "../../../../types";
@@ -307,7 +307,7 @@ import { fenToYuan, yuanToFen } from "../../../../utils/money";
 const props = defineProps<{ mode: "official" | "campus" }>(),
   official = computed(() => props.mode === "official"),
   campus = computed(() =>
-    official.value ? undefined : activeCampus.value || undefined,
+    official.value ? undefined : effectiveCampusId.value || undefined,
   );
 const rows = ref<Product[]>([]),
   categories = ref<Category[]>([]),

@@ -3,10 +3,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
 import {
-  accountOrgLevel,
-  activeCampus,
+  effectiveCampusId,
   hasPerm,
-  sessionUser,
 } from "../session";
 const canEdit = computed(() => hasPerm("PUT /admin/featured"));
 import ProductPickerField from "../components/ProductPickerField.vue";
@@ -32,11 +30,7 @@ interface FeatRow {
 }
 const candidates = ref<Product[]>([]);
 const loadingCands = ref(true);
-const operationalCampusId = computed(() =>
-  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
-    ? activeCampus.value
-    : (sessionUser.value?.campusId ?? ""),
-);
+const operationalCampusId = effectiveCampusId;
 const picked = ref<FeatRow[]>([]);
 /** 隐藏分类的商品不进推荐位候选池（C 端全链路不露出，勾了不显示） */
 const hiddenCategoryIds = ref<Set<string>>(new Set());
