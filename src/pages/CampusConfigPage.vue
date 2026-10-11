@@ -25,18 +25,19 @@ import type { CampusConfigBundle, DeliverySlotRow, NoticeRow } from "../types";
  * - Tab 与写入操作按当前有效接口权限过滤，跨校区写入另校验该操作的平台授权。
  */
 const isPlatform = computed(() => hasPlatformPerm("GET /admin/campus-config"));
+const canManageCampus = computed(() =>
+  hasPlatformPerm("PATCH /admin/campuses/:id"),
+);
 /** IKJA7Y：所选校区在授权集内（或平台角色）即可写 */
 const campusWritable = computed(
   () =>
     isPlatform.value ||
     switchableCampuses.value.includes(bundle.value?.campus.id ?? ""),
 );
-const canEditProfile = computed(() =>
-  hasPlatformPerm("PATCH /admin/campuses/:id"),
-);
+const canEditProfile = computed(() => hasPerm("PATCH /admin/campuses/:id"));
 const canEditDelivery = computed(
   () =>
-    canEditProfile.value ||
+    canManageCampus.value ||
     (campusWritable.value && hasPerm("PATCH /admin/delivery-config")),
 );
 function canWrite(pattern: string) {
@@ -224,7 +225,7 @@ async function saveDelivery() {
       closeEnd: deliveryForm.value.closeEnd,
       manualClosed: deliveryForm.value.manualClosed,
     };
-    if (canEditProfile.value) {
+    if (canManageCampus.value) {
       // 平台角色可保存任意选中校区（含打烊窗/手动闭店/无楼长提示 IKHMKR）
       await api.updateCampus(bundle.value.campus.id, {
         ...payload,
@@ -493,7 +494,7 @@ async function removeNotice(n: NoticeRow) {
           </ElRow></ElForm
         >
         <p v-if="!canEditProfile" class="form-hint">
-          基础档案仅总部/平台账号可修改
+          当前账号没有基础档案修改权限
         </p>
         <ElButton
           v-if="canEditProfile"
@@ -601,7 +602,7 @@ async function removeNotice(n: NoticeRow) {
                   :disabled="!canEditProfile" /></ElFormItem></ElCol></ElRow
         ></ElForm>
         <p v-if="!canEditProfile" class="form-hint">
-          底薪仅总部/平台账号可修改
+          当前账号没有楼长底薪修改权限
         </p>
         <ElButton
           v-if="canEditProfile"
@@ -775,25 +776,18 @@ async function removeNotice(n: NoticeRow) {
 
     <!-- 内容类 Tab：组合独立业务模块（按顶部当前校区） -->
     <template v-else-if="activeTab === 'printers'">
-      <p class="form-hint">
-        此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。
-      </p>
       <PrinterPage />
     </template>
     <template v-else-if="activeTab === 'wechat-groups'">
-      <p class="form-hint">此分区按顶部当前校区取数。</p>
       <WechatGroupPage />
     </template>
     <template v-else-if="activeTab === 'banners'">
-      <p class="form-hint">此分区按顶部当前校区取数。</p>
       <HomeBannerPage />
     </template>
     <template v-else-if="activeTab === 'pay-ads'">
-      <p class="form-hint">此分区按顶部当前校区取数。</p>
       <PayAdPage />
     </template>
     <template v-else-if="activeTab === 'wheel'">
-      <p class="form-hint">此分区按顶部当前校区取数。</p>
       <WheelPage embedded />
     </template>
   </div>
