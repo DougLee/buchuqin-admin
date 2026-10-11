@@ -939,6 +939,8 @@ export const api = {
       buildingManagerBaseSalary?: number;
       /** IKHMF1：客服电话（校区自定义） */
       servicePhone?: string;
+      /** IKKTWM：客服微信二维码（COS 图，空=回落拨号） */
+      serviceQrcode?: string;
       /** IKHMKR：无楼长提示（校区自定义，空=回落默认） */
       noManagerTip?: string;
     }>,
