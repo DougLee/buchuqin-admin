@@ -368,9 +368,22 @@ export async function loadRbac(): Promise<boolean> {
     // IKKRMY：capability 字典随授权上下文刷新（一次拉取存 ref，失败静默 fail closed）
     void loadCapabilities();
     return true;
-  } catch {
+  } catch (error) {
     if (request !== authorizationRequest) return rbacLoaded.value;
     if (generation !== sessionGeneration) return false;
+    // 定时刷新期间的断网、限流和 5xx 不是权限撤销。保留最后一次服务端
+    // 成功返回的授权，避免临时故障清空动态路由并把用户永久困在拒绝页。
+    // 401 已由 request 层 clearSession；403/其他明确客户端错误仍默认拒绝。
+    const status =
+      typeof error === "object" && error && "status" in error
+        ? Number((error as { status?: unknown }).status)
+        : undefined;
+    const transient =
+      status === undefined ||
+      status === 408 ||
+      status === 429 ||
+      status >= 500;
+    if (rbacLoaded.value && transient) return true;
     authorizationEpoch.value++;
     patterns.value = new Set();
     platformPatterns.value = new Set();

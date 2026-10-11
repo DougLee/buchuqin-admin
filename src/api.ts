@@ -65,6 +65,17 @@ interface ApiResult<T> {
   data: T;
 }
 
+/** HTTP 失败保留状态码，供会话层区分“明确拒绝”和“短暂不可用”。 */
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export interface LoginResult {
   token: string;
   user: SessionUser;
@@ -185,7 +196,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   session.check(response, path === "/auth/admin-login", body?.message);
   session.assertCurrent();
   if (!response.ok || !body)
-    throw new Error(body?.message || `请求失败（${response.status}）`);
+    throw new ApiRequestError(
+      body?.message || `请求失败（${response.status}）`,
+      response.status,
+    );
   return body.data;
 }
 

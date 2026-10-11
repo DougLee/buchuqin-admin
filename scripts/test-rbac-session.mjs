@@ -16,7 +16,10 @@ globalThis.window = { location: { hash: '#/products' } };
 const pending = [];
 globalThis.fetch = (url, options) => new Promise(resolve => pending.push({ url, options, resolve }));
 const m = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
-const response = (data, status = 200) => new Response(JSON.stringify({ data, message: 'rejected' }), { status });
+const response = (data, status = 200) => new Response(JSON.stringify({
+  data,
+  message: status === 401 ? '登录已失效，请重新登录' : 'rejected',
+}), { status });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function next() { await tick(); assert.ok(pending.length, 'expected a pending fetch'); return pending.shift(); }
 async function login(id = 'A', token = `token-${id}`, campusId = 'campus-A') {
@@ -86,8 +89,32 @@ test('session response ordering', async t => {
   await t.test('older permission refresh cannot restore permissions after newer revoke', async () => {
     reset(); await login(); const old = m.loadRbac(); const stale = await next();
     const fresh = m.loadRbac(); (await next()).resolve(response(me([]))); await fresh;
+    (await next()).resolve(response([])); await tick(); // capability refresh launched after RBAC success
     stale.resolve(response(me(['PATCH /admin/products/:id']))); await old;
     assert.equal(m.hasPerm('PATCH /admin/products/123'), false);
+  });
+  await t.test('transient permission refresh failure preserves last known good routes', async () => {
+    reset(); await login();
+    m.applyRbac({ ...me(['GET /admin/orders']), menus: [
+      { id: 'orders', code: 'orders', viewPath: 'orders', path: '/orders', type: 1, authorized: true },
+    ] });
+    const refresh = m.loadRbac();
+    (await next()).resolve(response(null, 500));
+    assert.equal(await refresh, true);
+    assert.equal(m.rbacLoaded.value, true);
+    assert.equal(m.menuPath('orders'), '/orders');
+    assert.equal(m.hasPerm('GET /admin/orders'), true);
+  });
+  await t.test('explicit permission denial still fails closed', async () => {
+    reset(); await login();
+    m.applyRbac({ ...me(['GET /admin/orders']), menus: [
+      { id: 'orders', code: 'orders', viewPath: 'orders', path: '/orders', type: 1, authorized: true },
+    ] });
+    const refresh = m.loadRbac();
+    (await next()).resolve(response(null, 403));
+    assert.equal(await refresh, false);
+    assert.equal(m.rbacLoaded.value, false);
+    assert.equal(m.menuPath('orders'), undefined);
   });
   await t.test('permission refresh cannot restore authorization after logout', async () => {
     reset(); await login(); const old = m.loadRbac(); const stale = await next();
