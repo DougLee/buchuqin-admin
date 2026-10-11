@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
-import { hasPerm } from "../../../../session";
+import {
+  accountOrganizationId,
+  accountOrgLevel,
+  hasPerm,
+} from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import type { AdminOrganization, Campus } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
@@ -20,6 +24,7 @@ const rows = ref<CampusRow[]>([]),
   keyword = ref(""),
   editing = ref<CampusRow | null>(null);
 const form = reactive({
+  organizationId: "",
   name: "",
   shortName: "",
   warehouseName: "",
@@ -30,6 +35,7 @@ const form = reactive({
   threshold: 10,
   baseSalary: 0,
 });
+const isPlatformAccount = computed(() => accountOrgLevel.value === "platform");
 function asCampus(row: unknown) {
   return row as CampusRow;
 }
@@ -61,6 +67,8 @@ async function load() {
 function edit(row?: CampusRow) {
   editing.value = row ?? null;
   Object.assign(form, {
+    organizationId:
+      row?.organizationId ?? accountOrganizationId.value ?? "",
     name: row?.name ?? "",
     shortName: row?.shortName ?? "",
     warehouseName: row?.warehouseName ?? "",
@@ -78,9 +86,14 @@ async function save() {
     notify("请填写校区全称与简称", "error");
     return;
   }
+  if (!form.organizationId) {
+    notify("请选择校区所属组织", "error");
+    return;
+  }
   saving.value = true;
   try {
     const base = {
+      organizationId: form.organizationId,
       name: form.name.trim(),
       shortName: form.shortName.trim(),
       warehouseName:
@@ -199,6 +212,20 @@ onMounted(load);
       :close-on-click-modal="false"
       ><ElForm label-position="top"
         ><ElRow :gutter="16"
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="所属组织" required
+              ><ElSelect
+                v-model="form.organizationId"
+                :disabled="!isPlatformAccount"
+                placeholder="请选择所属组织"
+                filterable
+                ><ElOption
+                  v-for="organization in organizations"
+                  :key="organization.id"
+                  :label="organization.name"
+                  :value="organization.id"
+                  :disabled="organization.status !== 'active'" /></ElSelect
+              ></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12"
             ><ElFormItem label="校区全称"
               ><ElInput v-model="form.name" /></ElFormItem></ElCol

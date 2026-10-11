@@ -935,6 +935,7 @@ export const api = {
     }),
   /** 校区本体增改（IKAJSL）：仅 hq；新校区接入入口。 */
   createCampus: (data: {
+    organizationId?: string;
     name: string;
     shortName: string;
     warehouseName: string;
@@ -952,6 +953,7 @@ export const api = {
   updateCampus: (
     id: string,
     data: Partial<{
+      organizationId: string;
       name: string;
       shortName: string;
       warehouseName: string;
