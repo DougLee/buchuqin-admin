@@ -21,190 +21,239 @@
       ></template
     >
     <div v-if="!official && !campus" class="empty">请先在顶部选择校区。</div>
-    <template v-else
-      ><ElTabs v-model="status"
-        ><ElTabPane
-          v-for="tab in tabs"
-          :key="tab.key"
-          :label="tab.label"
-          :name="tab.key"
-      /></ElTabs>
-      <div class="toolbar">
-        <ElInput
-          v-model="keyword"
-          class="search"
-          clearable
-          placeholder="搜索商品名称或条码"
-          @keyup.enter="
-            page = 1;
-            load();
-          "
-        /><ElSelect
-          v-model="categoryId"
-          class="filter"
-          clearable
-          filterable
-          placeholder="全部分类"
-          ><ElOption
-            v-for="item in categories"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id" /></ElSelect
-        ><ElButton
-          @click="
-            page = 1;
-            load();
-          "
-          >查询</ElButton
+    <template v-else>
+      <section class="product-filter-panel" aria-label="商品筛选">
+        <div
+          class="product-status-tabs single-line-tabs"
+          role="tablist"
+          aria-label="商品状态"
         >
-      </div>
-      <ElTable v-loading="loading" :data="rows" row-key="id"
-        ><ElTableColumn label="图片" width="76"
-          ><template #default="{ row }"
-            ><ElImage
-              :src="row.image"
-              fit="cover"
-              class="thumb" /></template></ElTableColumn
-        ><ElTableColumn prop="name" label="商品" min-width="190"
-          ><template #default="{ row }"
-            ><strong>{{ row.name }}</strong>
-            <div class="cell-sub">
-              {{ row.barcode || row.subtitle || "—" }}
-            </div></template
-          ></ElTableColumn
-        ><ElTableColumn label="售价" width="100"
-          ><template #default="{ row }"
-            >¥{{ fenToYuan(row.price) }}</template
-          ></ElTableColumn
-        ><ElTableColumn v-if="official" label="进货价" width="110"
-          ><template #default="{ row }">{{
-            row.costPrice == null ? "—" : `¥${fenToYuan(row.costPrice)}`
-          }}</template></ElTableColumn
-        ><ElTableColumn v-if="official" label="批发价" width="110"
-          ><template #default="{ row }">{{
-            row.wholesalePrice == null
-              ? "—"
-              : `¥${fenToYuan(row.wholesalePrice)}`
-          }}</template></ElTableColumn
-        ><ElTableColumn v-if="!official" label="采购来源" width="110"
-          ><template #default="{ row }"
-            ><ElTag>{{
-              row.procurementMode === "LOCAL" ? "自主采购" : "总部供货"
-            }}</ElTag></template
-          ></ElTableColumn
-        ><ElTableColumn
-          v-if="!official"
-          prop="availableStock"
-          label="可售库存"
-        /><ElTableColumn label="状态"
-          ><template #default="{ row }"
-            ><ElTag :type="row.status === 'on-sale' ? 'success' : 'info'">{{
-              row.status === "on-sale" ? "在售" : "已下架"
-            }}</ElTag></template
-          ></ElTableColumn
-        ><ElTableColumn label="操作" width="150" fixed="right"
-          ><template #default="{ row }"
-            ><ElButton
-              v-if="
-                hasPerm('PATCH /admin/products/:id') ||
-                hasPerm('PATCH /admin/products/:id/price')
-              "
-              link
-              type="primary"
-              @click="edit(product(row))"
-              >编辑</ElButton
-            ><ElButton
-              v-if="hasPerm('PATCH /admin/products/:id')"
-              link
-              @click="toggle(product(row))"
-              >{{ row.status === "on-sale" ? "下架" : "上架" }}</ElButton
-            ></template
-          ></ElTableColumn
-        ></ElTable
-      ><AdminPagination
-        v-model:page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-    /></template>
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            type="button"
+            role="tab"
+            class="product-status-tab"
+            :class="{ active: status === tab.key }"
+            :aria-selected="status === tab.key"
+            @click="status = tab.key"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+        <ElForm class="product-filters" label-position="top"
+          ><ElRow :gutter="12" align="bottom">
+            <ElCol :xs="24" :sm="12"
+              ><ElInput
+                v-model="keyword"
+                class="search"
+                clearable
+                placeholder="搜索商品名称或条码"
+                @keyup.enter="
+                  page = 1;
+                  load();
+                " /></ElCol
+            ><ElCol :xs="24" :sm="8"
+              ><ElSelect
+                v-model="categoryId"
+                class="filter"
+                clearable
+                filterable
+                placeholder="全部分类"
+                ><ElOption
+                  v-for="item in categories"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id" /></ElSelect></ElCol
+            ><ElCol :xs="24" :sm="4"
+              ><ElFormItem label=" "
+                ><ElButton
+                  @click="
+                    page = 1;
+                    load();
+                  "
+                  >查询</ElButton
+                ></ElFormItem
+              ></ElCol
+            ></ElRow
+          ></ElForm
+        >
+      </section>
+      <section class="product-table-panel" aria-label="商品列表">
+        <ElTable v-loading="loading" :data="rows" row-key="id"
+          ><ElTableColumn label="图片" width="76"
+            ><template #default="{ row }"
+              ><ElImage
+                :src="row.image"
+                fit="cover"
+                class="thumb" /></template></ElTableColumn
+          ><ElTableColumn prop="name" label="商品" min-width="190"
+            ><template #default="{ row }"
+              ><strong>{{ row.name }}</strong>
+              <div class="cell-sub">
+                {{ row.barcode || row.subtitle || "—" }}
+              </div></template
+            ></ElTableColumn
+          ><ElTableColumn label="售价" width="100"
+            ><template #default="{ row }"
+              >¥{{ fenToYuan(row.price) }}</template
+            ></ElTableColumn
+          ><ElTableColumn v-if="official" label="进货价" width="110"
+            ><template #default="{ row }">{{
+              row.costPrice == null ? "—" : `¥${fenToYuan(row.costPrice)}`
+            }}</template></ElTableColumn
+          ><ElTableColumn v-if="official" label="批发价" width="110"
+            ><template #default="{ row }">{{
+              row.wholesalePrice == null
+                ? "—"
+                : `¥${fenToYuan(row.wholesalePrice)}`
+            }}</template></ElTableColumn
+          ><ElTableColumn v-if="!official" label="采购来源" width="110"
+            ><template #default="{ row }"
+              ><ElTag>{{
+                row.procurementMode === "LOCAL" ? "自主采购" : "总部供货"
+              }}</ElTag></template
+            ></ElTableColumn
+          ><ElTableColumn
+            v-if="!official"
+            prop="availableStock"
+            label="可售库存"
+          /><ElTableColumn label="状态"
+            ><template #default="{ row }"
+              ><ElTag :type="row.status === 'on-sale' ? 'success' : 'info'">{{
+                row.status === "on-sale" ? "在售" : "已下架"
+              }}</ElTag></template
+            ></ElTableColumn
+          ><ElTableColumn label="操作" width="150" fixed="right"
+            ><template #default="{ row }"
+              ><ElButton
+                v-if="
+                  hasPerm('PATCH /admin/products/:id') ||
+                  hasPerm('PATCH /admin/products/:id/price')
+                "
+                link
+                type="primary"
+                @click="edit(product(row))"
+                >编辑</ElButton
+              ><ElButton
+                v-if="hasPerm('PATCH /admin/products/:id')"
+                link
+                @click="toggle(product(row))"
+                >{{ row.status === "on-sale" ? "下架" : "上架" }}</ElButton
+              ></template
+            ></ElTableColumn
+          ></ElTable
+        ><AdminPagination
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+        />
+      </section>
+    </template>
     <ElDialog
       v-model="open"
       :title="editing ? '编辑商品' : '新建商品'"
       width="min(900px, calc(100vw - 32px))"
       align-center
       :close-on-click-modal="false"
-      ><ElForm label-position="top" class="grid"
-        ><ElFormItem label="商品名称"
-          ><ElInput v-model="form.name" /></ElFormItem
-        ><ElFormItem label="副标题"
-          ><ElInput v-model="form.subtitle" /></ElFormItem
-        ><ElFormItem label="分类"
-          ><ElSelect v-model="form.categoryId" filterable
-            ><ElOption
-              v-for="item in categories"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id" /></ElSelect></ElFormItem
-        ><ElFormItem label="条码"><ElInput v-model="form.barcode" /></ElFormItem
-        ><ElFormItem label="标签"><ElInput v-model="form.tag" /></ElFormItem
-        ><ElFormItem label="状态"
-          ><ElSelect v-model="form.status"
-            ><ElOption label="在售" value="on-sale" /><ElOption
-              label="下架"
-              value="off-sale" /></ElSelect></ElFormItem
-        ><ElFormItem label="商品主图" class="wide"
-          ><ImageUploadField
-            v-model="form.image"
-            folder="app/product" /></ElFormItem
-        ><ElFormItem label="售价（元）"
-          ><ElInputNumber
-            v-model="form.price"
-            :min="0"
-            :precision="2" /></ElFormItem
-        ><ElFormItem label="建议零售价（元）"
-          ><ElInputNumber
-            v-model="form.originalPrice"
-            :min="0"
-            :precision="2" /></ElFormItem
-        ><template v-if="official"
-          ><ElFormItem label="进货价（元，仅总部可见）"
-            ><ElInputNumber
-              v-model="form.costPrice"
-              :min="0"
-              :precision="2" /></ElFormItem
-          ><ElFormItem label="批发价格（元）"
-            ><ElInputNumber
-              v-model="form.wholesalePrice"
-              :min="0"
-              :precision="2" /></ElFormItem></template
-        ><template v-else
-          ><ElFormItem label="采购来源"
-            ><ElSelect v-model="form.procurementMode"
-              ><ElOption label="总部供货" value="HQ" /><ElOption
-                label="自主采购"
-                value="LOCAL" /></ElSelect></ElFormItem
-          ><ElFormItem
-            v-if="form.procurementMode === 'LOCAL'"
-            label="本地进货价（元）"
-            ><ElInputNumber
-              v-model="form.localPurchasePrice"
-              :min="0"
-              :precision="2" /></ElFormItem></template
-        ><ElFormItem label="重量（kg）"
-          ><ElInputNumber
-            v-model="form.weight"
-            :min="0"
-            :precision="3" /></ElFormItem
-        ><ElFormItem label="每件含量"
-          ><ElInputNumber v-model="form.unitsPerCase" :min="1" /></ElFormItem
-        ><ElFormItem label="零售单位"
-          ><ElInput v-model="form.retailUnit" /></ElFormItem
-        ><ElFormItem label="批发单位"
-          ><ElInput v-model="form.wholesaleUnit" /></ElFormItem
-        ><ElFormItem label="商品介绍" class="wide"
-          ><ElInput
-            v-model="form.description"
-            type="textarea"
-            :rows="4" /></ElFormItem></ElForm
+      ><ElForm label-position="top"
+        ><ElRow :gutter="16"
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="商品名称"
+              ><ElInput v-model="form.name" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="副标题"
+              ><ElInput v-model="form.subtitle" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="分类"
+              ><ElSelect v-model="form.categoryId" filterable
+                ><ElOption
+                  v-for="item in categories"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="条码"
+              ><ElInput v-model="form.barcode" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="标签"
+              ><ElInput v-model="form.tag" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="状态"
+              ><ElSelect v-model="form.status"
+                ><ElOption label="在售" value="on-sale" /><ElOption
+                  label="下架"
+                  value="off-sale" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :span="24"
+            ><ElFormItem label="商品主图"
+              ><ImageUploadField
+                v-model="form.image"
+                folder="app/product" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="售价（元）"
+              ><ElInputNumber
+                v-model="form.price"
+                :min="0"
+                :precision="2" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="建议零售价（元）"
+              ><ElInputNumber
+                v-model="form.originalPrice"
+                :min="0"
+                :precision="2" /></ElFormItem></ElCol
+          ><template v-if="official"
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="进货价（元，仅总部可见）"
+                ><ElInputNumber
+                  v-model="form.costPrice"
+                  :min="0"
+                  :precision="2" /></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="批发价格（元）"
+                ><ElInputNumber
+                  v-model="form.wholesalePrice"
+                  :min="0"
+                  :precision="2" /></ElFormItem></ElCol></template
+          ><template v-else
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="采购来源"
+                ><ElSelect v-model="form.procurementMode"
+                  ><ElOption label="总部供货" value="HQ" /><ElOption
+                    label="自主采购"
+                    value="LOCAL" /></ElSelect></ElFormItem></ElCol
+            ><ElCol
+              v-if="form.procurementMode === 'LOCAL'"
+              :xs="24"
+              :sm="12"
+              :lg="8"
+              ><ElFormItem label="本地进货价（元）"
+                ><ElInputNumber
+                  v-model="form.localPurchasePrice"
+                  :min="0"
+                  :precision="2" /></ElFormItem></ElCol></template
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="重量（kg）"
+              ><ElInputNumber
+                v-model="form.weight"
+                :min="0"
+                :precision="3" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="每件含量"
+              ><ElInputNumber
+                v-model="form.unitsPerCase"
+                :min="1" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="零售单位"
+              ><ElInput v-model="form.retailUnit" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="批发单位"
+              ><ElInput v-model="form.wholesaleUnit" /></ElFormItem></ElCol
+          ><ElCol :span="24"
+            ><ElFormItem label="商品介绍"
+              ><ElInput
+                v-model="form.description"
+                type="textarea"
+                :rows="4" /></ElFormItem></ElCol></ElRow></ElForm
       ><template #footer
         ><ElButton @click="open = false">取消</ElButton
         ><ElButton type="primary" :loading="saving" @click="save"
@@ -480,11 +529,74 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.search {
-  width: min(320px, 100%);
+.product-filter-panel,
+.product-table-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px #163f2b08;
 }
+.product-filter-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.product-status-tabs {
+  flex: 1 1 auto;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.product-status-tab {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.product-status-tab:hover {
+  color: var(--green);
+  background: #f0f7f3;
+}
+.product-status-tab:focus-visible {
+  outline: 3px solid rgb(22 163 74 / 18%);
+  outline-offset: 2px;
+}
+.product-status-tab.active {
+  color: #fff;
+  background: var(--green);
+  box-shadow: 0 5px 14px rgb(17 91 61 / 18%);
+}
+.product-filters {
+  flex: 0 1 720px;
+  min-width: 520px;
+}
+.product-filters :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+.product-filters :deep(.el-input),
+.product-filters :deep(.el-select) {
+  width: 100%;
+}
+.product-table-panel {
+  overflow: hidden;
+}
+.search,
 .filter {
-  width: 200px;
+  width: 100%;
 }
 .empty {
   padding: 48px;
@@ -496,29 +608,49 @@ onMounted(async () => {
   height: 44px;
   border-radius: 8px;
 }
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 16px;
-}
-.wide {
-  grid-column: 1/-1;
-}
-.grid :deep(.el-select),
-.grid :deep(.el-input-number) {
+.el-select,
+.el-input-number {
   width: 100%;
 }
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1280px) {
+  .product-filter-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .product-status-tabs,
+  .product-filters {
+    width: 100%;
+  }
+  .product-filters {
+    min-width: 0;
   }
 }
-@media (max-width: 640px) {
-  .grid {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .product-filter-panel {
+    padding: 12px;
+    border-radius: 14px;
   }
-  .wide {
-    grid-column: auto;
+  .product-status-tabs {
+    margin: 0 -12px;
+    padding: 0 12px 4px;
+  }
+  .product-status-tab {
+    min-width: max-content;
+    min-height: 44px;
+  }
+  .product-filters :deep(.el-form-item) {
+    margin-bottom: 10px;
+  }
+  .product-filters :deep(.el-col:last-child .el-form-item) {
+    margin-bottom: 0;
+  }
+  .product-table-panel {
+    border-radius: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .product-status-tab {
+    transition: none;
   }
 }
 </style>

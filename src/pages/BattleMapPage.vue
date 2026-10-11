@@ -132,8 +132,8 @@ watch(operationalCampusId, () => void loadBuildings());
           ⚪ 未开发。点格子看寝室客户详情。
         </p>
       </div>
-      <div class="head-actions battle-filter">
-        <ElSelect
+      <ElForm class="head-actions battle-filter" label-position="top">
+        <ElRow><ElCol :span="24"><ElFormItem label="楼栋"><ElSelect
           v-model="buildingId"
           class="battle-building-select"
           clearable
@@ -143,15 +143,15 @@ watch(operationalCampusId, () => void loadBuildings());
           @change="loadMap"
         >
           <ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
-        </ElSelect>
-      </div>
+        </ElSelect></ElFormItem></ElCol></ElRow>
+      </ElForm>
     </div>
 
     <p v-if="error" class="load-error">{{ error }}</p>
 
     <div v-if="map" class="battle-body">
       <!-- 楼层切换 -->
-      <div class="floor-tabs">
+      <div class="floor-tabs single-line-tabs">
         <button
           v-for="f in map.floors"
           :key="f.floor"
@@ -249,7 +249,7 @@ watch(operationalCampusId, () => void loadBuildings());
   display: flex;
   gap: 8px;
   margin-bottom: 14px;
-  flex-wrap: wrap;
+  padding-bottom: 4px;
 }
 .floor-tab {
   height: 34px;

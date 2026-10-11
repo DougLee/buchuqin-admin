@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
 import type { Campus, HqDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
@@ -31,8 +32,8 @@ const marginRateText = computed(() =>
 );
 
 async function load() {
-  if (!startDate.value || !endDate.value) return alert("请选择完整的起止日期");
-  if (startDate.value > endDate.value) return alert("开始日期不能晚于结束日期");
+  if (!startDate.value || !endDate.value) return ElMessage.warning("请选择完整的起止日期");
+  if (startDate.value > endDate.value) return ElMessage.warning("开始日期不能晚于结束日期");
   loading.value = true;
   error.value = "";
   try {
@@ -73,20 +74,14 @@ function rateText(row: HqDailyRow) {
           与发货单快照同源，数字可与单据毛利对账。
         </p>
       </div>
-      <div class="head-actions report-filter">
-        <input v-model="startDate" type="date" />
-        <span class="report-sep">至</span>
-        <input v-model="endDate" type="date" />
-        <select v-model="campusId">
-          <option value="">全部校区</option>
-          <option v-for="c in campuses" :key="c.id" :value="c.id">
-            {{ c.name }}
-          </option>
-        </select>
-        <button class="btn primary" :disabled="loading" @click="load">
-          {{ loading ? "查询中…" : "查询" }}
-        </button>
-      </div>
+      <ElForm class="head-actions report-filter" label-position="top" @submit.prevent="load">
+        <ElRow :gutter="8" align="bottom">
+          <ElCol :xs="24" :sm="8" :lg="6"><ElFormItem label="开始日期"><ElDatePicker v-model="startDate" type="date" value-format="YYYY-MM-DD" placeholder="选择开始日期" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="8" :lg="6"><ElFormItem label="结束日期"><ElDatePicker v-model="endDate" type="date" value-format="YYYY-MM-DD" placeholder="选择结束日期" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="8" :lg="6"><ElFormItem label="校区"><ElSelect v-model="campusId" clearable placeholder="全部校区"><ElOption v-for="c in campuses" :key="c.id" :label="c.name" :value="c.id" /></ElSelect></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="8" :lg="6"><ElFormItem label=" "><ElButton native-type="submit" type="primary" :loading="loading">查询</ElButton></ElFormItem></ElCol>
+        </ElRow>
+      </ElForm>
     </div>
 
     <p v-if="error" class="load-error">{{ error }}</p>
@@ -170,24 +165,11 @@ function rateText(row: HqDailyRow) {
   gap: 8px;
   align-items: center;
 }
-.report-filter input,
-.report-filter select {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 0 10px;
-  font-size: 13px;
-  background: #fff;
-  outline: 0;
-}
-.report-filter input:focus,
-.report-filter select:focus {
-  border-color: var(--brand);
-}
-.report-sep {
-  font-size: 12px;
-  color: #7b8981;
-}
+.report-filter { width: min(760px, 100%); }
+.report-filter :deep(.el-form-item) { margin-bottom: 0; }
+.report-filter :deep(.el-date-editor),
+.report-filter :deep(.el-select),
+.report-filter :deep(.el-button) { width: 100%; }
 .report-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

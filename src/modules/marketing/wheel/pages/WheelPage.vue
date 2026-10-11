@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import { activeCampus, hasPerm } from "../../../../session";
+import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import type { Coupon, WheelPrizeInput } from "../../../../types";
 
 defineProps<{ embedded?: boolean }>();
@@ -95,114 +96,131 @@ onMounted(load);
 watch(activeCampus, load);
 </script>
 <template>
-  <div class="wheel-page" v-loading="loading">
-    <div class="wheel-head">
-      <div>
-        <h2>抽奖转盘</h2>
-        <p>配置活动开关与固定 8 个奖位，权重决定中奖概率。</p>
-      </div>
-      <ElButton v-if="canSave()" type="primary" :loading="saving" @click="save"
+  <AdminPageShell
+    title="抽奖转盘"
+    eyebrow="LUCKY WHEEL"
+    description="配置活动开关与固定 8 个奖位，权重决定中奖概率。"
+  >
+    <template #actions
+      ><ElButton v-if="canSave()" type="primary" :loading="saving" @click="save"
         >保存配置</ElButton
-      >
-    </div>
-    <ElAlert type="info" :closable="false" show-icon
-      ><template #title
-        >权重按全部奖位的总和计算；“谢谢参与”也需要设置权重。</template
-      ></ElAlert
-    ><ElCheckbox v-model="active" :disabled="!canSave()"
-      >活动开启（关闭后小程序隐藏抽奖入口）</ElCheckbox
+      ></template
     >
-    <div class="wheel-grid">
-      <section v-for="(prize, index) in prizes" :key="index" class="prize-card">
-        <header>
-          <strong>奖位 {{ index + 1 }}</strong
-          ><ElSelect
-            v-model="prize.type"
-            :disabled="!canSave()"
-            @change="changeType(index)"
-            ><ElOption label="平台券" value="coupon" /><ElOption
-              label="异业券"
-              value="partner" /><ElOption label="谢谢参与" value="none"
-          /></ElSelect>
-        </header>
-        <ElForm label-position="top"
-          ><ElFormItem label="扇区文案"
-            ><ElInput
-              v-model="prize.label"
-              :disabled="!canSave()"
-              maxlength="12" /></ElFormItem
-          ><ElFormItem label="权重"
-            ><ElInputNumber
-              v-model="prize.weight"
-              :disabled="!canSave()"
-              :min="0"
-              :precision="0" /></ElFormItem
-          ><ElFormItem v-if="prize.type === 'coupon'" label="优惠券"
-            ><ElSelect
-              v-model="prize.couponId"
-              filterable
-              :disabled="!canSave()"
-              placeholder="选择金额券"
-              ><ElOption
-                v-for="item in coupons.filter((c) => c.kind === 'platform')"
-                :key="item.id"
-                :label="`${item.name}（${item.remain == null ? '不限量' : `剩 ${item.remain} 张`}）`"
-                :value="item.id" /></ElSelect></ElFormItem
-          ><template v-if="prize.type === 'partner'"
-            ><ElFormItem label="异业券（选填）"
-              ><ElSelect
-                v-model="prize.couponId"
-                clearable
-                filterable
-                :disabled="!canSave()"
-                placeholder="不选则展示下方图文"
-                ><ElOption
-                  v-for="item in coupons.filter((c) => c.kind === 'partner')"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id" /></ElSelect></ElFormItem
-            ><ElFormItem v-if="!prize.couponId" label="福利标题"
-              ><ElInput
-                v-model="prize.bizTitle"
-                :disabled="!canSave()"
-                maxlength="40" /></ElFormItem
-            ><ElFormItem label="福利图片"
-              ><ImageUploadField
-                :model-value="prize.bizImage ?? ''"
-                folder="app/wheel"
-                @update:model-value="prize.bizImage = $event" /></ElFormItem
-            ><ElFormItem v-if="!prize.couponId" label="说明"
-              ><ElInput
-                v-model="prize.bizNote"
-                :disabled="!canSave()"
-                type="textarea"
-                :rows="2"
-                maxlength="120" /></ElFormItem></template
-        ></ElForm>
+    <div class="wheel-page" v-loading="loading">
+      <section
+        class="admin-filter-panel wheel-settings"
+        aria-label="抽奖活动设置"
+      >
+        <ElAlert type="info" :closable="false" show-icon
+          ><template #title
+            >权重按全部奖位的总和计算；“谢谢参与”也需要设置权重。</template
+          ></ElAlert
+        ><ElCheckbox v-model="active" :disabled="!canSave()"
+          >活动开启（关闭后小程序隐藏抽奖入口）</ElCheckbox
+        >
       </section>
+      <div class="wheel-grid">
+        <section
+          v-for="(prize, index) in prizes"
+          :key="index"
+          class="prize-card"
+        >
+          <header>
+            <strong>奖位 {{ index + 1 }}</strong
+            ><ElSelect
+              v-model="prize.type"
+              :disabled="!canSave()"
+              @change="changeType(index)"
+              ><ElOption label="平台券" value="coupon" /><ElOption
+                label="异业券"
+                value="partner" /><ElOption label="谢谢参与" value="none"
+            /></ElSelect>
+          </header>
+          <ElForm label-position="top"
+            ><ElRow
+              ><ElCol :span="24"
+                ><ElFormItem label="扇区文案"
+                  ><ElInput
+                    v-model="prize.label"
+                    :disabled="!canSave()"
+                    maxlength="12" /></ElFormItem></ElCol
+              ><ElCol :span="24"
+                ><ElFormItem label="权重"
+                  ><ElInputNumber
+                    v-model="prize.weight"
+                    :disabled="!canSave()"
+                    :min="0"
+                    :precision="0" /></ElFormItem></ElCol
+              ><ElCol v-if="prize.type === 'coupon'" :span="24"
+                ><ElFormItem label="优惠券"
+                  ><ElSelect
+                    v-model="prize.couponId"
+                    filterable
+                    :disabled="!canSave()"
+                    placeholder="选择金额券"
+                    ><ElOption
+                      v-for="item in coupons.filter(
+                        (c) => c.kind === 'platform',
+                      )"
+                      :key="item.id"
+                      :label="`${item.name}（${item.remain == null ? '不限量' : `剩 ${item.remain} 张`}）`"
+                      :value="item.id" /></ElSelect></ElFormItem></ElCol
+              ><template v-if="prize.type === 'partner'"
+                ><ElCol :span="24"
+                  ><ElFormItem label="异业券（选填）"
+                    ><ElSelect
+                      v-model="prize.couponId"
+                      clearable
+                      filterable
+                      :disabled="!canSave()"
+                      placeholder="不选则展示下方图文"
+                      ><ElOption
+                        v-for="item in coupons.filter(
+                          (c) => c.kind === 'partner',
+                        )"
+                        :key="item.id"
+                        :label="item.name"
+                        :value="item.id" /></ElSelect></ElFormItem></ElCol
+                ><ElCol v-if="!prize.couponId" :span="24"
+                  ><ElFormItem label="福利标题"
+                    ><ElInput
+                      v-model="prize.bizTitle"
+                      :disabled="!canSave()"
+                      maxlength="40" /></ElFormItem></ElCol
+                ><ElCol :span="24"
+                  ><ElFormItem label="福利图片"
+                    ><ImageUploadField
+                      :model-value="prize.bizImage ?? ''"
+                      folder="app/wheel"
+                      @update:model-value="
+                        prize.bizImage = $event
+                      " /></ElFormItem></ElCol
+                ><ElCol v-if="!prize.couponId" :span="24"
+                  ><ElFormItem label="说明"
+                    ><ElInput
+                      v-model="prize.bizNote"
+                      :disabled="!canSave()"
+                      type="textarea"
+                      :rows="2"
+                      maxlength="120" /></ElFormItem></ElCol></template></ElRow
+          ></ElForm>
+        </section>
+      </div>
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 <style scoped>
 .wheel-page {
   display: grid;
   gap: 16px;
 }
-.wheel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-}
-.wheel-head h2 {
-  margin: 0 0 6px;
-}
-.wheel-head p {
-  margin: 0;
-  color: var(--muted);
-}
 .wheel-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.wheel-settings {
+  display: grid;
   gap: 14px;
 }
 .prize-card {
@@ -228,9 +246,6 @@ watch(activeCampus, load);
 @media (max-width: 760px) {
   .wheel-grid {
     grid-template-columns: 1fr;
-  }
-  .wheel-head {
-    flex-direction: column;
   }
 }
 </style>

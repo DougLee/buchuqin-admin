@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import type { UploadFile } from "element-plus";
 import { uploadImage } from "../api";
 import { resolveImageUrl } from "../utils/image";
 /**
@@ -19,28 +20,19 @@ const SLOTS = [
   { key: "back", label: "国徽面", tip: "国徽图案一面" },
 ] as const;
 
-const fileInput = ref<HTMLInputElement>();
-const activeSlot = ref(0),
-  uploadingSlot = ref(-1),
+const uploadingSlot = ref(-1),
   error = ref("");
 
 function urlAt(index: number): string {
   return props.modelValue[index] ?? "";
 }
-function pick(index: number) {
-  if (uploadingSlot.value !== -1) return;
-  activeSlot.value = index;
-  error.value = "";
-  fileInput.value?.click();
-}
-async function onChange(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = ""; // 允许重选同一文件
+async function onChange(uploadFile: UploadFile, index: number) {
+  const file = uploadFile.raw;
   if (!file) return;
-  uploadingSlot.value = activeSlot.value;
+  error.value = "";
+  uploadingSlot.value = index;
   try {
-    setAt(activeSlot.value, await uploadImage(file, "app/idcard"));
+    setAt(index, await uploadImage(file, "app/idcard"));
   } catch (err) {
     error.value = err instanceof Error ? err.message : "上传失败";
   } finally {
@@ -73,37 +65,21 @@ function setAt(index: number, url: string) {
           :alt="`身份证${slot.label}`"
           loading="lazy"
         />
-        <button
+        <ElUpload
           v-else
-          type="button"
-          class="idcard-field__empty"
-          :disabled="uploadingSlot === i"
-          @click="pick(i)"
-        >
-          {{ uploadingSlot === i ? "上传中…" : `＋ 上传${slot.label}` }}
-          <small>{{ slot.tip }}</small>
-        </button>
+          class="idcard-field__uploader"
+          :auto-upload="false"
+          :show-file-list="false"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
+          :disabled="uploadingSlot !== -1"
+          :on-change="(file: UploadFile) => onChange(file, i)"
+        ><ElButton class="idcard-field__empty" :loading="uploadingSlot === i">＋ 上传{{ slot.label }}<small>{{ slot.tip }}</small></ElButton></ElUpload>
         <div v-if="urlAt(i)" class="idcard-field__ops">
-          <button
-            type="button"
-            :disabled="uploadingSlot === i"
-            @click="pick(i)"
-          >
-            {{ uploadingSlot === i ? "上传中…" : "重传" }}
-          </button>
-          <button type="button" class="danger" @click="setAt(i, '')">
-            删除
-          </button>
+          <ElUpload :auto-upload="false" :show-file-list="false" accept="image/png,image/jpeg,image/jpg,image/webp" :disabled="uploadingSlot !== -1" :on-change="(file: UploadFile) => onChange(file, i)"><ElButton size="small" :loading="uploadingSlot === i">重传</ElButton></ElUpload>
+          <ElButton size="small" type="danger" plain @click="setAt(i, '')">删除</ElButton>
         </div>
       </div>
     </div>
-    <input
-      ref="fileInput"
-      type="file"
-      accept="image/png,image/jpeg,image/jpg,image/webp"
-      hidden
-      @change="onChange"
-    />
     <p v-if="error" class="idcard-field__error">{{ error }}</p>
   </div>
 </template>
@@ -156,6 +132,9 @@ function setAt(index: number, url: string) {
   font-weight: 700;
   cursor: pointer;
 }
+.idcard-field__uploader,
+.idcard-field__uploader :deep(.el-upload) { width: 100%; }
+.idcard-field__empty :deep(span) { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .idcard-field__empty small {
   font-size: 10px;
   font-weight: 400;

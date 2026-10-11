@@ -48,29 +48,15 @@ async function submit() {
       <div class="brand-mark big"><span></span></div>
       <h1>不出寝 · 运营后台</h1>
       <p class="login-sub">使用后台账号登录</p>
-      <form class="login-form" @submit.prevent="submit">
-        <label for="login-username"
-          >账号
-          <input
-            id="login-username"
-            v-model.trim="username"
-            placeholder="后台账号"
-            autocomplete="username"
-            autofocus
-        /></label>
-        <label for="login-password"
-          >密码
-          <input
-            id="login-password"
-            v-model="password"
-            type="password"
-            placeholder="密码"
-            autocomplete="current-password"
-        /></label>
-        <button class="btn primary login-btn" type="submit" :disabled="submitting">
-          {{ submitting ? "登录中..." : "登录后台" }}
-        </button>
-      </form>
+      <ElForm class="login-form" label-position="top" @submit.prevent="submit">
+        <ElRow><ElCol :span="24">
+          <ElFormItem label="账号"><ElInput id="login-username" v-model.trim="username" placeholder="后台账号" autocomplete="username" autofocus /></ElFormItem>
+        </ElCol><ElCol :span="24">
+          <ElFormItem label="密码"><ElInput id="login-password" v-model="password" type="password" placeholder="密码" autocomplete="current-password" show-password /></ElFormItem>
+        </ElCol><ElCol :span="24">
+          <ElButton class="login-btn" type="primary" native-type="submit" :loading="submitting">{{ submitting ? "登录中..." : "登录后台" }}</ElButton>
+        </ElCol></ElRow>
+      </ElForm>
       <p class="login-foot">
         仅限授权员工使用 · 账号由管理员分配，忘记密码请联系管理员重置
       </p>

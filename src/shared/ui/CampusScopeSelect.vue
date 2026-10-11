@@ -23,8 +23,8 @@ function change(value: string) {
 </script>
 
 <template>
-  <select v-if="visible && ready" class="filter-btn" :value="modelValue" aria-label="选择校区" @change="change(($event.target as HTMLSelectElement).value)">
-    <option value="">全部授权校区</option>
-    <option v-for="campus in options" :key="campus.id" :value="campus.id">{{ campus.shortName || campus.name }}</option>
-  </select>
+  <ElSelect v-if="visible && ready" class="filter-btn" :model-value="modelValue" placeholder="全部授权校区" clearable aria-label="选择校区" @change="change(String($event ?? ''))">
+    <ElOption label="全部授权校区" value="" />
+    <ElOption v-for="campus in options" :key="campus.id" :label="campus.shortName || campus.name" :value="campus.id" />
+  </ElSelect>
 </template>

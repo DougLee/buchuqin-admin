@@ -144,10 +144,10 @@ watch(activeCampus, load);
 
     <ElDialog v-model="dialogOpen" :title="printer ? '换绑 / 改名' : '绑定打印机'" width="min(560px, calc(100vw - 32px))" align-center :close-on-click-modal="false">
       <ElForm label-position="top" @submit.prevent="save">
-        <ElFormItem label="名称" required><ElInput v-model.trim="form.name" placeholder="例如：仓内前台小票机" /></ElFormItem>
-        <ElFormItem label="终端号 (SN)" required><ElInput v-model.trim="form.sn" placeholder="机身底部标签 / 自检页上的 SN" /></ElFormItem>
-        <ElFormItem label="打印联数"><ElSelect v-model="form.copies"><ElOption v-for="item in copiesOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
-        <ElFormItem v-if="form.copies >= 2" label="联间间隔"><ElSelect v-model="form.copiesGapSeconds"><ElOption v-for="item in gapOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem>
+        <ElRow :gutter="16"><ElCol :xs="24" :sm="12"><ElFormItem label="名称" required><ElInput v-model.trim="form.name" placeholder="例如：仓内前台小票机" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12"><ElFormItem label="终端号 (SN)" required><ElInput v-model.trim="form.sn" placeholder="机身底部标签 / 自检页上的 SN" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12"><ElFormItem label="打印联数"><ElSelect v-model="form.copies"><ElOption v-for="item in copiesOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem></ElCol>
+        <ElCol v-if="form.copies >= 2" :xs="24" :sm="12"><ElFormItem label="联间间隔"><ElSelect v-model="form.copiesGapSeconds"><ElOption v-for="item in gapOptions" :key="item.value" :label="item.label" :value="item.value" /></ElSelect></ElFormItem></ElCol></ElRow>
       </ElForm>
       <template #footer><ElButton @click="dialogOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存绑定</ElButton></template>
     </ElDialog>

@@ -115,15 +115,12 @@ function rawRateText(row: CampusDailyRow) {
           （退款单不计），与订单行内毛利同口径，数字可对账。
         </p>
       </div>
-      <div class="head-actions report-filter">
-        <ElDatePicker v-model="startDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="开始日期" />
-        <span class="report-sep">至</span>
-        <ElDatePicker v-model="endDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="结束日期" />
-        <ElSelect v-model="buildingId" clearable placeholder="全部楼栋" :disabled="!operationalCampusId || !buildings.length">
-          <ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
-        </ElSelect>
-        <ElButton type="primary" :loading="loading" :disabled="!operationalCampusId" @click="load">查询</ElButton>
-      </div>
+      <ElForm class="head-actions report-filter" label-position="top" @submit.prevent="load"><ElRow :gutter="8" align="bottom">
+        <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="开始日期"><ElDatePicker v-model="startDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="开始日期" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="结束日期"><ElDatePicker v-model="endDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="结束日期" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="楼栋"><ElSelect v-model="buildingId" clearable placeholder="全部楼栋" :disabled="!operationalCampusId || !buildings.length"><ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" /></ElSelect></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label=" "><ElButton native-type="submit" type="primary" :loading="loading" :disabled="!operationalCampusId">查询</ElButton></ElFormItem></ElCol>
+      </ElRow></ElForm>
     </div>
 
     <p v-if="error" class="load-error">{{ error }}</p>

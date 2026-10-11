@@ -1,19 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import { api, uploadImage } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
-import { accountOrgLevel, activeCampus, hasPerm, hasPlatformPerm, sessionUser, switchableCampuses } from "../session";
+import {
+  accountOrgLevel,
+  activeCampus,
+  hasPerm,
+  hasPlatformPerm,
+  sessionUser,
+  switchableCampuses,
+} from "../session";
 import PrinterPage from "../modules/settings/printers/pages/PrinterPage.vue";
 import WechatGroupPage from "../modules/settings/wechat-groups/pages/WechatGroupPage.vue";
 import HomeBannerPage from "../modules/marketing/banners/pages/HomeBannerPage.vue";
 import PayAdPage from "../modules/marketing/banners/pages/PayAdPage.vue";
 import WheelPage from "../modules/marketing/wheel/pages/WheelPage.vue";
-import type {
-  CampusConfigBundle,
-  DeliverySlotRow,
-  NoticeRow,
-} from "../types";
+import type { CampusConfigBundle, DeliverySlotRow, NoticeRow } from "../types";
 
 /**
  * 校区配置聚合页（IKHM1O 道哥 2026-09-21 定版全收）：
@@ -30,9 +33,14 @@ const campusWritable = computed(
     isPlatform.value ||
     switchableCampuses.value.includes(bundle.value?.campus.id ?? ""),
 );
-const canEditProfile = computed(() => hasPlatformPerm("PATCH /admin/campuses/:id"));
-const canEditDelivery = computed(() => canEditProfile.value ||
-  (campusWritable.value && hasPerm("PATCH /admin/delivery-config")));
+const canEditProfile = computed(() =>
+  hasPlatformPerm("PATCH /admin/campuses/:id"),
+);
+const canEditDelivery = computed(
+  () =>
+    canEditProfile.value ||
+    (campusWritable.value && hasPerm("PATCH /admin/delivery-config")),
+);
 function canWrite(pattern: string) {
   return hasPerm(pattern) && (campusWritable.value || hasPlatformPerm(pattern));
 }
@@ -44,20 +52,25 @@ const TABS = computed(() => {
     { key: "salary", label: "楼长结算" },
     { key: "slots", label: "送达时段" },
     { key: "notices", label: "公告" },
-
   ];
-  if (hasPerm("GET /admin/wechat-groups")) list.push({ key: "wechat-groups", label: "微信群码" });
-  if (hasPerm("GET /admin/printers")) list.push({ key: "printers", label: "打印机" });
+  if (hasPerm("GET /admin/wechat-groups"))
+    list.push({ key: "wechat-groups", label: "微信群码" });
+  if (hasPerm("GET /admin/printers"))
+    list.push({ key: "printers", label: "打印机" });
   if (hasPerm("GET /admin/banners"))
-    list.push({ key: "banners", label: "Banner" }, { key: "pay-ads", label: "支付广告位" });
-  if (hasPerm("GET /admin/wheel")) list.push({ key: "wheel", label: "抽奖转盘" });
+    list.push(
+      { key: "banners", label: "Banner" },
+      { key: "pay-ads", label: "支付广告位" },
+    );
+  if (hasPerm("GET /admin/wheel"))
+    list.push({ key: "wheel", label: "抽奖转盘" });
   return list;
 });
 const activeTab = ref("profile");
 const selectedCampus = computed(() =>
   accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
     ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
+    : (sessionUser.value?.campusId ?? ""),
 );
 const bundle = ref<CampusConfigBundle | null>(null);
 const loading = ref(false);
@@ -66,7 +79,11 @@ const asSlot = (row: unknown) => row as DeliverySlotRow;
 const asNotice = (row: unknown) => row as NoticeRow;
 
 function notify(text: string, error = false) {
-  ElMessage({ message: text, type: error ? "error" : "success", showClose: true });
+  ElMessage({
+    message: text,
+    type: error ? "error" : "success",
+    showClose: true,
+  });
 }
 
 let loadSequence = 0;
@@ -84,7 +101,8 @@ async function load() {
     if (sequence !== loadSequence) return;
     bundle.value = result;
   } catch (error) {
-    if (sequence === loadSequence) notify(error instanceof Error ? error.message : "加载失败", true);
+    if (sequence === loadSequence)
+      notify(error instanceof Error ? error.message : "加载失败", true);
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -119,8 +137,8 @@ watch(bundle, (b) => {
 });
 const qrcodeUploading = ref(false);
 /** IKKTWP 客服二维码上传（COS webp） */
-async function onQrcodeChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
+async function onQrcodeChange(upload: UploadFile) {
+  const file = upload.raw;
   if (!file) return;
   qrcodeUploading.value = true;
   try {
@@ -130,7 +148,6 @@ async function onQrcodeChange(e: Event) {
     ElMessage.error(err instanceof Error ? err.message : "上传失败");
   } finally {
     qrcodeUploading.value = false;
-    (e.target as HTMLInputElement).value = "";
   }
 }
 async function saveProfile() {
@@ -289,8 +306,15 @@ async function toggleSlot(row: DeliverySlotRow) {
 }
 async function removeSlot(row: DeliverySlotRow) {
   if (!canWrite("DELETE /admin/delivery-slots/:id")) return;
-  try { await ElMessageBox.confirm(`删除时段「${row.label}」？`, "删除送达时段", { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }); }
-  catch { return; }
+  try {
+    await ElMessageBox.confirm(`删除时段「${row.label}」？`, "删除送达时段", {
+      type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消",
+    });
+  } catch {
+    return;
+  }
   try {
     await api.deleteSlot(row.id);
     notify("时段已删除");
@@ -351,8 +375,19 @@ async function toggleNotice(n: NoticeRow) {
 }
 async function removeNotice(n: NoticeRow) {
   if (!canWrite("DELETE /admin/notices/:id")) return;
-  try { await ElMessageBox.confirm(`删除公告「${n.content.slice(0, 20)}…」？`, "删除公告", { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }); }
-  catch { return; }
+  try {
+    await ElMessageBox.confirm(
+      `删除公告「${n.content.slice(0, 20)}…」？`,
+      "删除公告",
+      {
+        type: "warning",
+        confirmButtonText: "确认删除",
+        cancelButtonText: "取消",
+      },
+    );
+  } catch {
+    return;
+  }
   try {
     await api.deleteNotice(n.id);
     notify("公告已删除");
@@ -373,7 +408,7 @@ async function removeNotice(n: NoticeRow) {
         <p>档案、配送营业、结算、时段、公告与营销内容——一个校区的全部配置。</p>
       </div>
     </div>
-    <nav class="cc-tabs" aria-label="配置分区">
+    <nav class="cc-tabs single-line-tabs" aria-label="配置分区">
       <ElButton
         v-for="t in TABS"
         :key="t.key"
@@ -391,74 +426,81 @@ async function removeNotice(n: NoticeRow) {
     <!-- 基础档案 -->
     <section v-else-if="activeTab === 'profile'" class="cc-panel">
       <template v-if="bundle">
-        <div class="cc-form">
-          <label
-            >校区全称
-            <ElInput v-model.trim="profileForm.name" :disabled="!canEditProfile" /></label>
-          <label
-            >简称
-            <ElInput
-              v-model.trim="profileForm.shortName"
-              :disabled="!canEditProfile"
-          /></label>
-          <label
-            >仓库名
-            <ElInput
-              v-model.trim="profileForm.warehouseName"
-              :disabled="!canEditProfile"
-          /></label>
-          <label
-            >地址
-            <ElInput v-model.trim="profileForm.address" :disabled="!canEditProfile" /></label>
-          <label
-            >客服电话（小程序拨号展示）
-            <ElInput
-              v-model.trim="profileForm.servicePhone"
-              :disabled="!canEditProfile"
-              maxlength="20"
-              placeholder="如 4008002026"
-          /></label>
-          <div class="qrcode-field">
-            <label>
-              客服微信二维码（小程序客服弹层展示）
-              <div class="qrcode-row">
-                <img
-                  v-if="profileForm.serviceQrcode"
-                  :src="profileForm.serviceQrcode"
-                  class="qrcode-preview"
-                  alt="客服二维码"
-                />
-                <div v-else class="qrcode-empty">未上传</div>
-                <div class="qrcode-ops" v-if="canEditProfile">
-                  <label class="qrcode-btn">
-                    {{ qrcodeUploading ? "上传中…" : "上传图片" }}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style="display: none"
-                      @change="onQrcodeChange"
-                    />
-                  </label>
-                  <ElButton
+        <ElForm label-position="top"
+          ><ElRow :gutter="16">
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="校区全称"
+                ><ElInput
+                  v-model.trim="profileForm.name"
+                  :disabled="!canEditProfile" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="简称"
+                ><ElInput
+                  v-model.trim="profileForm.shortName"
+                  :disabled="!canEditProfile" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="仓库名"
+                ><ElInput
+                  v-model.trim="profileForm.warehouseName"
+                  :disabled="!canEditProfile" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="地址"
+                ><ElInput
+                  v-model.trim="profileForm.address"
+                  :disabled="!canEditProfile" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="客服电话（小程序拨号展示）"
+                ><ElInput
+                  v-model.trim="profileForm.servicePhone"
+                  :disabled="!canEditProfile"
+                  maxlength="20"
+                  placeholder="如 4008002026" /></ElFormItem
+            ></ElCol>
+            <ElCol :span="24"
+              ><ElFormItem label="客服微信二维码（小程序客服弹层展示）">
+                <div class="qrcode-row">
+                  <img
                     v-if="profileForm.serviceQrcode"
-                    text
-                    type="danger"
-                    @click="profileForm.serviceQrcode = ''"
-                    >移除</ElButton
-                  >
+                    :src="profileForm.serviceQrcode"
+                    class="qrcode-preview"
+                    alt="客服二维码"
+                  />
+                  <div v-else class="qrcode-empty">未上传</div>
+                  <div class="qrcode-ops" v-if="canEditProfile">
+                    <ElUpload
+                      :auto-upload="false"
+                      :show-file-list="false"
+                      accept="image/*"
+                      :on-change="onQrcodeChange"
+                      ><ElButton :loading="qrcodeUploading"
+                        >上传图片</ElButton
+                      ></ElUpload
+                    >
+                    <ElButton
+                      v-if="profileForm.serviceQrcode"
+                      text
+                      type="danger"
+                      @click="profileForm.serviceQrcode = ''"
+                      >移除</ElButton
+                    >
+                  </div>
                 </div>
-              </div>
-              <p class="qrcode-tip">
-                建议上传校区客服个人微信二维码；未上传时小程序客服入口回落拨打电话
-              </p>
-            </label>
-          </div>
-          <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
+                <p class="qrcode-tip">
+                  建议上传校区客服个人微信二维码；未上传时小程序客服入口回落拨打电话
+                </p>
+              </ElFormItem></ElCol
+            >
+            <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
                与「配送与营业」的打烊/闭店是两回事，界面上不做在一起防误触 -->
-        </div>
-        <p v-if="!canEditProfile" class="form-hint"
-          >基础档案仅总部/平台账号可修改</p
+          </ElRow></ElForm
         >
+        <p v-if="!canEditProfile" class="form-hint">
+          基础档案仅总部/平台账号可修改
+        </p>
         <ElButton
           v-if="canEditProfile"
           type="primary"
@@ -473,60 +515,100 @@ async function removeNotice(n: NoticeRow) {
     <!-- 配送与营业 -->
     <section v-else-if="activeTab === 'delivery'" class="cc-panel">
       <template v-if="bundle">
-        <fieldset class="cc-form" :disabled="!canEditDelivery">
-          <label>即时达配送费（元）<ElInputNumber v-model="deliveryForm.instant" :min="0" :precision="2" /></label>
-          <label>预约达配送费（元）<ElInputNumber v-model="deliveryForm.scheduled" :min="0" :precision="2" /></label>
-          <label>起送门槛（元）<ElInputNumber v-model="deliveryForm.threshold" :min="0" :precision="2" /></label>
-          <label
-            >闭店方式
-            <ElSelect v-model="closeMode"><ElOption label="24 小时营业" value="always" /><ElOption label="按时间打烊" value="on-time" /><ElOption label="立即闭店（手动）" value="now" /></ElSelect></label
-          >
-          <template v-if="closeMode === 'on-time'">
-            <!-- 原生 time 控件显示格式跟浏览器语言走（英文环境 12 小时制、属性不可控），
+        <ElForm label-position="top" :disabled="!canEditDelivery"
+          ><ElRow :gutter="16">
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="即时达配送费（元）"
+                ><ElInputNumber
+                  v-model="deliveryForm.instant"
+                  :min="0"
+                  :precision="2" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="预约达配送费（元）"
+                ><ElInputNumber
+                  v-model="deliveryForm.scheduled"
+                  :min="0"
+                  :precision="2" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="起送门槛（元）"
+                ><ElInputNumber
+                  v-model="deliveryForm.threshold"
+                  :min="0"
+                  :precision="2" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="闭店方式"
+                ><ElSelect v-model="closeMode"
+                  ><ElOption label="24 小时营业" value="always" /><ElOption
+                    label="按时间打烊"
+                    value="on-time" /><ElOption
+                    label="立即闭店（手动）"
+                    value="now" /></ElSelect></ElFormItem
+            ></ElCol>
+            <template v-if="closeMode === 'on-time'">
+              <!-- 原生 time 控件显示格式跟浏览器语言走（英文环境 12 小时制、属性不可控），
                  改 30 分钟档下拉：天然 24 小时制，跨浏览器一致 -->
-            <label
-              >打烊开始
-              <ElSelect v-model="deliveryForm.closeStart" filterable><ElOption v-for="t in TIME_OPTIONS" :key="t" :label="t" :value="t" /></ElSelect></label
-            >
-            <label
-              >打烊结束
-              <ElSelect v-model="deliveryForm.closeEnd" filterable><ElOption v-for="t in TIME_OPTIONS" :key="t" :label="t" :value="t" /></ElSelect></label
-            >
-          </template>
-          <label class="cc-form--wide"
-            >无楼长提示（下单结算弹窗，空=默认文案）
-            <ElInput
-              v-model.trim="deliveryForm.noManagerTip"
-              type="textarea"
-              :rows="2"
-              maxlength="60"
-              show-word-limit
-              placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～"
-            />
-          ></label>
-        </fieldset>
-        <p class="form-hint"
-          >打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。</p
+              <ElCol :xs="24" :sm="12" :lg="8"
+                ><ElFormItem label="打烊开始"
+                  ><ElSelect v-model="deliveryForm.closeStart" filterable
+                    ><ElOption
+                      v-for="t in TIME_OPTIONS"
+                      :key="t"
+                      :label="t"
+                      :value="t" /></ElSelect></ElFormItem
+              ></ElCol>
+              <ElCol :xs="24" :sm="12" :lg="8"
+                ><ElFormItem label="打烊结束"
+                  ><ElSelect v-model="deliveryForm.closeEnd" filterable
+                    ><ElOption
+                      v-for="t in TIME_OPTIONS"
+                      :key="t"
+                      :label="t"
+                      :value="t" /></ElSelect></ElFormItem
+              ></ElCol>
+            </template>
+            <ElCol :span="24"
+              ><ElFormItem label="无楼长提示（下单结算弹窗，空=默认文案）"
+                ><ElInput
+                  v-model.trim="deliveryForm.noManagerTip"
+                  type="textarea"
+                  :rows="2"
+                  maxlength="60"
+                  show-word-limit
+                  placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～" /></ElFormItem
+            ></ElCol> </ElRow
+        ></ElForm>
+        <p class="form-hint">
+          打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。
+        </p>
+        <ElButton
+          v-if="canEditDelivery"
+          type="primary"
+          :loading="saving"
+          @click="saveDelivery"
+          >保存配送与营业配置</ElButton
         >
-        <ElButton v-if="canEditDelivery" type="primary" :loading="saving" @click="saveDelivery">保存配送与营业配置</ElButton>
       </template>
     </section>
 
     <!-- 楼长结算 -->
     <section v-else-if="activeTab === 'salary'" class="cc-panel">
       <template v-if="bundle">
-        <div class="cc-form">
-          <label
-            >楼长月度底薪（元，0 = 无底薪纯提成）
-            <ElInputNumber
-              v-model.number="salaryForm.baseSalary"
-              :min="0"
-              :step="1"
-              :disabled="!canEditProfile" /></label>
-        </div>
-        <p v-if="!canEditProfile" class="form-hint"
-          >底薪仅总部/平台账号可修改</p
-        >
+        <ElForm label-position="top"
+          ><ElRow
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="楼长月度底薪（元，0 = 无底薪纯提成）"
+                ><ElInputNumber
+                  v-model.number="salaryForm.baseSalary"
+                  :min="0"
+                  :step="1"
+                  :disabled="!canEditProfile" /></ElFormItem></ElCol></ElRow
+        ></ElForm>
+        <p v-if="!canEditProfile" class="form-hint">
+          底薪仅总部/平台账号可修改
+        </p>
         <ElButton
           v-if="canEditProfile"
           type="primary"
@@ -541,20 +623,64 @@ async function removeNotice(n: NoticeRow) {
     <!-- 送达时段 -->
     <section v-else-if="activeTab === 'slots'" class="cc-panel">
       <template v-if="bundle">
-        <div v-if="canWrite('POST /admin/delivery-slots')" class="cc-add-row">
-          <ElInput
-            v-model="slotForm.label"
-            placeholder="时段文案，如 12:00-14:00"
-            maxlength="20"
-          />
-          <ElInputNumber v-model="slotForm.capacity" :min="0" placeholder="容量" />
-          <ElButton type="primary" @click="addSlot">新增时段</ElButton>
-        </div>
-        <ElTable :data="slots" row-key="id" empty-text="暂无送达时段（预约达下单需要）">
+        <ElForm
+          v-if="canWrite('POST /admin/delivery-slots')"
+          label-position="top"
+          ><ElRow :gutter="16" align="bottom">
+            <ElCol :xs="24" :sm="12" :lg="10"
+              ><ElFormItem label="时段文案"
+                ><ElInput
+                  v-model="slotForm.label"
+                  placeholder="如 12:00-14:00"
+                  maxlength="20" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="8" :lg="6"
+              ><ElFormItem label="容量"
+                ><ElInputNumber
+                  v-model="slotForm.capacity"
+                  :min="0"
+                  placeholder="容量" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="4" :lg="4"
+              ><ElFormItem label=" "
+                ><ElButton type="primary" @click="addSlot"
+                  >新增时段</ElButton
+                ></ElFormItem
+              ></ElCol
+            >
+          </ElRow></ElForm
+        >
+        <ElTable
+          :data="slots"
+          row-key="id"
+          empty-text="暂无送达时段（预约达下单需要）"
+        >
           <ElTableColumn prop="label" label="时段" min-width="160" />
           <ElTableColumn prop="capacity" label="容量" width="100" />
-          <ElTableColumn label="状态" width="100"><template #default="{ row }"><ElTag :type="row.available ? 'success' : 'info'">{{ row.available ? "可用" : "停用" }}</ElTag></template></ElTableColumn>
-          <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><ElButton v-if="canWrite('PATCH /admin/delivery-slots/:id')" size="small" @click="toggleSlot(asSlot(row))">{{ row.available ? "停用" : "启用" }}</ElButton><ElButton v-if="canWrite('DELETE /admin/delivery-slots/:id')" size="small" type="danger" plain @click="removeSlot(asSlot(row))">删除</ElButton></template></ElTableColumn>
+          <ElTableColumn label="状态" width="100"
+            ><template #default="{ row }"
+              ><ElTag :type="row.available ? 'success' : 'info'">{{
+                row.available ? "可用" : "停用"
+              }}</ElTag></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="操作" fixed="right" width="180"
+            ><template #default="{ row }"
+              ><ElButton
+                v-if="canWrite('PATCH /admin/delivery-slots/:id')"
+                size="small"
+                @click="toggleSlot(asSlot(row))"
+                >{{ row.available ? "停用" : "启用" }}</ElButton
+              ><ElButton
+                v-if="canWrite('DELETE /admin/delivery-slots/:id')"
+                size="small"
+                type="danger"
+                plain
+                @click="removeSlot(asSlot(row))"
+                >删除</ElButton
+              ></template
+            ></ElTableColumn
+          >
         </ElTable>
       </template>
     </section>
@@ -562,36 +688,102 @@ async function removeNotice(n: NoticeRow) {
     <!-- 公告 -->
     <section v-else-if="activeTab === 'notices'" class="cc-panel">
       <template v-if="bundle">
-        <div v-if="canWrite('POST /admin/notices')" class="cc-add-col">
-          <ElInput
-            v-model="noticeForm.content"
-            type="textarea"
-            :rows="2"
-            maxlength="200"
-            placeholder="公告内容（小程序首页跑马灯显示，多条自动用「｜」拼接）"
+        <ElForm v-if="canWrite('POST /admin/notices')" label-position="top"
+          ><ElRow :gutter="16" align="bottom">
+            <ElCol :span="24"
+              ><ElFormItem label="公告内容"
+                ><ElInput
+                  v-model="noticeForm.content"
+                  type="textarea"
+                  :rows="2"
+                  maxlength="200"
+                  placeholder="小程序首页跑马灯显示，多条自动用「｜」拼接" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="10"
+              ><ElFormItem label="生效起"
+                ><ElDatePicker
+                  v-model="noticeForm.startsAt"
+                  type="datetime"
+                  value-format="YYYY-MM-DDTHH:mm"
+                  placeholder="选择开始时间" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="10"
+              ><ElFormItem label="生效止"
+                ><ElDatePicker
+                  v-model="noticeForm.endsAt"
+                  type="datetime"
+                  value-format="YYYY-MM-DDTHH:mm"
+                  placeholder="选择结束时间" /></ElFormItem
+            ></ElCol>
+            <ElCol :xs="24" :sm="4"
+              ><ElFormItem label=" "
+                ><ElButton type="primary" @click="addNotice"
+                  >发布公告</ElButton
+                ></ElFormItem
+              ></ElCol
+            >
+          </ElRow></ElForm
+        >
+        <ElTable
+          :data="notices"
+          row-key="id"
+          empty-text="暂无公告——发布后小程序首页顶部跑马灯显示"
+        >
+          <ElTableColumn
+            prop="content"
+            label="内容"
+            min-width="280"
+            show-overflow-tooltip
           />
-          <div class="cc-add-row">
-            <label
-              >生效起
-              <ElDatePicker v-model="noticeForm.startsAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择开始时间" /></label>
-            <label
-              >生效止
-              <ElDatePicker v-model="noticeForm.endsAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择结束时间" /></label>
-            <ElButton type="primary" @click="addNotice">发布公告</ElButton>
-          </div>
-        </div>
-        <ElTable :data="notices" row-key="id" empty-text="暂无公告——发布后小程序首页顶部跑马灯显示">
-          <ElTableColumn prop="content" label="内容" min-width="280" show-overflow-tooltip />
-          <ElTableColumn label="生效窗" min-width="280"><template #default="{ row }">{{ new Date(row.startsAt).toLocaleString("zh-CN", { hour12: false }) }} ~ {{ new Date(row.endsAt).toLocaleString("zh-CN", { hour12: false }) }}</template></ElTableColumn>
-          <ElTableColumn label="状态" width="100"><template #default="{ row }"><ElTag :type="noticeState(asNotice(row)).tone === 'ok' ? 'success' : 'info'">{{ noticeState(asNotice(row)).text }}</ElTag></template></ElTableColumn>
-          <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><ElButton v-if="canWrite('PATCH /admin/notices/:id')" size="small" @click="toggleNotice(asNotice(row))">{{ row.status === "active" ? "停用" : "启用" }}</ElButton><ElButton v-if="canWrite('DELETE /admin/notices/:id')" size="small" type="danger" plain @click="removeNotice(asNotice(row))">删除</ElButton></template></ElTableColumn>
+          <ElTableColumn label="生效窗" min-width="280"
+            ><template #default="{ row }"
+              >{{
+                new Date(row.startsAt).toLocaleString("zh-CN", {
+                  hour12: false,
+                })
+              }}
+              ~
+              {{
+                new Date(row.endsAt).toLocaleString("zh-CN", { hour12: false })
+              }}</template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="状态" width="100"
+            ><template #default="{ row }"
+              ><ElTag
+                :type="
+                  noticeState(asNotice(row)).tone === 'ok' ? 'success' : 'info'
+                "
+                >{{ noticeState(asNotice(row)).text }}</ElTag
+              ></template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="操作" fixed="right" width="180"
+            ><template #default="{ row }"
+              ><ElButton
+                v-if="canWrite('PATCH /admin/notices/:id')"
+                size="small"
+                @click="toggleNotice(asNotice(row))"
+                >{{ row.status === "active" ? "停用" : "启用" }}</ElButton
+              ><ElButton
+                v-if="canWrite('DELETE /admin/notices/:id')"
+                size="small"
+                type="danger"
+                plain
+                @click="removeNotice(asNotice(row))"
+                >删除</ElButton
+              ></template
+            ></ElTableColumn
+          >
         </ElTable>
       </template>
     </section>
 
     <!-- 内容类 Tab：组合独立业务模块（按顶部当前校区） -->
     <template v-else-if="activeTab === 'printers'">
-      <p class="form-hint">此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。</p>
+      <p class="form-hint">
+        此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。
+      </p>
       <PrinterPage />
     </template>
     <template v-else-if="activeTab === 'wechat-groups'">
@@ -616,14 +808,20 @@ async function removeNotice(n: NoticeRow) {
 <style scoped>
 .cc-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding: 10px;
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px #163f2b08;
 }
 .cc-tabs button {
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 8px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  min-height: 40px;
   padding: 8px 16px;
   cursor: pointer;
   font-size: 14px;
@@ -635,85 +833,16 @@ async function removeNotice(n: NoticeRow) {
 }
 .cc-panel {
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 8px 24px #163f2b08;
+  overflow: hidden;
 }
-.cc-form {
-  display: grid;
-  /* 固定 3 列与基础档案节奏一致（auto-fill 会随窗口宽度漂移列数） */
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 16px;
-  /* 表单容器是 fieldset（借其 :disabled 整组禁用做权限收口）——
-     去掉 rbac.css 给 fieldset 的默认边框/内边距，视觉与基础档案一致 */
-  border: none;
-  padding: 0;
-  min-width: 0;
-}
-.cc-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: #475569;
-}
-.cc-form input,
-.cc-form select,
-.cc-form textarea {
-  /* 数字/时间原生框宽度由浏览器决定（窄、参差）——拉满列宽与档案文本框一致 */
+.cc-panel :deep(.el-select),
+.cc-panel :deep(.el-date-editor),
+.cc-panel :deep(.el-input-number) {
   width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 14px;
-  font-family: inherit;
-  background: #fff;
-}
-/* 聚焦态统一品牌绿（替换浏览器默认蓝框，道哥反馈样式不搭） */
-.cc-form input:focus,
-.cc-form select:focus,
-.cc-form textarea:focus,
-.cc-add-row input:focus,
-.cc-add-col textarea:focus {
-  outline: none;
-  border-color: #07883b;
-  box-shadow: 0 0 0 3px rgba(7, 136, 59, 0.12);
-}
-.cc-form--wide {
-  grid-column: 1 / -1;
-}
-.cc-add-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.cc-add-row label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: #475569;
-}
-.cc-add-row input,
-.cc-add-col textarea {
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 14px;
-}
-.cc-add-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.cc-add-col textarea,
-.cc-form textarea {
-  resize: none;
 }
 .cc-table {
   width: 100%;
@@ -787,5 +916,18 @@ async function removeNotice(n: NoticeRow) {
   margin: 8px 0 0;
   font-size: 11px;
   color: var(--muted);
+}
+@media (max-width: 760px) {
+  .cc-tabs {
+    border-radius: 14px;
+  }
+  .cc-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .qrcode-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

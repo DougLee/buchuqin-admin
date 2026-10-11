@@ -118,14 +118,12 @@ function unitText(p: Product): string {
 
 <template>
   <div class="product-picker">
-    <div class="pp-bar">
-      <select v-model="catId" class="pp-cat-select">
-        <option v-for="c in categories" :key="c.id" :value="c.id">
-          {{ c.name }}
-        </option>
-      </select>
-      <input v-model="keyword" class="pp-search" placeholder="搜索商品名 / 条码" />
-    </div>
+    <ElForm class="pp-bar" label-position="top">
+      <ElRow :gutter="8">
+        <ElCol :xs="24" :sm="8"><ElFormItem><ElSelect v-model="catId" class="pp-cat-select" placeholder="选择分类"><ElOption v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" /></ElSelect></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="16"><ElFormItem><ElInput v-model="keyword" class="pp-search" clearable placeholder="搜索商品名 / 条码" /></ElFormItem></ElCol>
+      </ElRow>
+    </ElForm>
     <div class="pp-list">
       <!-- 加载骨架（IKGNQ 道哥反馈）：候选集未就绪给脉冲占位，不裸空白 -->
       <template v-if="loading">
@@ -185,15 +183,13 @@ function unitText(p: Product): string {
             >
           </span>
           <span v-if="!simple" class="pp-item__qty">
-            <input
-              type="number"
-              min="0"
-              step="1"
-              :value="qtyOf(p.id)"
+            <ElInputNumber
+              :model-value="qtyOf(p.id)"
+              :min="0"
+              :step="1"
+              :precision="0"
               :disabled="disabled"
-              @input="
-                setQty(p.id, Number(($event.target as HTMLInputElement).value) || 0)
-              "
+              @change="setQty(p.id, Number($event) || 0)"
             /><span>件</span>
           </span>
         </div>
@@ -224,31 +220,11 @@ function unitText(p: Product): string {
   gap: 10px;
 }
 .pp-bar {
-  display: flex;
-  gap: 8px;
+  width: 100%;
 }
-.pp-bar select,
-.pp-bar input {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 0 10px;
-  font-size: 13px;
-  background: #fff;
-  outline: 0;
-}
-.pp-bar select {
-  flex: 0 0 140px;
-  color: #1d2b24;
-  cursor: pointer;
-}
-.pp-bar input {
-  flex: 1;
-}
-.pp-bar select:focus,
-.pp-bar input:focus {
-  border-color: var(--brand);
-}
+.pp-bar :deep(.el-form-item) { margin-bottom: 0; }
+.pp-cat-select,
+.pp-search { width: 100%; }
 .pp-list {
   height: 224px;
   overflow-y: auto;
@@ -327,18 +303,7 @@ button.pp-item {
   font-size: 12px;
   color: var(--muted);
 }
-.pp-item__qty input {
-  width: 64px;
-  height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 8px;
-  font-size: 13px;
-}
-.pp-item__qty input:focus {
-  outline: 0;
-  border-color: var(--brand);
-}
+.pp-item__qty :deep(.el-input-number) { width: 112px; }
 .pp-item--skeleton {
   pointer-events: none;
 }

@@ -408,36 +408,22 @@ async function confirmDelete() {
           </div>
           <button aria-label="关闭" @click="drawerOpen = false">×</button>
         </div>
-        <div class="product-form">
-          <label>
-            角色编码
-            <input
-              v-model.trim="form.code"
-              :disabled="!!editingId"
-              placeholder="如：campus-manager"
-            /></label>
-          <label>
-            角色名称
-            <input v-model.trim="form.name" placeholder="如：校区店长" />
-          </label>
-          <label>
-            状态
-            <select v-model="form.status">
-              <option value="active">启用</option>
-              <option value="disabled">停用（挂此角色的授权失效）</option>
-            </select>
-          </label>
-          <label class="wide">
-            备注
-            <input v-model.trim="form.remark" placeholder="职责说明（选填）" />
-          </label>
-        </div>
+        <ElForm class="role-form" label-position="top">
+          <ElRow :gutter="16">
+            <ElCol :xs="24" :sm="12"><ElFormItem label="角色编码"><ElInput v-model.trim="form.code" :disabled="!!editingId" placeholder="如：campus-manager" /></ElFormItem></ElCol>
+            <ElCol :xs="24" :sm="12"><ElFormItem label="角色名称"><ElInput v-model.trim="form.name" placeholder="如：校区店长" /></ElFormItem></ElCol>
+            <ElCol :xs="24" :sm="12"><ElFormItem label="状态"><ElSelect v-model="form.status"><ElOption label="启用" value="active" /><ElOption label="停用（挂此角色的授权失效）" value="disabled" /></ElSelect></ElFormItem></ElCol>
+            <ElCol :xs="24" :sm="12"><ElFormItem label="备注"><ElInput v-model.trim="form.remark" placeholder="职责说明（选填）" /></ElFormItem></ElCol>
+          </ElRow>
+        </ElForm>
         <p class="drawer-sec">功能权限（父子联动，支持仅查看和清空授权）</p>
         <!-- 内置超管：通配全菜单，整树禁用 -->
         <div v-if="editingBuiltin && form.code === 'super-admin'" class="builtin-card">
           全部菜单（内置通配）——超级管理员不受菜单勾选约束，不可编辑。
         </div>
-        <input v-if="!editingBuiltin" v-model="treeSearch" placeholder="搜索菜单或操作" aria-label="搜索功能权限" />
+        <ElForm v-if="!editingBuiltin" class="role-tree-filter" label-position="top">
+          <ElRow><ElCol :span="24"><ElFormItem label="搜索功能权限"><ElInput v-model="treeSearch" clearable placeholder="搜索菜单或操作" /></ElFormItem></ElCol></ElRow>
+        </ElForm>
         <div v-if="!editingBuiltin" class="menu-tree" :class="{ 'is-locked': editingBuiltin }">
           <div
             v-for="{ node, depth } in flatRows"
@@ -459,18 +445,17 @@ async function confirmDelete() {
                 {{ foldedNodes.has(node.row.id) ? "▸" : "▾" }}
               </button>
               <span v-else class="menu-fold-spacer"></span>
-              <label class="checkbox-row menu-node__check" @click.stop>
-                <input
-                  type="checkbox"
-                  class="raw-checkbox"
+              <ElCheckbox
+                  class="menu-node__check"
                   :disabled="editingBuiltin"
-                  :checked="node.children.length ? descendantsAllChecked(node) : checkedCodes.has(node.row.code)"
+                  :model-value="node.children.length ? descendantsAllChecked(node) : checkedCodes.has(node.row.code)"
                   :indeterminate="node.children.length > 0 && checkedCodes.has(node.row.code) && !descendantsAllChecked(node)"
-                  @change="setChecked(node.row.code, ($event.target as HTMLInputElement).checked)"
-                />
+                  @click.stop
+                  @change="setChecked(node.row.code, Boolean($event))"
+                >
                 <span class="menu-node__name">{{ node.row.name }}</span>
                 <code class="menu-node__code">{{ node.row.code }}</code>
-              </label>
+              </ElCheckbox>
               <span class="status info menu-node__type">{{
                 MENU_TYPE_TEXT[node.row.type]
               }}</span>
@@ -482,23 +467,20 @@ async function confirmDelete() {
               }}</code>
               <button v-if="node.row.type === 1" type="button" class="btn mini" @click="selectReadOnly(node)">仅查看</button>
               <!-- 全选子级：只勾子级（含按钮），不改本行勾选状态 -->
-              <label
+              <ElCheckbox
                 v-if="node.children.length"
-                class="checkbox-row menu-node__all"
+                class="menu-node__all"
+                :disabled="editingBuiltin"
+                :model-value="descendantsAllChecked(node)"
+                :indeterminate="descendantsSomeChecked(node) && !descendantsAllChecked(node)"
                 @click.stop
+                @change="toggleDescendants(node, Boolean($event))"
               >
-                <input
-                  type="checkbox"
-                  class="raw-checkbox"
-                  :disabled="editingBuiltin"
-                  :checked="descendantsAllChecked(node)"
-                  @change="toggleDescendants(node, !descendantsAllChecked(node))"
-                />
                 全选子级
                 <small v-if="descendantsSomeChecked(node) && !descendantsAllChecked(node)">
                   （部分）
                 </small>
-              </label>
+              </ElCheckbox>
             </div>
           </div>
         </div>

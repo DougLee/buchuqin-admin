@@ -57,7 +57,7 @@ const groups = computed(() => {
       </div>
     </div>
 
-    <div class="rbac-toolbar"><label class="rbac-search"><span>查找权限</span><input v-model="search" placeholder="搜索功能名称、请求方法或接口路径" aria-label="搜索权限目录" /></label><span class="rbac-count">{{ groups.length }} 个模块</span></div>
+    <ElForm class="rbac-toolbar" label-position="top"><ElRow :gutter="16" align="bottom"><ElCol :xs="24" :sm="18"><ElFormItem label="查找权限"><ElInput v-model="search" clearable placeholder="搜索功能名称、请求方法或接口路径" /></ElFormItem></ElCol><ElCol :xs="24" :sm="6"><span class="rbac-count">{{ groups.length }} 个模块</span></ElCol></ElRow></ElForm>
     <!-- IKKRMY：业务 capability 目录（订单动作拆权/成本读写等高风险域）——
          稳定能力标识→URL 模式集，与服务端判权同源；「当前账号」列为本人持有
          参考（granted），角色授权仍在菜单管理按模式串配置。 -->

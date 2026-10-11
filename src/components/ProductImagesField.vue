@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import type { UploadFile } from "element-plus";
 import { uploadImage } from "../api";
 import { resolveImageUrl } from "../utils/image";
 /**
@@ -12,16 +13,13 @@ const emit = defineEmits<{
   (e: "update:modelValue", value: string[]): void;
 }>();
 const MAX_IMAGES = 9;
-const fileInput = ref<HTMLInputElement>(),
-  uploading = ref(false),
+const uploading = ref(false),
   error = ref("");
 function mutate(next: string[]) {
   emit("update:modelValue", next);
 }
-async function onPick(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = ""; // 允许重选同一文件
+async function onPick(uploadFile: UploadFile) {
+  const file = uploadFile.raw;
   if (!file || props.modelValue.length >= MAX_IMAGES) return;
   uploading.value = true;
   error.value = "";
@@ -53,35 +51,26 @@ function remove(index: number) {
       <li v-for="(url, i) in modelValue" :key="`${i}-${url}`">
         <img :src="resolveImageUrl(url)" :alt="`详情图 ${i + 1}`" loading="lazy" />
         <div class="multi-img__ops">
-          <button type="button" :disabled="i === 0" @click="move(i, -1)">上移</button>
-          <button
-            type="button"
+          <ElButton size="small" :disabled="i === 0" @click="move(i, -1)">上移</ElButton>
+          <ElButton
+            size="small"
             :disabled="i === modelValue.length - 1"
             @click="move(i, 1)"
           >
             下移
-          </button>
-          <button type="button" class="danger" @click="remove(i)">删除</button>
+          </ElButton>
+          <ElButton size="small" type="danger" plain @click="remove(i)">删除</ElButton>
         </div>
       </li>
     </ul>
     <p v-else class="multi-img__empty">未配置详情多图，用户端详情页仅展示头图。</p>
     <div v-if="modelValue.length < MAX_IMAGES" class="multi-img__append">
-      <button
-        type="button"
-        class="multi-img__upload"
-        :disabled="uploading"
-        @click="fileInput?.click()"
-      >
-        {{ uploading ? "上传中..." : "＋ 上传详情图" }}
-      </button>
-      <input
-        ref="fileInput"
-        type="file"
+      <ElUpload
+        :auto-upload="false"
+        :show-file-list="false"
         accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-        hidden
-        @change="onPick"
-      />
+        :on-change="onPick"
+      ><ElButton class="multi-img__upload" :loading="uploading">＋ 上传详情图</ElButton></ElUpload>
       <span v-if="error" class="multi-img__error">{{ error }}</span>
     </div>
   </div>
@@ -120,23 +109,6 @@ function remove(index: number) {
   gap: 6px;
   margin-left: auto;
 }
-.multi-img__ops button {
-  border: 1px solid #d5ded9;
-  background: #fff;
-  border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  color: #33504a;
-}
-.multi-img__ops button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.multi-img__ops button.danger {
-  color: #b0392f;
-  border-color: #e7c4c0;
-}
 .multi-img__empty {
   margin: 0 0 10px;
   font-size: 12px;
@@ -149,19 +121,7 @@ function remove(index: number) {
   align-items: center;
   gap: 10px;
 }
-.multi-img__upload {
-  border: 1px dashed #9db3aa;
-  background: #f4f8f6;
-  border-radius: 10px;
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
-  color: #2c4a42;
-}
-.multi-img__upload:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+.multi-img__upload { border-style: dashed; }
 .multi-img__error {
   font-size: 12px;
   color: #b0392f;

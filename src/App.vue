@@ -520,10 +520,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="header-actions">
-          <input
+          <ElInput
             v-model="globalKeyword"
             class="header-global-search"
-            aria-label="全局搜索"
+            clearable
             placeholder="搜索订单 / SKU / 人员"
             @keyup.enter="search"
           />
@@ -596,53 +596,17 @@ onBeforeUnmount(() => {
       </RouterView>
     </main>
     <!-- 自助改密弹窗（IKCJ3L：独立样式，不再蹭 login-card/drawer-actions） -->
-    <div v-if="pwdOpen" class="modal-mask" @click.self="pwdOpen = false">
-      <form class="pwd-card" @submit.prevent="submitPassword">
-        <div class="pwd-card__head">
-          <h2>修改密码</h2>
-          <button
-            type="button"
-            class="pwd-card__close"
-            aria-label="关闭"
-            @click="pwdOpen = false"
-          >
-            ×
-          </button>
-        </div>
-        <div class="login-form">
-          <label
-            >原密码
-            <input
-              v-model="oldPassword"
-              :type="pwdShow ? 'text' : 'password'"
-              autocomplete="current-password"
-          /></label>
-          <label
-            >新密码（至少 8 位）
-            <input
-              v-model="newPassword"
-              :type="pwdShow ? 'text' : 'password'"
-              autocomplete="new-password"
-          /></label>
-          <button
-            type="button"
-            class="pwd-card__toggle"
-            @click="pwdShow = !pwdShow"
-          >
-            {{ pwdShow ? "隐藏密码" : "显示密码" }}
-          </button>
-          <p v-if="pwdError" class="form-hint" role="alert">{{ pwdError }}</p>
-          <div class="pwd-card__actions">
-            <button class="btn ghost" type="button" @click="pwdOpen = false">
-              取消
-            </button>
-            <button class="btn primary" type="submit" :disabled="pwdSaving">
-              {{ pwdSaving ? "提交中..." : "确认修改" }}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
+    <ElDialog v-model="pwdOpen" title="修改密码" width="min(520px, calc(100vw - 32px))" align-center :close-on-click-modal="false">
+      <ElForm label-position="top" @submit.prevent="submitPassword">
+        <ElRow :gutter="16">
+          <ElCol :span="24"><ElFormItem label="原密码"><ElInput v-model="oldPassword" :type="pwdShow ? 'text' : 'password'" autocomplete="current-password" /></ElFormItem></ElCol>
+          <ElCol :span="24"><ElFormItem label="新密码（至少 8 位）"><ElInput v-model="newPassword" :type="pwdShow ? 'text' : 'password'" autocomplete="new-password" /></ElFormItem></ElCol>
+          <ElCol :span="24"><ElCheckbox v-model="pwdShow">显示密码</ElCheckbox></ElCol>
+          <ElCol v-if="pwdError" :span="24"><p class="form-hint" role="alert">{{ pwdError }}</p></ElCol>
+        </ElRow>
+      </ElForm>
+      <template #footer><ElButton @click="pwdOpen = false">取消</ElButton><ElButton type="primary" :loading="pwdSaving" @click="submitPassword">确认修改</ElButton></template>
+    </ElDialog>
     <!-- IKHFWV 新订单浮窗栈：右下角，点击跳订单页 -->
   <div v-if="!isLogin && notifyCards.length" class="new-order-toasts">
     <div

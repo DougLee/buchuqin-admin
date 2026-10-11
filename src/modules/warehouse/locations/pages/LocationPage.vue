@@ -58,7 +58,7 @@ watch(activeCampus, () => void load());
 <template>
   <AdminPageShell title="库位管理" eyebrow="STORAGE LOCATIONS" description="维护仓库库位区域字典，商品编辑时下拉选择，拣货按库位找货。">
     <template #actions><ElButton v-if="writable && hasPerm('POST /admin/locations')" type="primary" @click="openCreate">＋ 新建库位</ElButton></template>
-    <div class="data-panel">
+    <section class="admin-table-panel" aria-label="库位列表">
       <ElTable v-loading="loading" :data="rows" row-key="id" empty-text="暂无库位">
         <ElTableColumn prop="name" label="库位名称" min-width="180" />
         <ElTableColumn prop="note" label="备注" min-width="240"><template #default="{ row }">{{ row.note || '—' }}</template></ElTableColumn>
@@ -66,12 +66,12 @@ watch(activeCampus, () => void load());
         <ElTableColumn label="创建时间" min-width="180"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
         <ElTableColumn v-if="writable" label="操作" fixed="right" width="170"><template #default="{ row }"><ElButton v-if="hasPerm('PATCH /admin/locations/:id')" size="small" @click="openEdit(asLocation(row))">编辑</ElButton><ElButton v-if="hasPerm('DELETE /admin/locations/:id')" size="small" type="danger" plain @click="remove(asLocation(row))">删除</ElButton></template></ElTableColumn>
       </ElTable>
-    </div>
+    </section>
     <ElDialog v-model="dialogOpen" :title="editingId ? '编辑库位' : '新建库位'" width="min(520px, calc(100vw - 32px))" align-center :close-on-click-modal="false">
       <ElForm label-position="top" @submit.prevent="save">
-        <ElFormItem label="库位名称" required><ElInput v-model.trim="form.name" placeholder="如：冷藏A / 常温B" /></ElFormItem>
-        <ElFormItem label="排序（越小越靠前）"><ElInputNumber v-model="form.sort" :min="0" /></ElFormItem>
-        <ElFormItem label="备注（选填）"><ElInput v-model.trim="form.note" placeholder="如：靠门冰柜第2层" /></ElFormItem>
+        <ElRow :gutter="16"><ElCol :xs="24" :sm="12"><ElFormItem label="库位名称" required><ElInput v-model.trim="form.name" placeholder="如：冷藏A / 常温B" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12"><ElFormItem label="排序（越小越靠前）"><ElInputNumber v-model="form.sort" :min="0" /></ElFormItem></ElCol>
+        <ElCol :span="24"><ElFormItem label="备注（选填）"><ElInput v-model.trim="form.note" placeholder="如：靠门冰柜第2层" /></ElFormItem></ElCol></ElRow>
       </ElForm>
       <template #footer><ElButton @click="dialogOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template>
     </ElDialog>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox, type UploadFile } from "element-plus";
 import { api, downloadRoomTemplate, fetchAllPages } from "../../../../api";
 import { activeCampus, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
@@ -158,9 +158,8 @@ async function removeRoom(row: Room) {
     notify(error instanceof Error ? error.message : "删除失败", "error");
   }
 }
-async function pickFile(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  (event.target as HTMLInputElement).value = "";
+async function pickFile(uploadFile: UploadFile) {
+  const file = uploadFile.raw;
   if (!roomBuilding.value || !file) return;
   importing.value = true;
   try {
@@ -196,90 +195,113 @@ onMounted(load);
         >新建楼栋</ElButton
       ></template
     >
-    <div class="toolbar">
-      <ElInput
-        v-model="keyword"
-        clearable
-        placeholder="搜索楼栋"
-        class="search"
+    <section class="admin-filter-panel" aria-label="楼栋筛选">
+      <ElForm class="admin-filter-form" label-position="top"
+        ><ElRow :gutter="12" align="bottom"
+          ><ElCol :xs="24" :sm="18"
+            ><ElFormItem label="搜索楼栋"
+              ><ElInput
+                v-model="keyword"
+                clearable
+                placeholder="搜索楼栋" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="6"
+            ><ElFormItem label=" "
+              ><ElButton :loading="loading" @click="load"
+                >刷新</ElButton
+              ></ElFormItem
+            ></ElCol
+          ></ElRow
+        ></ElForm
+      >
+    </section>
+    <section class="admin-table-panel" aria-label="楼栋列表">
+      <ElTable v-loading="loading" :data="rows" row-key="id"
+        ><ElTableColumn
+          prop="name"
+          label="楼栋"
+          min-width="160"
+        /><ElTableColumn prop="floors" label="楼层" width="90" /><ElTableColumn
+          label="电梯"
+          width="100"
+          ><template #default="{ row }">{{
+            row.hasElevator ? "有电梯" : "无电梯"
+          }}</template></ElTableColumn
+        ><ElTableColumn label="性别分区" width="110"
+          ><template #default="{ row }">{{
+            row.gender === "male"
+              ? "男生"
+              : row.gender === "female"
+                ? "女生"
+                : "混合"
+          }}</template></ElTableColumn
+        ><ElTableColumn
+          prop="roomsCount"
+          label="寝室数"
+          width="100"
+        /><ElTableColumn
+          prop="staffName"
+          label="楼长"
+          min-width="130"
+        /><ElTableColumn label="操作" fixed="right" width="230"
+          ><template #default="{ row }"
+            ><ElButton
+              v-if="hasPerm('PATCH /admin/buildings/:id')"
+              size="small"
+              type="primary"
+              @click="edit(asBuilding(row))"
+              >编辑</ElButton
+            ><ElButton
+              v-if="hasPerm('GET /admin/buildings/:id/rooms')"
+              size="small"
+              @click="openRooms(asBuilding(row))"
+              >寝室</ElButton
+            ><ElButton
+              v-if="hasPerm('DELETE /admin/buildings/:id')"
+              size="small"
+              type="danger"
+              plain
+              @click="remove(asBuilding(row))"
+              >删除</ElButton
+            ></template
+          ></ElTableColumn
+        ></ElTable
+      ><AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
       />
-      <div class="toolbar-spacer" />
-      <ElButton :loading="loading" @click="load">刷新</ElButton>
-    </div>
-    <ElTable v-loading="loading" :data="rows" row-key="id"
-      ><ElTableColumn prop="name" label="楼栋" min-width="160" /><ElTableColumn
-        prop="floors"
-        label="楼层"
-        width="90"
-      /><ElTableColumn label="电梯" width="100"
-        ><template #default="{ row }">{{
-          row.hasElevator ? "有电梯" : "无电梯"
-        }}</template></ElTableColumn
-      ><ElTableColumn label="性别分区" width="110"
-        ><template #default="{ row }">{{
-          row.gender === "male"
-            ? "男生"
-            : row.gender === "female"
-              ? "女生"
-              : "混合"
-        }}</template></ElTableColumn
-      ><ElTableColumn
-        prop="roomsCount"
-        label="寝室数"
-        width="100"
-      /><ElTableColumn
-        prop="staffName"
-        label="楼长"
-        min-width="130"
-      /><ElTableColumn label="操作" fixed="right" width="230"
-        ><template #default="{ row }"
-          ><ElButton
-            v-if="hasPerm('PATCH /admin/buildings/:id')"
-            size="small"
-            type="primary"
-            @click="edit(asBuilding(row))"
-            >编辑</ElButton
-          ><ElButton
-            v-if="hasPerm('GET /admin/buildings/:id/rooms')"
-            size="small"
-            @click="openRooms(asBuilding(row))"
-            >寝室</ElButton
-          ><ElButton
-            v-if="hasPerm('DELETE /admin/buildings/:id')"
-            size="small"
-            type="danger"
-            plain
-            @click="remove(asBuilding(row))"
-            >删除</ElButton
-          ></template
-        ></ElTableColumn
-      ></ElTable
-    ><AdminPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-    /><ElDialog
+    </section>
+    <ElDialog
       v-model="editorOpen"
       :title="editing ? '编辑楼栋' : '新建楼栋'"
       width="min(560px, calc(100vw - 32px))"
       align-center
       :close-on-click-modal="false"
       ><ElForm label-position="top"
-        ><ElFormItem label="楼栋名称"
-          ><ElInput v-model="form.name" /></ElFormItem
-        ><ElFormItem label="楼层数"
-          ><ElInputNumber v-model="form.floors" :min="1" /></ElFormItem
-        ><ElFormItem label="性别分区"
-          ><ElSelect v-model="form.gender"
-            ><ElOption label="男生" value="male" /><ElOption
-              label="女生"
-              value="female" /><ElOption
-              label="混合"
-              value="mixed" /></ElSelect></ElFormItem
-        ><ElFormItem
-          ><ElCheckbox v-model="form.hasElevator"
-            >有电梯</ElCheckbox
-          ></ElFormItem
+        ><ElRow :gutter="16"
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="楼栋名称"
+              ><ElInput v-model="form.name" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="楼层数"
+              ><ElInputNumber
+                v-model="form.floors"
+                :min="1" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="性别分区"
+              ><ElSelect v-model="form.gender"
+                ><ElOption label="男生" value="male" /><ElOption
+                  label="女生"
+                  value="female" /><ElOption
+                  label="混合"
+                  value="mixed" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="电梯"
+              ><ElCheckbox v-model="form.hasElevator"
+                >有电梯</ElCheckbox
+              ></ElFormItem
+            ></ElCol
+          ></ElRow
         ></ElForm
       ><template #footer
         ><ElButton @click="editorOpen = false">取消</ElButton
@@ -309,12 +331,15 @@ onMounted(load);
           "
           @click="downloadRoomTemplate(roomBuilding.id)"
           >下载模板</ElButton
-        ><label
+        ><ElUpload
           v-if="hasPerm('POST /admin/buildings/:id/rooms/import')"
           class="upload"
-          ><ElButton :loading="importing">批量导入</ElButton
-          ><input type="file" accept=".xlsx,.csv" hidden @change="pickFile"
-        /></label>
+          :auto-upload="false"
+          :show-file-list="false"
+          accept=".xlsx,.csv"
+          :on-change="pickFile"
+          ><ElButton :loading="importing">批量导入</ElButton></ElUpload
+        >
       </div>
       <ElTable v-loading="roomLoading" :data="rooms" max-height="420"
         ><ElTableColumn prop="floor" label="楼层" width="100" /><ElTableColumn
@@ -338,9 +363,6 @@ onMounted(load);
   >
 </template>
 <style scoped>
-.search {
-  width: min(360px, 100%);
-}
 .el-dialog .el-select,
 .el-dialog .el-input-number {
   width: 100%;

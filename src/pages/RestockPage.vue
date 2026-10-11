@@ -410,7 +410,7 @@ function gotoPurchase() {
 
     <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar -->
     <div v-if="isHqScope" class="toolbar">
-      <div class="segmented inv-tabs">
+      <div class="segmented inv-tabs single-line-tabs">
         <ElButton text :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
           订货批次
         </ElButton>
@@ -482,8 +482,8 @@ function gotoPurchase() {
     <!-- 新建/编辑批次 -->
     <ElDialog v-model="batchDrawer" :title="batchEditId ? '编辑批次' : '新建订货批次'" width="min(620px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
       <ElForm label-position="top">
-        <ElFormItem label="批次名称"><ElInput v-model="batchForm.name" maxlength="60" placeholder="如：9 月第 2 期补货" /></ElFormItem>
-        <div class="time-row"><ElFormItem label="开始时间"><ElDatePicker v-model="batchForm.startAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择开始时间" /></ElFormItem><ElFormItem label="结束时间"><ElDatePicker v-model="batchForm.endAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择结束时间" /></ElFormItem></div>
+        <ElRow :gutter="16"><ElCol :span="24"><ElFormItem label="批次名称"><ElInput v-model="batchForm.name" maxlength="60" placeholder="如：9 月第 2 期补货" /></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12"><ElFormItem label="开始时间"><ElDatePicker v-model="batchForm.startAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择开始时间" /></ElFormItem></ElCol><ElCol :xs="24" :sm="12"><ElFormItem label="结束时间"><ElDatePicker v-model="batchForm.endAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择结束时间" /></ElFormItem></ElCol></ElRow>
       </ElForm>
       <template #footer><ElButton @click="batchDrawer = false">取消</ElButton><ElButton type="primary" :loading="batchSaving" @click="submitBatch">{{ batchEditId ? "保存修改" : "创建批次" }}</ElButton></template>
     </ElDialog>
@@ -616,7 +616,7 @@ function gotoPurchase() {
     <!-- 审核弹框（总部） -->
     <ElDialog v-model="auditDrawer" title="订货单审核" width="min(620px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
       <p v-if="auditTarget" class="detail-window">{{ auditTarget.campusShortName || auditTarget.campusName }} · {{ auditTarget.batchName }} · 共 {{ auditTarget.totalCases ?? 0 }} 件（折算 {{ auditTarget.totalUnits ?? 0 }}）</p>
-      <ElForm label-position="top"><ElFormItem :label="`备注${auditTarget?.status === 'confirmed' ? '（撤销时选填）' : '（驳回必填，确认选填）'}`"><ElInput v-model="auditNote" type="textarea" :rows="4" maxlength="200" show-word-limit placeholder="如：数量超出本月预算，请酌减" /></ElFormItem></ElForm>
+      <ElForm label-position="top"><ElRow><ElCol :span="24"><ElFormItem :label="`备注${auditTarget?.status === 'confirmed' ? '（撤销时选填）' : '（驳回必填，确认选填）'}`"><ElInput v-model="auditNote" type="textarea" :rows="4" maxlength="200" show-word-limit placeholder="如：数量超出本月预算，请酌减" /></ElFormItem></ElCol></ElRow></ElForm>
       <template #footer><ElButton @click="auditDrawer = false">取消</ElButton><ElButton v-if="auditTarget?.status === 'submitted'" type="danger" plain :loading="auditBusy" @click="audit('reject')">驳回</ElButton><ElButton v-if="auditTarget?.status === 'submitted'" type="primary" :loading="auditBusy" @click="audit('confirm')">确认审核</ElButton><ElButton v-if="auditTarget?.status === 'confirmed'" type="primary" :loading="auditBusy" @click="audit('revoke')">撤销确认并放锁</ElButton></template>
     </ElDialog>
 
@@ -654,7 +654,7 @@ function gotoPurchase() {
     <!-- 生成采购单（IKFOQ1：一键聚合，单价预填 costPrice 可改） -->
     <ElDialog v-model="poDrawer" title="生成采购单" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
       <p class="detail-window">{{ detail?.name }} · 已确认订货单按商品聚合；单价默认进货价，可逐行修改</p>
-      <ElForm label-position="top"><ElFormItem label="供应商名称"><ElInput v-model="poSupplier" maxlength="60" placeholder="如：XX 食品经销部" /></ElFormItem></ElForm>
+      <ElForm label-position="top"><ElRow><ElCol :span="24"><ElFormItem label="供应商名称"><ElInput v-model="poSupplier" maxlength="60" placeholder="如：XX 食品经销部" /></ElFormItem></ElCol></ElRow></ElForm>
       <ElTable :data="poLines" row-key="productId" empty-text="暂无采购行"><ElTableColumn prop="name" label="商品" min-width="220" /><ElTableColumn prop="cases" label="应收（件）" width="120" /><ElTableColumn label="单价（元）" width="180"><template #default="{ row }"><ElInputNumber v-model="row.unitCost" :min="0" :precision="2" /></template></ElTableColumn></ElTable>
       <template #footer><ElButton @click="poDrawer = false">取消</ElButton><ElButton type="primary" :loading="poSaving" @click="submitPurchaseOrder">生成采购单</ElButton></template>
     </ElDialog>

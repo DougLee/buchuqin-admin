@@ -105,7 +105,7 @@ onMounted(load);
     title="C 端用户"
     eyebrow="CUSTOMER BASE"
     description="查看当前顶部校区的用户规模、消费和订单流水。"
-    ><div v-if="stats" class="stats">
+    ><div v-if="stats" class="stats" aria-label="用户统计">
       <span
         >总用户 <b>{{ stats.total }}</b></span
       ><span
@@ -116,61 +116,73 @@ onMounted(load);
         >人均订单 <b>{{ stats.avgOrders }}</b></span
       >
     </div>
-    <div class="toolbar">
-      <ElInput
-        v-model="keyword"
-        clearable
-        placeholder="搜索昵称、手机号或寝室"
-        class="search"
+    <section class="admin-filter-panel" aria-label="用户筛选">
+      <ElForm class="admin-filter-form" label-position="top"
+        ><ElRow :gutter="12" align="bottom"
+          ><ElCol :xs="24" :sm="18"
+            ><ElFormItem label="搜索用户"
+              ><ElInput
+                v-model="keyword"
+                clearable
+                placeholder="搜索昵称、手机号或寝室" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="6"
+            ><ElFormItem label=" "
+              ><ElButton :loading="loading" @click="load"
+                >刷新</ElButton
+              ></ElFormItem
+            ></ElCol
+          ></ElRow
+        ></ElForm
+      >
+    </section>
+    <section class="admin-table-panel" aria-label="C 端用户列表">
+      <ElTable
+        v-loading="loading"
+        :data="rows"
+        row-key="id"
+        :empty-text="campusId ? '暂无用户' : '请先在顶部选择校区'"
+        @row-click="(row) => openDetail(asUser(row))"
+        ><ElTableColumn
+          prop="nickname"
+          label="用户"
+          min-width="140"
+        /><ElTableColumn
+          prop="phoneMasked"
+          label="手机号"
+          width="140"
+        /><ElTableColumn label="寝室" width="150"
+          ><template #default="{ row }">{{
+            [row.buildingName, row.room].filter(Boolean).join(" ") || "—"
+          }}</template></ElTableColumn
+        ><ElTableColumn
+          prop="orderCount"
+          label="订单数"
+          width="100"
+        /><ElTableColumn label="累计消费" width="130"
+          ><template #default="{ row }"
+            >¥{{ fenToYuan(row.totalSpend) }}</template
+          ></ElTableColumn
+        ><ElTableColumn label="注册时间" width="175"
+          ><template #default="{ row }">{{
+            fmtDateTime(row.createdAt)
+          }}</template></ElTableColumn
+        ><ElTableColumn label="操作" width="100"
+          ><template #default="{ row }"
+            ><ElButton
+              size="small"
+              type="primary"
+              @click.stop="openDetail(asUser(row))"
+              >详情</ElButton
+            ></template
+          ></ElTableColumn
+        ></ElTable
+      ><AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
       />
-      <div class="toolbar-spacer" />
-      <ElButton :loading="loading" @click="load">刷新</ElButton>
-    </div>
-    <ElTable
-      v-loading="loading"
-      :data="rows"
-      row-key="id"
-      :empty-text="campusId ? '暂无用户' : '请先在顶部选择校区'"
-      @row-click="(row) => openDetail(asUser(row))"
-      ><ElTableColumn
-        prop="nickname"
-        label="用户"
-        min-width="140"
-      /><ElTableColumn
-        prop="phoneMasked"
-        label="手机号"
-        width="140"
-      /><ElTableColumn label="寝室" width="150"
-        ><template #default="{ row }">{{
-          [row.buildingName, row.room].filter(Boolean).join(" ") || "—"
-        }}</template></ElTableColumn
-      ><ElTableColumn
-        prop="orderCount"
-        label="订单数"
-        width="100"
-      /><ElTableColumn label="累计消费" width="130"
-        ><template #default="{ row }"
-          >¥{{ fenToYuan(row.totalSpend) }}</template
-        ></ElTableColumn
-      ><ElTableColumn label="注册时间" width="175"
-        ><template #default="{ row }">{{
-          fmtDateTime(row.createdAt)
-        }}</template></ElTableColumn
-      ><ElTableColumn label="操作" width="100"
-        ><template #default="{ row }"
-          ><ElButton
-            size="small"
-            type="primary"
-            @click.stop="openDetail(asUser(row))"
-            >详情</ElButton
-          ></template
-        ></ElTableColumn
-      ></ElTable
-    ><AdminPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-    /><ElDialog
+    </section>
+    <ElDialog
       v-model="detailOpen"
       title="用户详情"
       width="min(760px, calc(100vw - 32px))"
@@ -231,12 +243,12 @@ onMounted(load);
   margin-bottom: 14px;
 }
 .stats span {
-  padding: 10px 14px;
-  background: var(--el-fill-color-light);
-  border-radius: 10px;
-}
-.search {
-  width: min(360px, 100%);
+  min-width: 150px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px #163f2b08;
 }
 h3 {
   margin: 18px 0 10px;

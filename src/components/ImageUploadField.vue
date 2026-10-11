@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import type { UploadFile } from "element-plus";
 import { uploadImage } from "../api";
 import { resolveImageUrl } from "../utils/image";
 /**
@@ -11,13 +12,10 @@ const props = defineProps<{ modelValue: string; folder?: string }>();
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
 }>();
-const fileInput = ref<HTMLInputElement>(),
-  uploading = ref(false),
+const uploading = ref(false),
   error = ref("");
-async function onPick(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = ""; // 允许重选同一文件
+async function onPick(uploadFile: UploadFile) {
+  const file = uploadFile.raw;
   if (!file) return;
   uploading.value = true;
   error.value = "";
@@ -33,31 +31,18 @@ async function onPick(event: Event) {
 <template>
   <div class="img-field">
     <div class="img-field__row">
-      <button
-        type="button"
-        class="btn ghost img-field__btn"
-        :disabled="uploading"
-        @click="fileInput?.click()"
-      >
-        {{ uploading ? "上传中..." : "上传图片" }}
-      </button>
-      <input
-        ref="fileInput"
-        type="file"
+      <ElUpload
+        :auto-upload="false"
+        :show-file-list="false"
         accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-        hidden
-        @change="onPick"
-      />
-      <input
+        :on-change="onPick"
+      ><ElButton class="img-field__btn" :loading="uploading">上传图片</ElButton></ElUpload>
+      <ElInput
         class="img-field__url"
-        :value="modelValue"
+        :model-value="modelValue"
+        clearable
         placeholder="或直接粘贴图片 URL"
-        @input="
-          emit(
-            'update:modelValue',
-            ($event.target as HTMLInputElement).value.trim(),
-          )
-        "
+        @input="emit('update:modelValue', String($event).trim())"
       />
     </div>
     <div v-if="modelValue" class="img-field__preview">
@@ -68,13 +53,14 @@ async function onPick(event: Event) {
         loading="lazy"
       />
       <!-- IKC1AA：一键清除（保存后即落「恢复默认」语义，如类别图回退默认图标） -->
-      <button
-        type="button"
+      <ElButton
+        plain
+        type="danger"
         class="img-field__clear"
         @click="emit('update:modelValue', '')"
       >
         清除
-      </button>
+      </ElButton>
     </div>
     <p v-if="error" class="form-hint">{{ error }}</p>
   </div>
@@ -92,21 +78,7 @@ async function onPick(event: Event) {
 .img-field__btn {
   flex: none;
 }
-.img-field__url {
-  flex: 1;
-  min-width: 0;
-  height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #fff;
-  padding: 0 11px;
-  outline: 0;
-  color: #153628;
-}
-.img-field__url:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px #159c5515;
-}
+.img-field__url { flex: 1; min-width: 0; }
 .img-field__thumb {
   width: 88px;
   height: 88px;
@@ -118,14 +90,5 @@ async function onPick(event: Event) {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.img-field__clear {
-  border: 1px solid #f1d2bf;
-  background: #fff5ef;
-  color: #b65322;
-  border-radius: 8px;
-  padding: 5px 12px;
-  font-size: 12px;
-  cursor: pointer;
 }
 </style>

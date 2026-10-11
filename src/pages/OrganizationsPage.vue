@@ -251,38 +251,20 @@ function organizationRow(row: unknown): AdminOrganization {
           AppID 一经登记即生效（该小程序登录直接进本组织）；名称/简称/AppID
           全局唯一。敏感凭据只写不回读——留空=保留现状，填写=覆盖，勾选清除=置空。
         </p>
-        <div class="organization-form-grid">
-          <label>
-            组织名称
-            <ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" />
-          </label>
-          <label>
-            组织简称
-            <ElInput v-model="form.shortName" placeholder="1-20 字，如：某食社" />
-          </label>
-          <label>
-            小程序 AppID{{ editing ? "（清空=回落平台 env 兜底）" : "" }}
-            <ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" />
-          </label>
-        </div>
+        <ElForm label-position="top"><ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12"><ElFormItem label="组织名称"><ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="组织简称"><ElInput v-model="form.shortName" placeholder="1-20 字，如：某食社" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem :label="`小程序 AppID${editing ? '（清空=回落平台 env 兜底）' : ''}`"><ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" /></ElFormItem></ElCol>
+        </ElRow>
         <p class="drawer-sec">微信支付与回调</p>
-        <div class="organization-form-grid">
-          <label>
-            商户号 mchId（组织 B 独立商户号）
-            <ElInput v-model="form.mchId" placeholder="未配可留空" />
-          </label>
-          <label>
-            证书序列号
-            <ElInput v-model="form.serialNo" placeholder="未配可留空" />
-          </label>
-          <label>
-            回调域名
-            <ElInput v-model="form.notifyDomain" placeholder="如 https://api-b.example.com" />
-          </label>
-        </div>
+        <ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12"><ElFormItem label="商户号 mchId（组织 B 独立商户号）"><ElInput v-model="form.mchId" placeholder="未配可留空" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="证书序列号"><ElInput v-model="form.serialNo" placeholder="未配可留空" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="回调域名"><ElInput v-model="form.notifyDomain" placeholder="如 https://api-b.example.com" /></ElFormItem></ElCol>
+        </ElRow>
         <p class="drawer-sec">敏感凭据（只写不回读）</p>
-        <div class="sens-list">
-          <div class="sens-row">
+        <ElRow :gutter="16">
+          <ElCol :span="24"><ElFormItem label="小程序 Secret"><div class="sens-row">
             <ElInput
               v-model="form.wxSecret"
               type="password"
@@ -293,8 +275,8 @@ function organizationRow(row: unknown): AdminOrganization {
             />
             <ElTag :type="editing && editing.hasWxSecret ? 'success' : 'warning'">{{ editing && editing.hasWxSecret ? "已配置" : "未配置" }}</ElTag>
             <ElCheckbox v-model="clearFlags.wxSecret">清除</ElCheckbox>
-          </div>
-          <div class="sens-row">
+          </div></ElFormItem></ElCol>
+          <ElCol :span="24"><ElFormItem label="商户 APIv3 密钥"><div class="sens-row">
             <ElInput
               v-model="form.mchApiV3Key"
               type="password"
@@ -305,8 +287,8 @@ function organizationRow(row: unknown): AdminOrganization {
             />
             <ElTag :type="editing && editing.hasMchApiV3Key ? 'success' : 'warning'">{{ editing && editing.hasMchApiV3Key ? "已配置" : "未配置" }}</ElTag>
             <ElCheckbox v-model="clearFlags.mchApiV3Key">清除</ElCheckbox>
-          </div>
-          <div class="sens-row sens-tall">
+          </div></ElFormItem></ElCol>
+          <ElCol :span="24"><ElFormItem label="商户私钥 PEM"><div class="sens-row sens-tall">
             <ElInput
               v-model="form.privateKey"
               type="textarea"
@@ -316,8 +298,8 @@ function organizationRow(row: unknown): AdminOrganization {
             />
             <ElTag :type="editing && editing.hasPrivateKey ? 'success' : 'warning'">{{ editing && editing.hasPrivateKey ? "已配置" : "未配置" }}</ElTag>
             <ElCheckbox v-model="clearFlags.privateKey">清除</ElCheckbox>
-          </div>
-        </div>
+          </div></ElFormItem></ElCol>
+        </ElRow></ElForm>
         <ElAlert v-if="drawerError" class="dialog-error" type="error" show-icon :closable="false" :title="drawerError" />
         <template #footer><div class="dialog-actions"><ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton><ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">{{ editing ? "保存修改" : "创建组织" }}</ElButton></div></template>
     </ElDialog>
@@ -351,19 +333,6 @@ function organizationRow(row: unknown): AdminOrganization {
   margin: 0 0 10px;
   font-size: 11px;
   color: var(--muted);
-}
-.organization-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 16px;
-  margin-top: 14px;
-}
-.organization-form-grid label {
-  display: grid;
-  gap: 7px;
-  color: #374b41;
-  font-size: 12px;
-  font-weight: 600;
 }
 .wx-badges {
   display: flex;
@@ -403,7 +372,6 @@ td small.muted {
 :global(.organization-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; padding: 22px 26px 8px; }
 :global(.organization-dialog .el-dialog__footer) { padding: 14px 26px 26px; border-top: 1px solid var(--line); background: #fff; box-shadow: 0 -10px 24px #163f2b0a; }
 @media (max-width: 720px) {
-  .organization-form-grid { grid-template-columns: 1fr; }
   .sens-row { grid-template-columns: minmax(0, 1fr) auto; }
   .sens-row :deep(.el-checkbox) { grid-column: 1 / -1; min-height: 44px; }
 }

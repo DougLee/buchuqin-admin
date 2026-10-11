@@ -134,18 +134,7 @@ function toggleRow(id: string) {
       <div class="pagination">
         <span>第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 条</span>
         <div class="pager-right">
-          <label class="page-mode"
-            >每页
-            <select
-              v-model.number="pageSize"
-              aria-label="每页条数"
-              @change="page = 1; load()"
-            >
-              <option v-for="size in PAGE_SIZES" :key="size" :value="size">
-                {{ size }} 条
-              </option>
-            </select>
-          </label>
+          <div class="page-mode"><span>每页</span><ElSelect v-model="pageSize" aria-label="每页条数" @change="page = 1; load()"><ElOption v-for="size in PAGE_SIZES" :key="size" :label="`${size} 条`" :value="size" /></ElSelect></div>
           <div>
             <button :disabled="page === 1" @click="goto(page - 1)">←</button>
             <template v-for="(p, i) in pageList" :key="`${i}-${p}`">

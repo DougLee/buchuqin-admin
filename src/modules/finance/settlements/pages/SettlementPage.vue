@@ -93,116 +93,153 @@ onMounted(load);
     title="结算中心"
     eyebrow="FINANCE SETTLEMENT"
     description="月度账单确认、打款与跨期调整。"
-    ><div class="summary">
-      <span
-        >当前页应结 <b>¥{{ fenToYuan(summary.payable, true) }}</b></span
-      ><span
-        >已打款 <b>¥{{ fenToYuan(summary.paid, true) }}</b></span
-      >
+    ><div class="finance-summary" aria-label="结算汇总">
+      <article>
+        <span>当前页应结</span>
+        <strong>¥{{ fenToYuan(summary.payable, true) }}</strong>
+      </article>
+      <article>
+        <span>已打款</span>
+        <strong>¥{{ fenToYuan(summary.paid, true) }}</strong>
+      </article>
     </div>
-    <div class="tabs">
-      <ElButton
-        v-for="item in BILL_STATUS_TABS"
-        :key="item.key"
-        :type="status === item.key ? 'primary' : 'default'"
-        @click="status = item.key"
-        >{{ item.label }}</ElButton
+    <section
+      class="admin-filter-panel admin-filter-panel--split"
+      aria-label="结算筛选"
+    >
+      <div class="tabs single-line-tabs finance-tabs">
+        <ElButton
+          v-for="item in BILL_STATUS_TABS"
+          :key="item.key"
+          :type="status === item.key ? 'primary' : 'default'"
+          @click="status = item.key"
+          >{{ item.label }}</ElButton
+        >
+      </div>
+      <ElForm class="admin-filter-form settlement-filters" label-position="top"
+        ><ElRow :gutter="12" align="bottom"
+          ><ElCol :xs="24" :sm="8"
+            ><ElSelect v-model="month"
+              ><ElOption
+                v-for="item in months"
+                :key="item"
+                :label="item"
+                :value="item" /></ElSelect></ElCol
+          ><ElCol :xs="24" :sm="10"
+            ><ElInput
+              v-model="keyword"
+              clearable
+              placeholder="搜索人员" /></ElCol
+          ><ElCol :xs="24" :sm="6"
+            ><ElButton :loading="loading" @click="load">刷新</ElButton></ElCol
+          ></ElRow
+        ></ElForm
       >
-    </div>
-    <div class="toolbar">
-      <ElSelect v-model="month"
-        ><ElOption
-          v-for="item in months"
-          :key="item"
-          :label="item"
-          :value="item" /></ElSelect
-      ><ElInput
-        v-model="keyword"
-        clearable
-        placeholder="搜索人员"
-        class="search"
+    </section>
+    <section class="admin-table-panel" aria-label="结算列表">
+      <ElTable v-loading="loading" :data="rows" row-key="id"
+        ><ElTableColumn
+          prop="staffName"
+          label="人员"
+          min-width="140"
+        /><ElTableColumn
+          prop="roleText"
+          label="角色"
+          width="120"
+        /><ElTableColumn prop="period" label="账期" width="110" /><ElTableColumn
+          label="底薪"
+          width="110"
+          ><template #default="{ row }"
+            >¥{{ fenToYuan(row.baseSalary) }}</template
+          ></ElTableColumn
+        ><ElTableColumn label="提成" width="110"
+          ><template #default="{ row }"
+            >¥{{ fenToYuan(row.commissionTotal) }}</template
+          ></ElTableColumn
+        ><ElTableColumn label="调整" width="110"
+          ><template #default="{ row }"
+            >¥{{ fenToYuan(row.adjustment) }}</template
+          ></ElTableColumn
+        ><ElTableColumn label="应结" width="120"
+          ><template #default="{ row }"
+            ><b>¥{{ fenToYuan(row.payable) }}</b></template
+          ></ElTableColumn
+        ><ElTableColumn label="状态" width="110"
+          ><template #default="{ row }"
+            ><ElTag>{{
+              STATUS_TEXT[row.status] || row.status
+            }}</ElTag></template
+          ></ElTableColumn
+        ><ElTableColumn label="操作" fixed="right" width="180"
+          ><template #default="{ row }"
+            ><ElButton
+              v-if="
+                row.status === 'pending-review' &&
+                hasPerm('POST /admin/settlements/:id/confirm')
+              "
+              size="small"
+              type="primary"
+              @click="act(asSettlement(row), 'confirm')"
+              >确认</ElButton
+            ><ElButton
+              v-if="
+                row.status === 'confirmed' &&
+                hasPerm('POST /admin/settlements/:id/pay')
+              "
+              size="small"
+              type="success"
+              @click="act(asSettlement(row), 'pay')"
+              >登记打款</ElButton
+            ></template
+          ></ElTableColumn
+        ></ElTable
+      ><AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
       />
-      <div class="toolbar-spacer" />
-      <ElButton :loading="loading" @click="load">刷新</ElButton>
-    </div>
-    <ElTable v-loading="loading" :data="rows" row-key="id"
-      ><ElTableColumn
-        prop="staffName"
-        label="人员"
-        min-width="140"
-      /><ElTableColumn prop="roleText" label="角色" width="120" /><ElTableColumn
-        prop="period"
-        label="账期"
-        width="110"
-      /><ElTableColumn label="底薪" width="110"
-        ><template #default="{ row }"
-          >¥{{ fenToYuan(row.baseSalary) }}</template
-        ></ElTableColumn
-      ><ElTableColumn label="提成" width="110"
-        ><template #default="{ row }"
-          >¥{{ fenToYuan(row.commissionTotal) }}</template
-        ></ElTableColumn
-      ><ElTableColumn label="调整" width="110"
-        ><template #default="{ row }"
-          >¥{{ fenToYuan(row.adjustment) }}</template
-        ></ElTableColumn
-      ><ElTableColumn label="应结" width="120"
-        ><template #default="{ row }"
-          ><b>¥{{ fenToYuan(row.payable) }}</b></template
-        ></ElTableColumn
-      ><ElTableColumn label="状态" width="110"
-        ><template #default="{ row }"
-          ><ElTag>{{ STATUS_TEXT[row.status] || row.status }}</ElTag></template
-        ></ElTableColumn
-      ><ElTableColumn label="操作" fixed="right" width="180"
-        ><template #default="{ row }"
-          ><ElButton
-            v-if="
-              row.status === 'pending-review' &&
-              hasPerm('POST /admin/settlements/:id/confirm')
-            "
-            size="small"
-            type="primary"
-            @click="act(asSettlement(row), 'confirm')"
-            >确认</ElButton
-          ><ElButton
-            v-if="
-              row.status === 'confirmed' &&
-              hasPerm('POST /admin/settlements/:id/pay')
-            "
-            size="small"
-            type="success"
-            @click="act(asSettlement(row), 'pay')"
-            >登记打款</ElButton
-          ></template
-        ></ElTableColumn
-      ></ElTable
-    ><AdminPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-  /></AdminPageShell>
+    </section>
+  </AdminPageShell>
 </template>
 <style scoped>
-.summary,
-.tabs {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+.finance-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: 14px;
+  margin-bottom: 18px;
 }
-.summary span {
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--el-fill-color-light);
+.finance-summary article {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px #163f2b08;
 }
-.toolbar {
-  flex-wrap: wrap;
+.finance-summary span {
+  color: var(--muted);
 }
-.toolbar .el-select {
-  width: 150px;
+.finance-summary strong {
+  font-size: 24px;
+  color: var(--ink);
 }
-.search {
-  width: min(320px, 100%);
+.finance-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.settlement-filters {
+  flex-basis: 680px !important;
+}
+@media (max-width: 1280px) {
+  .settlement-filters {
+    flex-basis: auto !important;
+  }
+}
+@media (max-width: 760px) {
+  .finance-summary {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

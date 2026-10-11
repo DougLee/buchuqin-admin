@@ -125,93 +125,110 @@ onMounted(load);
         @click="create"
         >新建规则</ElButton
       ></template
-    ><ElTable v-loading="loading" :data="rows" row-key="id"
-      ><ElTableColumn label="楼栋" width="130"
-        ><template #default="{ row }">{{
-          buildingName(row.buildingId)
-        }}</template></ElTableColumn
-      ><ElTableColumn label="楼层" width="90"
-        ><template #default="{ row }">{{
-          row.floor ?? "*"
-        }}</template></ElTableColumn
-      ><ElTableColumn label="重量区间" min-width="150"
-        ><template #default="{ row }"
-          >{{ row.weightFrom ?? "*" }} ~ {{ row.weightTo ?? "*" }} kg</template
-        ></ElTableColumn
-      ><ElTableColumn label="配送模式" width="120"
-        ><template #default="{ row }">{{
-          row.mode === "instant"
-            ? "即时达"
-            : row.mode === "scheduled"
-              ? "预约达"
-              : "全部"
-        }}</template></ElTableColumn
-      ><ElTableColumn label="单价" width="110"
-        ><template #default="{ row }"
-          >¥{{ fenToYuan(row.price) }}</template
-        ></ElTableColumn
-      ><ElTableColumn prop="version" label="版本" width="80" /><ElTableColumn
-        label="生效时间"
-        min-width="170"
-        ><template #default="{ row }">{{
-          fmtDateTime(row.effectiveAt)
-        }}</template></ElTableColumn
-      ><ElTableColumn label="状态" width="100"
-        ><template #default="{ row }"
-          ><ElTag :type="row.status === 'active' ? 'success' : 'info'">{{
-            row.status === "active" ? "启用" : "停用"
-          }}</ElTag></template
-        ></ElTableColumn
-      ><ElTableColumn label="操作" width="100"
-        ><template #default="{ row }"
-          ><ElButton
-            v-if="hasPerm('PATCH /admin/commission-rules/:id')"
-            size="small"
-            @click="toggle(asRule(row))"
-            >{{ row.status === "active" ? "停用" : "启用" }}</ElButton
-          ></template
-        ></ElTableColumn
-      ></ElTable
-    ><AdminPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :total="total"
-    /><ElDialog
+    >
+    <section class="admin-table-panel" aria-label="提成规则列表">
+      <ElTable v-loading="loading" :data="rows" row-key="id"
+        ><ElTableColumn label="楼栋" width="130"
+          ><template #default="{ row }">{{
+            buildingName(row.buildingId)
+          }}</template></ElTableColumn
+        ><ElTableColumn label="楼层" width="90"
+          ><template #default="{ row }">{{
+            row.floor ?? "*"
+          }}</template></ElTableColumn
+        ><ElTableColumn label="重量区间" min-width="150"
+          ><template #default="{ row }"
+            >{{ row.weightFrom ?? "*" }} ~
+            {{ row.weightTo ?? "*" }} kg</template
+          ></ElTableColumn
+        ><ElTableColumn label="配送模式" width="120"
+          ><template #default="{ row }">{{
+            row.mode === "instant"
+              ? "即时达"
+              : row.mode === "scheduled"
+                ? "预约达"
+                : "全部"
+          }}</template></ElTableColumn
+        ><ElTableColumn label="单价" width="110"
+          ><template #default="{ row }"
+            >¥{{ fenToYuan(row.price) }}</template
+          ></ElTableColumn
+        ><ElTableColumn prop="version" label="版本" width="80" /><ElTableColumn
+          label="生效时间"
+          min-width="170"
+          ><template #default="{ row }">{{
+            fmtDateTime(row.effectiveAt)
+          }}</template></ElTableColumn
+        ><ElTableColumn label="状态" width="100"
+          ><template #default="{ row }"
+            ><ElTag :type="row.status === 'active' ? 'success' : 'info'">{{
+              row.status === "active" ? "启用" : "停用"
+            }}</ElTag></template
+          ></ElTableColumn
+        ><ElTableColumn label="操作" width="100"
+          ><template #default="{ row }"
+            ><ElButton
+              v-if="hasPerm('PATCH /admin/commission-rules/:id')"
+              size="small"
+              @click="toggle(asRule(row))"
+              >{{ row.status === "active" ? "停用" : "启用" }}</ElButton
+            ></template
+          ></ElTableColumn
+        ></ElTable
+      ><AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+      />
+    </section>
+    <ElDialog
       v-model="open"
       title="新建提成规则"
       width="min(640px, calc(100vw - 32px))"
       align-center
       :close-on-click-modal="false"
-      ><ElForm label-position="top" class="grid"
-        ><ElFormItem label="楼栋"
-          ><ElSelect v-model="form.buildingId" clearable placeholder="全部楼栋"
-            ><ElOption
-              v-for="item in buildings"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id" /></ElSelect></ElFormItem
-        ><ElFormItem label="楼层"
-          ><ElInputNumber v-model="form.floor" :min="1" /></ElFormItem
-        ><ElFormItem label="重量下限 kg"
-          ><ElInputNumber
-            v-model="form.weightFrom"
-            :min="0"
-            :precision="2" /></ElFormItem
-        ><ElFormItem label="重量上限 kg"
-          ><ElInputNumber
-            v-model="form.weightTo"
-            :min="0"
-            :precision="2" /></ElFormItem
-        ><ElFormItem label="配送模式"
-          ><ElSelect v-model="form.mode" clearable
-            ><ElOption label="即时达" value="instant" /><ElOption
-              label="预约达"
-              value="scheduled" /></ElSelect></ElFormItem
-        ><ElFormItem label="提成单价（元/单）"
-          ><ElInputNumber
-            v-model="form.price"
-            :min="0.01"
-            :precision="2" /></ElFormItem></ElForm
+      ><ElForm label-position="top"
+        ><ElRow :gutter="16"
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="楼栋"
+              ><ElSelect
+                v-model="form.buildingId"
+                clearable
+                placeholder="全部楼栋"
+                ><ElOption
+                  v-for="item in buildings"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="楼层"
+              ><ElInputNumber
+                v-model="form.floor"
+                :min="1" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="重量下限 kg"
+              ><ElInputNumber
+                v-model="form.weightFrom"
+                :min="0"
+                :precision="2" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="重量上限 kg"
+              ><ElInputNumber
+                v-model="form.weightTo"
+                :min="0"
+                :precision="2" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="配送模式"
+              ><ElSelect v-model="form.mode" clearable
+                ><ElOption label="即时达" value="instant" /><ElOption
+                  label="预约达"
+                  value="scheduled" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="提成单价（元/单）"
+              ><ElInputNumber
+                v-model="form.price"
+                :min="0.01"
+                :precision="2" /></ElFormItem></ElCol></ElRow></ElForm
       ><template #footer
         ><ElButton @click="open = false">取消</ElButton
         ><ElButton type="primary" :loading="saving" @click="save"
@@ -222,18 +239,8 @@ onMounted(load);
   >
 </template>
 <style scoped>
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 16px;
-}
-.grid :deep(.el-select),
-.grid :deep(.el-input-number) {
+:deep(.el-select),
+:deep(.el-input-number) {
   width: 100%;
-}
-@media (max-width: 640px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

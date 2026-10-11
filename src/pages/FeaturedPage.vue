@@ -2,9 +2,15 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
-import { accountOrgLevel, activeCampus, hasPerm, sessionUser } from "../session";
+import {
+  accountOrgLevel,
+  activeCampus,
+  hasPerm,
+  sessionUser,
+} from "../session";
 const canEdit = computed(() => hasPerm("PUT /admin/featured"));
 import ProductPickerField from "../components/ProductPickerField.vue";
+import AdminPageShell from "../shared/ui/AdminPageShell.vue";
 import type { Product } from "../types";
 import { fenToYuan } from "../utils/money";
 
@@ -29,14 +35,15 @@ const loadingCands = ref(true);
 const operationalCampusId = computed(() =>
   accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
     ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
+    : (sessionUser.value?.campusId ?? ""),
 );
 const picked = ref<FeatRow[]>([]);
 /** 隐藏分类的商品不进推荐位候选池（C 端全链路不露出，勾了不显示） */
 const hiddenCategoryIds = ref<Set<string>>(new Set());
 const saving = ref(false);
 const savedIds = ref<string[]>([]);
-const notify = (message: string, error = false) => ElMessage({ message, type: error ? "error" : "success", showClose: true });
+const notify = (message: string, error = false) =>
+  ElMessage({ message, type: error ? "error" : "success", showClose: true });
 
 const dirty = computed(
   () =>
@@ -190,27 +197,29 @@ async function save() {
 }
 </script>
 <template>
-  <div class="workspace">
-    <!-- 用 div 不用 header：.shell header 是顶栏专用元素选择器（白底 sticky 72px），
-         header 标签会误命中变白卡 -->
-    <div class="page-head">
-      <div>
-        <h1>推荐位管理</h1>
-        <p>
-          首页「为你推荐」前排手动位（跟顶栏当前运营校区），未满 18
-          个由销量自动补齐；清空即纯销量推荐。
-        </p>
-      </div>
-      <div class="head-actions">
-        <ElButton v-if="canEdit" type="primary" :loading="saving" :disabled="!operationalCampusId || !dirty" @click="save">
-          {{ saving ? "保存中…" : "保存推荐位" }}
-        </ElButton>
-      </div>
-    </div>
+  <AdminPageShell
+    title="推荐位管理"
+    eyebrow="FEATURED PRODUCTS"
+    description="首页「为你推荐」前排手动位，未满 18 个由销量自动补齐；清空即纯销量推荐。"
+  >
+    <template #actions>
+      <ElButton
+        v-if="canEdit"
+        type="primary"
+        :loading="saving"
+        :disabled="!operationalCampusId || !dirty"
+        @click="save"
+      >
+        {{ saving ? "保存中…" : "保存推荐位" }}
+      </ElButton>
+    </template>
 
     <div class="feat-stack">
       <!-- 选择商品：表单内容面板（全局 .panel） -->
-      <div v-if="canEdit && hasPerm('GET /admin/products')" class="panel">
+      <section
+        v-if="canEdit && hasPerm('GET /admin/products')"
+        class="admin-filter-panel"
+      >
         <div class="panel-head">
           <h2>选择商品</h2>
         </div>
@@ -227,54 +236,78 @@ async function save() {
           @filter-change="onFilterChange"
           @load-more="loadMore"
         />
-      </div>
+      </section>
 
       <!-- 已选推荐位：数据面板 + 表格行（rank 序号/cell-thumb 缩略/row-actions 操作列） -->
-      <div class="data-panel">
+      <section class="admin-table-panel">
         <div class="data-summary">
           <div>
-            <strong>{{ picked.length }}</strong><span> 个已选</span>
+            <strong>{{ picked.length }}</strong
+            ><span> 个已选</span>
           </div>
           <p>列表顺序 = 首页展示顺序，未满 18 个由销量补齐</p>
         </div>
-        <ElTable v-loading="loadingCands" :data="picked" row-key="id" :empty-text="operationalCampusId ? '还没有勾选推荐商品，首页推荐位将全部按销量展示。' : '请先在顶部选择校区'">
+        <ElTable
+          v-loading="loadingCands"
+          :data="picked"
+          row-key="id"
+          :empty-text="
+            operationalCampusId
+              ? '还没有勾选推荐商品，首页推荐位将全部按销量展示。'
+              : '请先在顶部选择校区'
+          "
+        >
           <ElTableColumn type="index" label="顺序" width="80" />
-          <ElTableColumn label="商品" min-width="260"><template #default="{ row: p }">
-                    <div class="feat-product">
-                      <img class="cell-thumb" :src="p.image" :alt="p.name" />
-                      <strong>{{ p.name }}</strong>
-                      <!-- 道哥 2026-09-28：分类已隐藏的商品前台不露出，标记提醒 -->
-                      <span
-                        v-if="hiddenCategoryIds.has(p.categoryId)"
-                        class="cat-hidden-badge"
-                        title="该商品所属分类已隐藏，小程序不会显示；建议移除或恢复分类"
-                        >分类已隐藏</span
-                      >
-                    </div>
-          </template></ElTableColumn>
-          <ElTableColumn label="售价 / 库存" min-width="160"><template #default="{ row: p }">¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</template></ElTableColumn>
-          <ElTableColumn label="操作" fixed="right" width="220"><template #default="{ row: p, $index: i }">
-                    <template v-if="canEdit"><ElButton
-                      size="small"
-                      :disabled="i === 0"
-                      @click="move(i, -1)"
-                    >
-                      上移
-                    </ElButton><ElButton
-                      size="small"
-                      :disabled="i === picked.length - 1"
-                      @click="move(i, 1)"
-                    >
-                      下移
-                    </ElButton><ElButton size="small" type="danger" plain @click="remove(p.id)">
-                      移除
-                    </ElButton>
-                    </template>
-          </template></ElTableColumn>
+          <ElTableColumn label="商品" min-width="260"
+            ><template #default="{ row: p }">
+              <div class="feat-product">
+                <img class="cell-thumb" :src="p.image" :alt="p.name" />
+                <strong>{{ p.name }}</strong>
+                <!-- 道哥 2026-09-28：分类已隐藏的商品前台不露出，标记提醒 -->
+                <span
+                  v-if="hiddenCategoryIds.has(p.categoryId)"
+                  class="cat-hidden-badge"
+                  title="该商品所属分类已隐藏，小程序不会显示；建议移除或恢复分类"
+                  >分类已隐藏</span
+                >
+              </div>
+            </template></ElTableColumn
+          >
+          <ElTableColumn label="售价 / 库存" min-width="160"
+            ><template #default="{ row: p }"
+              >¥{{ fenToYuan(p.price) }} · 库存 {{ p.stock }}</template
+            ></ElTableColumn
+          >
+          <ElTableColumn label="操作" fixed="right" width="220"
+            ><template #default="{ row: p, $index: i }">
+              <template v-if="canEdit"
+                ><ElButton
+                  size="small"
+                  :disabled="i === 0"
+                  @click="move(i, -1)"
+                >
+                  上移 </ElButton
+                ><ElButton
+                  size="small"
+                  :disabled="i === picked.length - 1"
+                  @click="move(i, 1)"
+                >
+                  下移 </ElButton
+                ><ElButton
+                  size="small"
+                  type="danger"
+                  plain
+                  @click="remove(p.id)"
+                >
+                  移除
+                </ElButton>
+              </template>
+            </template></ElTableColumn
+          >
         </ElTable>
-      </div>
+      </section>
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 <style scoped>
 /* 页面壳/页头/面板/表格/按钮全走全局（style.css + drawer.css），与订货/采购管理

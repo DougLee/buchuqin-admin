@@ -532,15 +532,15 @@ async function confirmDelete() {
       :close-on-press-escape="!drawerSaving"
     >
       <ElForm class="account-form" label-position="top">
-        <div class="account-form-grid">
-          <ElFormItem label="账号">
+        <ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12"><ElFormItem label="账号">
             <ElInput
               v-model="form.username"
               :disabled="!!editingId"
               placeholder="3-20 位字母/数字/下划线"
             />
-          </ElFormItem>
-          <ElFormItem :label="editingId ? '重置密码（留空不改）' : '初始密码'">
+          </ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem :label="editingId ? '重置密码（留空不改）' : '初始密码'">
             <ElInput
               v-model="form.password"
               type="password"
@@ -548,17 +548,17 @@ async function confirmDelete() {
               placeholder="至少 8 位"
               autocomplete="new-password"
             />
-          </ElFormItem>
-          <ElFormItem label="昵称">
+          </ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="昵称">
             <ElInput v-model="form.nickname" placeholder="如：仓储小王" />
-          </ElFormItem>
-          <ElFormItem v-if="editingId" label="状态">
+          </ElFormItem></ElCol>
+          <ElCol v-if="editingId" :xs="24" :sm="12"><ElFormItem label="状态">
             <ElSelect v-model="form.status" class="full-width">
               <ElOption label="启用" value="active" />
               <ElOption label="停用（立即失去后台访问）" value="disabled" />
             </ElSelect>
-          </ElFormItem>
-        </div>
+          </ElFormItem></ElCol>
+        </ElRow>
       </ElForm>
         <section class="permission-builder" aria-labelledby="permission-heading">
           <div class="permission-heading">
@@ -793,11 +793,6 @@ async function confirmDelete() {
   gap: 8px;
 }
 .row-actions :deep(.el-button + .el-button) { margin-left: 0; }
-.account-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
 .full-width,
 .scope-select { width: 100%; }
 .delete-copy {
@@ -1139,7 +1134,6 @@ async function confirmDelete() {
   gap: 6px;
 }
 @media (max-width: 720px) {
-  .account-form-grid,
   .role-choice-grid,
   .scope-options,
   .campus-choice-grid { grid-template-columns: 1fr; }

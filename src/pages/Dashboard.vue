@@ -116,7 +116,9 @@ const last = computed(() => trendYuan.value[trendYuan.value.length - 1]),
 const revenueDelta = computed(() =>
     pctChange(last.value?.paidAmount, prev.value?.paidAmount),
   ),
-  ordersDelta = computed(() => pctChange(last.value?.orders, prev.value?.orders));
+  ordersDelta = computed(() =>
+    pctChange(last.value?.orders, prev.value?.orders),
+  );
 /* 新用户环比（IKAJSU）：昨日基数来自 trend 倒数第二天的 newUsers 分桶 */
 const newUsersDelta = computed(() =>
   pctChange(
@@ -178,9 +180,7 @@ function exportReport() {
     )
     .join("\n");
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(
-    new Blob(["﻿" + csv], { type: "text/csv" }),
-  );
+  link.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
   link.download = `运营日报-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -191,35 +191,48 @@ function exportReport() {
     <div class="page-head">
       <div>
         <p class="eyebrow">实时经营</p>
-        <h1>{{
-          isHqSummary
-            ? isOrganizationScope
-              ? "组织经营总览"
-              : "全平台经营总览"
-            : "校园运营总览"
-        }}</h1>
-        <p>{{
-          isHqSummary
-            ? isOrganizationScope
-              ? "组织视角：所属校区今日经营与异常一览。"
-              : "平台视角：所有校区今日经营与异常一览。"
-            : "从交易到寝室交付，掌握每一个履约节点。"
-        }}</p>
+        <h1>
+          {{
+            isHqSummary
+              ? isOrganizationScope
+                ? "组织经营总览"
+                : "全平台经营总览"
+              : "校园运营总览"
+          }}
+        </h1>
+        <p>
+          {{
+            isHqSummary
+              ? isOrganizationScope
+                ? "组织视角：所属校区今日经营与异常一览。"
+                : "平台视角：所有校区今日经营与异常一览。"
+              : "从交易到寝室交付，掌握每一个履约节点。"
+          }}
+        </p>
       </div>
       <div v-if="isHqSummary" class="head-actions">
-        <button class="btn primary" @click="router.push(menuPath('campuses') || '/access-denied')">
+        <button
+          class="btn primary"
+          @click="router.push(menuPath('campuses') || '/access-denied')"
+        >
           <span>→</span> 管理校区
         </button>
       </div>
       <div v-else-if="drillCampus" class="head-actions">
         <button class="btn ghost" @click="backToSummary">← 返回汇总</button
-        ><button class="btn primary" @click="router.push(menuPath('orders') || '/access-denied')">
+        ><button
+          class="btn primary"
+          @click="router.push(menuPath('orders') || '/access-denied')"
+        >
           <span>→</span> 查看履约任务
         </button>
       </div>
       <div v-else class="head-actions">
         <button class="btn ghost" @click="exportReport">导出日报</button
-        ><button class="btn primary" @click="router.push(menuPath('orders') || '/access-denied')">
+        ><button
+          class="btn primary"
+          @click="router.push(menuPath('orders') || '/access-denied')"
+        >
           <span>→</span> 查看履约任务
         </button>
       </div>
@@ -245,15 +258,16 @@ function exportReport() {
         <article class="kpi">
           <p :title="hqData.caliber.margin">今日毛利（全校区）</p>
           <strong
-            ><small>¥</small>{{ fenToYuan(hqData.kpis.margin, true) }}</strong
+            ><small>¥</small
+            >{{ fenToYuan(hqData.kpis.margin ?? 0, true) }}</strong
           >
           <p class="kpi-sub" :title="hqData.caliber.profit">
             综合毛利
-            <strong>¥{{ fenToYuan(hqData.kpis.profit, true) }}</strong>
+            <strong>¥{{ fenToYuan(hqData.kpis.profit ?? 0, true) }}</strong>
           </p>
           <p class="kpi-sub" :title="hqData.caliber.coupon">
             优惠券消耗
-            <strong>¥{{ fenToYuan(hqData.kpis.coupon, true) }}</strong>
+            <strong>¥{{ fenToYuan(hqData.kpis.coupon ?? 0, true) }}</strong>
           </p>
         </article>
         <article class="kpi">
@@ -265,18 +279,21 @@ function exportReport() {
           <strong>{{ hqData.kpis.newUsers }}<small> 人</small></strong>
         </article>
         <!-- 语义色：有异常才转橙警示，0 项保持中性（IKISZ2+） -->
-        <article
-          class="kpi"
-          :class="hqData.kpis.exceptions ? 'alert-kpi' : ''"
-        >
+        <article class="kpi" :class="hqData.kpis.exceptions ? 'alert-kpi' : ''">
           <p :title="hqData.caliber.exceptions">待处理异常</p>
           <strong>{{ hqData.kpis.exceptions }}<small> 项</small></strong>
           <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到；无异常不渲染按钮 -->
           <button
             v-if="hqData.kpis.exceptions"
-            @click="router.push({ path: menuPath('orders') || '/access-denied', query: { status: 'exception' } })"
-            >立即处理 →</button
+            @click="
+              router.push({
+                path: menuPath('orders') || '/access-denied',
+                query: { status: 'exception' },
+              })
+            "
           >
+            立即处理 →
+          </button>
         </article>
         <article class="kpi">
           <p>在营校区</p>
@@ -308,16 +325,24 @@ function exportReport() {
           </thead>
           <tbody>
             <tr v-for="row in hqData.campusRows" :key="row.campusId">
-              <td><strong>{{ row.name }}</strong></td>
               <td>
-                <span class="status" :class="row.status === 'active' ? 'success' : ''">{{
-                  row.status === "active" ? "在营" : "停用"
-                }}</span>
+                <strong>{{ row.name }}</strong>
+              </td>
+              <td>
+                <span
+                  class="status"
+                  :class="row.status === 'active' ? 'success' : ''"
+                  >{{ row.status === "active" ? "在营" : "停用" }}</span
+                >
               </td>
               <td>{{ row.buildings }}</td>
               <td>¥{{ fenToYuan(row.revenue, true) }}</td>
-              <td :class="{ 'profit-neg': row.margin < 0 }">¥{{ fenToYuan(row.margin, true) }}</td>
-              <td :class="{ 'profit-neg': row.profit < 0 }">¥{{ fenToYuan(row.profit, true) }}</td>
+              <td :class="{ 'profit-neg': row.margin < 0 }">
+                ¥{{ fenToYuan(row.margin, true) }}
+              </td>
+              <td :class="{ 'profit-neg': row.profit < 0 }">
+                ¥{{ fenToYuan(row.profit, true) }}
+              </td>
               <td>{{ row.orders }}</td>
               <td>{{ row.newUsers }}</td>
               <td>
@@ -368,8 +393,7 @@ function exportReport() {
           </div>
           <div class="delta" :class="(ordersDelta ?? 0) >= 0 ? 'up' : 'down'">
             <template v-if="deltaText(ordersDelta)"
-              >{{ deltaText(ordersDelta) }}
-              <span>较昨日</span></template
+              >{{ deltaText(ordersDelta) }} <span>较昨日</span></template
             ><span v-else>暂无环比数据</span>
           </div>
         </article>
@@ -389,13 +413,9 @@ function exportReport() {
         <article class="kpi">
           <p :title="data.caliber.newUsers">今日新用户</p>
           <strong>{{ data.kpis.newUsers }}<small> 人</small></strong>
-          <div
-            class="delta"
-            :class="(newUsersDelta ?? 0) >= 0 ? 'up' : 'down'"
-          >
+          <div class="delta" :class="(newUsersDelta ?? 0) >= 0 ? 'up' : 'down'">
             <template v-if="deltaText(newUsersDelta)"
-              >{{ deltaText(newUsersDelta) }}
-              <span>较昨日</span></template
+              >{{ deltaText(newUsersDelta) }} <span>较昨日</span></template
             ><span v-else>暂无环比数据</span>
           </div>
         </article>
@@ -404,9 +424,15 @@ function exportReport() {
           <strong>{{ data.kpis.exceptions }}<small> 项</small></strong>
           <!-- 直达异常 Tab：裸跳 /orders 老单沉底翻不到 -->
           <button
-            @click="router.push({ path: menuPath('orders') || '/access-denied', query: { status: 'exception' } })"
-            >立即处理 →</button
+            @click="
+              router.push({
+                path: menuPath('orders') || '/access-denied',
+                query: { status: 'exception' },
+              })
+            "
           >
+            立即处理 →
+          </button>
         </article>
       </section>
       <section class="dashboard-grid">
@@ -467,7 +493,10 @@ function exportReport() {
             <div>
               <h2>实时订单统计</h2>
             </div>
-            <button class="text-btn" @click="router.push(menuPath('orders') || '/access-denied')">
+            <button
+              class="text-btn"
+              @click="router.push(menuPath('orders') || '/access-denied')"
+            >
               查看详情 →
             </button>
           </div>
@@ -475,12 +504,20 @@ function exportReport() {
                超时是横向指标有重叠，避免被当成状态加总 -->
           <p class="flow-caliber">
             各节点为当前在途订单数（与「订单配送」列表同口径，按状态分桶）；
-            履约超时为支付后超 60 分钟未送达的横向监控，与其他节点有重叠，不可加总。
+            履约超时为支付后超 60
+            分钟未送达的横向监控，与其他节点有重叠，不可加总。
           </p>
           <div class="flow-list">
-            <template v-for="(value, key, index) in data.fulfillment" :key="key">
+            <template
+              v-for="(value, key, index) in data.fulfillment"
+              :key="key"
+            >
               <!-- IKAJSS：行可点下钻（作业人数/平均停留；超时节点列单号直达） -->
-              <div class="flow-row" role="button" @click="toggleFlowDrill(String(key))">
+              <div
+                class="flow-row"
+                role="button"
+                @click="toggleFlowDrill(String(key))"
+              >
                 <div class="flow-index">0{{ index + 1 }}</div>
                 <div class="flow-info">
                   <span>{{ flowLabel(String(key)) }}</span>
@@ -516,12 +553,16 @@ function exportReport() {
                     class="timeout-order"
                   >
                     <span
-                      >{{ o.orderNo }} · 超时
-                      {{ o.overtimeMinutes }} 分钟</span
+                      >{{ o.orderNo }} · 超时 {{ o.overtimeMinutes }} 分钟</span
                     >
                     <button
                       class="text-btn"
-                      @click.stop="router.push({ path: menuPath('orders') || '/access-denied', query: { q: o.orderNo } })"
+                      @click.stop="
+                        router.push({
+                          path: menuPath('orders') || '/access-denied',
+                          query: { q: o.orderNo },
+                        })
+                      "
                     >
                       立即处理 →
                     </button>
@@ -538,7 +579,10 @@ function exportReport() {
             <div>
               <h2>楼栋经营排行</h2>
             </div>
-            <button class="text-btn" @click="router.push(menuPath('orders') || '/access-denied')">
+            <button
+              class="text-btn"
+              @click="router.push(menuPath('orders') || '/access-denied')"
+            >
               完整数据 →
             </button>
           </div>
@@ -586,7 +630,8 @@ function exportReport() {
             <div v-for="(a, i) in activities" :key="i">
               <i :class="activityClass(a.type)"></i>
               <p>
-                <b>{{ a.text }}</b><span>{{ a.time }}</span>
+                <b>{{ a.text }}</b
+                ><span>{{ a.time }}</span>
               </p>
               <button
                 v-if="activityRoute(a)"
@@ -596,9 +641,7 @@ function exportReport() {
                 处理 →
               </button>
             </div>
-            <p v-if="!activities.length" class="empty-cell">
-              暂无实时动态
-            </p>
+            <p v-if="!activities.length" class="empty-cell">暂无实时动态</p>
           </div>
         </article>
       </section></template

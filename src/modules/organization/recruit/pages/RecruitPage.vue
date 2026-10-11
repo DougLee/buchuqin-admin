@@ -9,22 +9,368 @@ import { activeCampus, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { RecruitIdcard, RecruitingApplication } from "../../../../types";
-const rows=ref<RecruitingApplication[]>([]),loading=ref(false),detailOpen=ref(false),docsOpen=ref(false),saving=ref(false),selected=ref<RecruitingApplication|null>(null),docs=ref<RecruitIdcard|null>(null);
-const page=ref(1),pageSize=ref(20),total=ref(0),keyword=ref(""),status=ref("all");
-const form=reactive({idCardNo:"",idCardImages:[] as string[],staffRemark:""});
-const active=computed(()=>!!selected.value&&["pending","interviewing"].includes(selected.value.status));
-const P={read:"GET /admin/recruit-applications/:id/idcard",write:"POST /admin/recruit-applications/:id/idcard",note:"PATCH /admin/recruit-applications/:id",approve:"POST /admin/recruit-applications/:id/approve",interview:"POST /admin/recruit-applications/:id/transition",reject:"POST /admin/recruit-applications/:id/reject"};
-function notify(message:string,type:"success"|"error"="success"){ElMessage({message,type,showClose:true})} function asRow(row:unknown){return row as RecruitingApplication}
-async function load(){if(!activeCampus.value){rows.value=[];total.value=0;return}loading.value=true;try{const r=await api.recruitApplications({page:page.value,pageSize:pageSize.value,keyword:keyword.value.trim()||undefined,campusId:activeCampus.value},status.value==="all"?undefined:status.value);rows.value=r.items;total.value=r.total}catch(e){notify(e instanceof Error?e.message:"报名加载失败","error")}finally{loading.value=false}}
-function inspect(row:RecruitingApplication){selected.value=row;Object.assign(form,{idCardNo:"",idCardImages:[],staffRemark:""});detailOpen.value=true}
-async function saveDocs(){if(!selected.value)return;saving.value=true;try{const body:Record<string,unknown>={};if(hasPerm(P.write)&&(form.idCardNo.trim()||form.idCardImages.length)){body.idCardNo=form.idCardNo.trim();body.idCardImages=form.idCardImages}if(hasPerm(P.note))body.staffRemark=form.staffRemark.trim();selected.value=await api.updateRecruitApplication(selected.value.id,body);notify("资料已保存");await load()}catch(e){notify(e instanceof Error?e.message:"保存失败","error")}finally{saving.value=false}}
-async function viewDocs(){if(!selected.value)return;try{docs.value=await api.recruitIdcard(selected.value.id);docsOpen.value=true}catch(e){notify(e instanceof Error?e.message:"证件资料加载失败","error")}}
-async function transition(){if(!selected.value)return;try{selected.value=await api.recruitTransition(selected.value.id);notify("已标记面试中");await load()}catch(e){notify(e instanceof Error?e.message:"操作失败","error")}}
-async function approve(){if(!selected.value)return;try{await ElMessageBox.confirm("通过后将立即创建实习楼长账号，确认继续？","审批通过",{type:"warning"});const r=await api.approveRecruit(selected.value.id);selected.value=r.application;notify(`已创建实习楼长：${r.staff.staffNo}`);await load()}catch(e){if(e!=="cancel"&&e!=="close")notify(e instanceof Error?e.message:"操作失败","error")}}
-async function reject(){if(!selected.value)return;try{const {value}=await ElMessageBox.prompt("请输入候选人可见的拒绝原因","拒绝报名",{inputValidator:v=>!!String(v).trim()||"请填写拒绝原因",type:"warning"});selected.value=await api.rejectRecruit(selected.value.id,String(value).trim());notify("已拒绝报名");await load()}catch(e){if(e!=="cancel"&&e!=="close")notify(e instanceof Error?e.message:"操作失败","error")}}
-watch([page,pageSize,status,activeCampus],load);onMounted(load);
+const rows = ref<RecruitingApplication[]>([]),
+  loading = ref(false),
+  detailOpen = ref(false),
+  docsOpen = ref(false),
+  saving = ref(false),
+  selected = ref<RecruitingApplication | null>(null),
+  docs = ref<RecruitIdcard | null>(null);
+const page = ref(1),
+  pageSize = ref(20),
+  total = ref(0),
+  keyword = ref(""),
+  status = ref("all");
+const form = reactive({
+  idCardNo: "",
+  idCardImages: [] as string[],
+  staffRemark: "",
+});
+const active = computed(
+  () =>
+    !!selected.value &&
+    ["pending", "interviewing"].includes(selected.value.status),
+);
+const P = {
+  read: "GET /admin/recruit-applications/:id/idcard",
+  write: "POST /admin/recruit-applications/:id/idcard",
+  note: "PATCH /admin/recruit-applications/:id",
+  approve: "POST /admin/recruit-applications/:id/approve",
+  interview: "POST /admin/recruit-applications/:id/transition",
+  reject: "POST /admin/recruit-applications/:id/reject",
+};
+function notify(message: string, type: "success" | "error" = "success") {
+  ElMessage({ message, type, showClose: true });
+}
+function asRow(row: unknown) {
+  return row as RecruitingApplication;
+}
+async function load() {
+  if (!activeCampus.value) {
+    rows.value = [];
+    total.value = 0;
+    return;
+  }
+  loading.value = true;
+  try {
+    const r = await api.recruitApplications(
+      {
+        page: page.value,
+        pageSize: pageSize.value,
+        keyword: keyword.value.trim() || undefined,
+        campusId: activeCampus.value,
+      },
+      status.value === "all" ? undefined : status.value,
+    );
+    rows.value = r.items;
+    total.value = r.total;
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "报名加载失败", "error");
+  } finally {
+    loading.value = false;
+  }
+}
+function inspect(row: RecruitingApplication) {
+  selected.value = row;
+  Object.assign(form, { idCardNo: "", idCardImages: [], staffRemark: "" });
+  detailOpen.value = true;
+}
+async function saveDocs() {
+  if (!selected.value) return;
+  saving.value = true;
+  try {
+    const body: Record<string, unknown> = {};
+    if (
+      hasPerm(P.write) &&
+      (form.idCardNo.trim() || form.idCardImages.length)
+    ) {
+      body.idCardNo = form.idCardNo.trim();
+      body.idCardImages = form.idCardImages;
+    }
+    if (hasPerm(P.note)) body.staffRemark = form.staffRemark.trim();
+    selected.value = await api.updateRecruitApplication(
+      selected.value.id,
+      body,
+    );
+    notify("资料已保存");
+    await load();
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "保存失败", "error");
+  } finally {
+    saving.value = false;
+  }
+}
+async function viewDocs() {
+  if (!selected.value) return;
+  try {
+    docs.value = await api.recruitIdcard(selected.value.id);
+    docsOpen.value = true;
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "证件资料加载失败", "error");
+  }
+}
+async function transition() {
+  if (!selected.value) return;
+  try {
+    selected.value = await api.recruitTransition(selected.value.id);
+    notify("已标记面试中");
+    await load();
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "操作失败", "error");
+  }
+}
+async function approve() {
+  if (!selected.value) return;
+  try {
+    await ElMessageBox.confirm(
+      "通过后将立即创建实习楼长账号，确认继续？",
+      "审批通过",
+      { type: "warning" },
+    );
+    const r = await api.approveRecruit(selected.value.id);
+    selected.value = r.application;
+    notify(`已创建实习楼长：${r.staff.staffNo}`);
+    await load();
+  } catch (e) {
+    if (e !== "cancel" && e !== "close")
+      notify(e instanceof Error ? e.message : "操作失败", "error");
+  }
+}
+async function reject() {
+  if (!selected.value) return;
+  try {
+    const { value } = await ElMessageBox.prompt(
+      "请输入候选人可见的拒绝原因",
+      "拒绝报名",
+      {
+        inputValidator: (v) => !!String(v).trim() || "请填写拒绝原因",
+        type: "warning",
+      },
+    );
+    selected.value = await api.rejectRecruit(
+      selected.value.id,
+      String(value).trim(),
+    );
+    notify("已拒绝报名");
+    await load();
+  } catch (e) {
+    if (e !== "cancel" && e !== "close")
+      notify(e instanceof Error ? e.message : "操作失败", "error");
+  }
+}
+watch([page, pageSize, status, activeCampus], load);
+onMounted(load);
 </script>
-<template><AdminPageShell title="楼长招募" eyebrow="RECRUITING" description="处理当前顶部校区的小程序报名、资料补录和入职审批。"><div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div><template v-else><ElTabs v-model="status"><ElTabPane v-for="tab in RECRUIT_STATUS_TABS" :key="tab.key" :label="tab.label" :name="tab.key"/></ElTabs><div class="toolbar"><ElInput v-model="keyword" class="search" clearable placeholder="搜索姓名或手机号" @keyup.enter="page=1;load()"/><ElButton @click="page=1;load()">查询</ElButton></div><ElTable v-loading="loading" :data="rows" row-key="id"><ElTableColumn prop="name" label="姓名"/><ElTableColumn prop="phone" label="手机号" min-width="140"/><ElTableColumn prop="campusName" label="校区"/><ElTableColumn prop="buildingName" label="报名楼栋"/><ElTableColumn label="状态"><template #default="{row}"><ElTag>{{RECRUIT_STATUS_LABEL[row.status]??row.status}}</ElTag></template></ElTableColumn><ElTableColumn label="身份证"><template #default="{row}">{{row.hasIdCard?'已录':'—'}}</template></ElTableColumn><ElTableColumn prop="createdAt" label="报名时间" min-width="170"/><ElTableColumn label="操作" width="100"><template #default="{row}"><ElButton link type="primary" @click="inspect(asRow(row))">处理</ElButton></template></ElTableColumn></ElTable><AdminPagination v-model:page="page" v-model:page-size="pageSize" :total="total"/></template>
-<ElDialog v-model="detailOpen" title="报名处理" width="min(760px, calc(100vw - 32px))" align-center :close-on-click-modal="false"><template v-if="selected"><ElDescriptions :column="2" border><ElDescriptionsItem label="姓名">{{selected.name}}</ElDescriptionsItem><ElDescriptionsItem label="手机号">{{selected.phone}}</ElDescriptionsItem><ElDescriptionsItem label="报名楼栋">{{selected.buildingName}}</ElDescriptionsItem><ElDescriptionsItem label="状态">{{RECRUIT_STATUS_LABEL[selected.status]}}</ElDescriptionsItem><ElDescriptionsItem label="自我介绍" :span="2">{{selected.note||'—'}}</ElDescriptionsItem></ElDescriptions><ElDivider>审核资料</ElDivider><ElForm v-if="active" label-position="top"><ElFormItem v-if="hasPerm(P.write)" label="身份证号（留空保留已录）"><ElInput v-model="form.idCardNo" maxlength="18"/></ElFormItem><ElFormItem v-if="hasPerm(P.write)" label="身份证照片（不上传保留已录）"><IdCardImagesField v-model="form.idCardImages"/></ElFormItem><ElFormItem v-if="hasPerm(P.note)" label="运营备注"><ElInput v-model="form.staffRemark" type="textarea"/></ElFormItem><ElButton v-if="hasPerm(P.write)||hasPerm(P.note)" :loading="saving" @click="saveDocs">保存资料</ElButton></ElForm><ElButton v-else-if="hasPerm(P.read)||hasPerm(P.note)" @click="viewDocs">查看证件资料</ElButton><ElDivider>审核操作</ElDivider><div class="actions"><ElButton v-if="active&&selected.status==='pending'&&hasPerm(P.interview)" @click="transition">标记面试中</ElButton><ElButton v-if="active&&hasPerm(P.reject)" type="danger" plain @click="reject">拒绝</ElButton><ElButton v-if="active&&hasPerm(P.approve)" type="primary" @click="approve">通过并创建实习楼长</ElButton></div></template></ElDialog>
-<ElDialog v-model="docsOpen" title="证件资料" width="min(620px, calc(100vw - 32px))" align-center><template v-if="docs"><ElDescriptions :column="1" border><ElDescriptionsItem label="身份证号">{{docs.idCardNo||'无查看权限'}}</ElDescriptionsItem><ElDescriptionsItem label="运营备注">{{docs.staffRemark||'—'}}</ElDescriptionsItem></ElDescriptions><div class="photos"><ElImage v-for="src in docs.idCardImages" :key="src" :src="src" :preview-src-list="docs.idCardImages" fit="cover"/></div></template></ElDialog></AdminPageShell></template>
-<style scoped>.search{width:min(360px,100%)}.empty-hint{padding:48px;text-align:center;color:var(--muted)}.actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.photos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.photos :deep(.el-image){height:180px;border-radius:10px}</style>
+<template>
+  <AdminPageShell
+    title="楼长招募"
+    eyebrow="RECRUITING"
+    description="处理当前顶部校区的小程序报名、资料补录和入职审批。"
+    ><div v-if="!activeCampus" class="empty-hint">请先在顶部选择校区。</div>
+    <template v-else>
+      <section
+        class="admin-filter-panel admin-filter-panel--split"
+        aria-label="楼长招募筛选"
+      >
+        <ElTabs v-model="status" class="organization-tabs"
+          ><ElTabPane
+            v-for="tab in RECRUIT_STATUS_TABS"
+            :key="tab.key"
+            :label="tab.label"
+            :name="tab.key"
+        /></ElTabs>
+        <div class="admin-filter-form organization-search">
+          <ElInput
+            v-model="keyword"
+            class="search"
+            clearable
+            placeholder="搜索姓名或手机号"
+            @keyup.enter="
+              page = 1;
+              load();
+            "
+          /><ElButton
+            @click="
+              page = 1;
+              load();
+            "
+            >查询</ElButton
+          >
+        </div>
+      </section>
+      <section class="admin-table-panel" aria-label="楼长招募列表">
+        <ElTable v-loading="loading" :data="rows" row-key="id"
+          ><ElTableColumn prop="name" label="姓名" /><ElTableColumn
+            prop="phone"
+            label="手机号"
+            min-width="140"
+          /><ElTableColumn prop="campusName" label="校区" /><ElTableColumn
+            prop="buildingName"
+            label="报名楼栋"
+          /><ElTableColumn label="状态"
+            ><template #default="{ row }"
+              ><ElTag>{{
+                RECRUIT_STATUS_LABEL[row.status] ?? row.status
+              }}</ElTag></template
+            ></ElTableColumn
+          ><ElTableColumn label="身份证"
+            ><template #default="{ row }">{{
+              row.hasIdCard ? "已录" : "—"
+            }}</template></ElTableColumn
+          ><ElTableColumn
+            prop="createdAt"
+            label="报名时间"
+            min-width="170"
+          /><ElTableColumn label="操作" width="100"
+            ><template #default="{ row }"
+              ><ElButton link type="primary" @click="inspect(asRow(row))"
+                >处理</ElButton
+              ></template
+            ></ElTableColumn
+          ></ElTable
+        ><AdminPagination
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+        />
+      </section>
+    </template>
+    <ElDialog
+      v-model="detailOpen"
+      title="报名处理"
+      width="min(760px, calc(100vw - 32px))"
+      align-center
+      :close-on-click-modal="false"
+      ><template v-if="selected"
+        ><ElDescriptions :column="2" border
+          ><ElDescriptionsItem label="姓名">{{
+            selected.name
+          }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="手机号">{{
+            selected.phone
+          }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="报名楼栋">{{
+            selected.buildingName
+          }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="状态">{{
+            RECRUIT_STATUS_LABEL[selected.status]
+          }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="自我介绍" :span="2">{{
+            selected.note || "—"
+          }}</ElDescriptionsItem></ElDescriptions
+        ><ElDivider>审核资料</ElDivider
+        ><ElForm v-if="active" label-position="top"
+          ><ElRow :gutter="16"
+            ><ElCol v-if="hasPerm(P.write)" :span="24"
+              ><ElFormItem label="身份证号（留空保留已录）"
+                ><ElInput
+                  v-model="form.idCardNo"
+                  maxlength="18" /></ElFormItem></ElCol
+            ><ElCol v-if="hasPerm(P.write)" :span="24"
+              ><ElFormItem label="身份证照片（不上传保留已录）"
+                ><IdCardImagesField
+                  v-model="form.idCardImages" /></ElFormItem></ElCol
+            ><ElCol v-if="hasPerm(P.note)" :span="24"
+              ><ElFormItem label="运营备注"
+                ><ElInput
+                  v-model="form.staffRemark"
+                  type="textarea" /></ElFormItem></ElCol
+            ><ElCol v-if="hasPerm(P.write) || hasPerm(P.note)" :span="24"
+              ><ElButton :loading="saving" @click="saveDocs"
+                >保存资料</ElButton
+              ></ElCol
+            ></ElRow
+          ></ElForm
+        ><ElButton
+          v-else-if="hasPerm(P.read) || hasPerm(P.note)"
+          @click="viewDocs"
+          >查看证件资料</ElButton
+        ><ElDivider>审核操作</ElDivider>
+        <div class="actions">
+          <ElButton
+            v-if="
+              active && selected.status === 'pending' && hasPerm(P.interview)
+            "
+            @click="transition"
+            >标记面试中</ElButton
+          ><ElButton
+            v-if="active && hasPerm(P.reject)"
+            type="danger"
+            plain
+            @click="reject"
+            >拒绝</ElButton
+          ><ElButton
+            v-if="active && hasPerm(P.approve)"
+            type="primary"
+            @click="approve"
+            >通过并创建实习楼长</ElButton
+          >
+        </div></template
+      ></ElDialog
+    >
+    <ElDialog
+      v-model="docsOpen"
+      title="证件资料"
+      width="min(620px, calc(100vw - 32px))"
+      align-center
+      ><template v-if="docs"
+        ><ElDescriptions :column="1" border
+          ><ElDescriptionsItem label="身份证号">{{
+            docs.idCardNo || "无查看权限"
+          }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="运营备注">{{
+            docs.staffRemark || "—"
+          }}</ElDescriptionsItem></ElDescriptions
+        >
+        <div class="photos">
+          <ElImage
+            v-for="src in docs.idCardImages"
+            :key="src"
+            :src="src"
+            :preview-src-list="docs.idCardImages"
+            fit="cover"
+          /></div></template></ElDialog
+  ></AdminPageShell>
+</template>
+<style scoped>
+.organization-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.organization-search {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) auto;
+  gap: 12px;
+  align-items: center;
+  justify-content: end;
+}
+.organization-search .el-button {
+  justify-self: start;
+}
+.empty-hint {
+  padding: 48px;
+  text-align: center;
+  color: var(--muted);
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+.photos :deep(.el-image) {
+  height: 180px;
+  border-radius: 10px;
+}
+@media (max-width: 760px) {
+  .organization-search {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

@@ -315,7 +315,7 @@ watch(operationalCampusId, () => {
 
     <!-- 状态 Tab + 来源筛选 -->
     <div class="as-toolbar panel">
-      <div class="as-tabs">
+      <div class="as-tabs single-line-tabs">
         <button
           v-for="t in REFUND_STATUS_TABS"
           :key="t.key"
@@ -425,24 +425,23 @@ watch(operationalCampusId, () => {
           </div>
         </dl>
 
-        <div v-if="canAudit && detail.status === 'pending'" class="as-audit">
+        <ElForm v-if="canAudit && detail.status === 'pending'" class="as-audit" label-position="top"><ElRow :gutter="16">
           <template v-if="!auditMode">
-            <button class="btn primary" @click="startAudit('approve')">批准退款</button>
-            <button class="btn danger" @click="startAudit('reject')">拒绝申请</button>
+            <ElCol :span="24"><ElButton type="primary" @click="startAudit('approve')">批准退款</ElButton><ElButton type="danger" plain @click="startAudit('reject')">拒绝申请</ElButton></ElCol>
           </template>
           <template v-else>
-            <p class="as-audit-tip">
+            <ElCol :span="24"><p class="as-audit-tip">
               {{
                 auditMode === "approve"
                   ? `确认向微信发起 ¥${fenToYuan(detail.amount)} 原路退款？批准后不可撤销。`
                   : "拒绝后订单将回滚至申请前状态（" + (REFUND_ROLLBACK_STATUS_TEXT[detail.beforeStatus] ?? detail.beforeStatus) + "），用户可补充后重新申请。"
               }}
-            </p>
+            </p></ElCol>
             <!-- v2 部分退款：核定各行金额（默认申请值，可改） -->
-            <div v-if="detail.items.length" class="as-amounts">
+            <ElCol v-if="detail.items.length" :span="24"><div class="as-amounts">
               <div v-for="i in detail.items" :key="i.id" class="as-amounts__row">
                 <span class="as-amounts__name">{{ i.productName }}（上限 ¥{{ fenToYuan(i.unitPrice * i.quantity) }}）</span>
-                <input
+                <ElInput
                   v-model="itemAmounts[i.id]"
                   class="as-amounts__input"
                   type="number"
@@ -454,21 +453,16 @@ watch(operationalCampusId, () => {
               <p class="as-audit-tip">
                 金额可调整（单位元）；合计不得超过本单可退余额（实付−配送费−已退）。
               </p>
-            </div>
-            <textarea
-              v-model="remark"
-              class="as-textarea"
-              rows="2"
-              :placeholder="auditMode === 'reject' ? '拒绝原因（必填，随通知发给用户）' : '审核备注（选填）'"
-            />
-            <div class="as-audit-actions">
-              <button class="btn primary" :disabled="submitting" @click="submitAudit">
+            </div></ElCol>
+            <ElCol :span="24"><ElFormItem :label="auditMode === 'reject' ? '拒绝原因' : '审核备注'"><ElInput v-model="remark" type="textarea" :rows="2" :placeholder="auditMode === 'reject' ? '必填，随通知发给用户' : '选填'" /></ElFormItem></ElCol>
+            <ElCol :span="24"><div class="as-audit-actions">
+              <ElButton type="primary" :loading="submitting" @click="submitAudit">
                 {{ submitting ? "提交中…" : auditMode === "approve" ? "确认批准并发起退款" : "确认拒绝" }}
-              </button>
-              <button class="btn" :disabled="submitting" @click="auditMode = null">取消</button>
-            </div>
+              </ElButton>
+              <ElButton :disabled="submitting" @click="auditMode = null">取消</ElButton>
+            </div></ElCol>
           </template>
-        </div>
+        </ElRow></ElForm>
         <p v-else-if="canAudit && detail.status === 'failed'" class="as-audit-tip">
           可在列表对该申请「同步状态」；微信侧已关闭时可重新批准发起。
         </p>
@@ -476,19 +470,16 @@ watch(operationalCampusId, () => {
     </ElDialog>
   <!-- v2 按商品退款弹窗：搜订单 → 勾商品 → 核定金额 → 提交即退款 -->
   <ElDialog v-model="createOpen" title="按商品退款" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close>
-      <div class="as-create-search">
-        <input
+      <ElForm label-position="top"><ElRow :gutter="16" align="bottom"><ElCol :xs="24" :sm="19"><ElFormItem label="订单号"><ElInput
           v-model="createOrderNo"
           class="as-input"
           style="flex: 1"
           placeholder="输入完整订单号"
           @keyup.enter="searchOrder"
-        />
-        <button class="btn" :disabled="createSearching" @click="searchOrder">
+        /></ElFormItem></ElCol><ElCol :xs="24" :sm="5"><ElFormItem label=" "><ElButton :loading="createSearching" @click="searchOrder">
           {{ createSearching ? "查询中…" : "查询订单" }}
-        </button>
-      </div>
-      <template v-if="createOrder">
+        </ElButton></ElFormItem></ElCol></ElRow>
+      <template v-if="createOrder"><ElRow><ElCol :span="24">
         <p class="as-audit-tip">
           订单 {{ createOrder.orderNo }} · 实付 ¥{{ fenToYuan(createOrder.payableAmount) }}（含配送费
           ¥{{ fenToYuan(createOrder.deliveryFee ?? 0) }}）· 可退上限 ¥{{ fenToYuan(createOrder.payableAmount - (createOrder.deliveryFee ?? 0)) }}
@@ -503,7 +494,7 @@ watch(operationalCampusId, () => {
             @click="toggleCreateLine(line.product.id)"
           >
             <span>{{ line.product.name }} × {{ line.quantity }}</span>
-            <input
+            <ElInput
               class="as-amounts__input"
               type="number"
               min="0"
@@ -511,11 +502,7 @@ watch(operationalCampusId, () => {
               step="0.01"
               :placeholder="`¥${fenToYuan(line.product.price * line.quantity)}`"
               @click.stop
-              @change="
-                createAmounts[line.product.id] = (
-                  $event.target as HTMLInputElement
-                ).value
-              "
+              @change="createAmounts[line.product.id] = String($event)"
             />
           </div>
         </div>
@@ -523,16 +510,17 @@ watch(operationalCampusId, () => {
           勾选商品、可改金额（元）；提交即向微信发起原路退款，合计不得超可退上限。
         </p>
         <div class="as-audit-actions">
-          <button
-            class="btn primary"
+          <ElButton
+            type="primary"
             :disabled="submitting || !createSelected.length"
             @click="submitCreate"
           >
             {{ submitting ? "退款中…" : "确认退款" }}
-          </button>
-          <button class="btn" :disabled="submitting" @click="createOpen = false">取消</button>
+          </ElButton>
+          <ElButton :disabled="submitting" @click="createOpen = false">取消</ElButton>
         </div>
-      </template>
+      </ElCol></ElRow></template>
+      </ElForm>
   </ElDialog>
   </div>
 </template>
@@ -547,7 +535,7 @@ watch(operationalCampusId, () => {
   padding: 12px 16px;
   margin-bottom: 16px;
 }
-.as-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.as-tabs { display: flex; gap: 6px; }
 .as-tab {
   border: none;
   background: transparent;

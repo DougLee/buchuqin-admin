@@ -250,21 +250,15 @@ async function refreshDetail() {
               本次到货默认按欠收数预填（快捷全收），没到的行改成 0；坏品在到货行内登记，
               系统自动入库存再出库扣回。
             </div>
-            <div class="rx-line rx-line-head">
-              <span>商品</span><span>应收/已收</span><span>本次到货</span><span>坏品</span><span>备注</span>
-            </div>
-            <div v-for="l in rxLines" :key="l.productId" class="rx-line">
-              <span class="rx-name">
-                {{ detail.items.find((i) => i.productId === l.productId)?.name }}
-              </span>
-              <span class="rx-req">
-                {{ detail.items.find((i) => i.productId === l.productId)?.requiredCases }} /
-                {{ detail.items.find((i) => i.productId === l.productId)?.receivedCases }}
-              </span>
-              <ElInputNumber v-model="l.receive" :min="0" :step="1" />
-              <ElInputNumber v-model="l.bad" :min="0" :step="1" />
-              <ElInput v-model="l.note" maxlength="100" placeholder="备注" />
-            </div>
+            <ElForm class="rx-form" label-position="top">
+              <ElRow v-for="l in rxLines" :key="l.productId" :gutter="12" class="rx-form-row">
+                <ElCol :xs="24" :md="6"><ElFormItem label="商品"><strong class="rx-name">{{ detail.items.find((i) => i.productId === l.productId)?.name }}</strong></ElFormItem></ElCol>
+                <ElCol :xs="24" :sm="12" :md="4"><ElFormItem label="应收 / 已收"><span class="rx-req">{{ detail.items.find((i) => i.productId === l.productId)?.requiredCases }} / {{ detail.items.find((i) => i.productId === l.productId)?.receivedCases }}</span></ElFormItem></ElCol>
+                <ElCol :xs="24" :sm="12" :md="4"><ElFormItem label="本次到货"><ElInputNumber v-model="l.receive" :min="0" :step="1" /></ElFormItem></ElCol>
+                <ElCol :xs="24" :sm="12" :md="4"><ElFormItem label="坏品"><ElInputNumber v-model="l.bad" :min="0" :step="1" /></ElFormItem></ElCol>
+                <ElCol :xs="24" :sm="12" :md="6"><ElFormItem label="备注"><ElInput v-model="l.note" maxlength="100" placeholder="备注" /></ElFormItem></ElCol>
+              </ElRow>
+            </ElForm>
           </template>
           <!-- 只读行表 -->
           <template v-else>
@@ -414,19 +408,10 @@ async function refreshDetail() {
 .rx-req {
   text-align: center;
 }
-.rx-line input {
-  width: 100%;
-  height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 8px;
-  font-size: 12px;
-  outline: 0;
-}
-.rx-line input:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px #159c5515;
-}
+.rx-form { margin-top: 12px; }
+.rx-form-row { padding-top: 12px; border-bottom: 1px dashed var(--line); }
+.rx-form :deep(.el-input-number),
+.rx-form :deep(.el-input) { width: 100%; }
 .rx-note {
   margin-top: 10px;
   font-size: 11px;

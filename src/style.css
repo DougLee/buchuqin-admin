@@ -904,6 +904,97 @@ a {
   background: var(--green);
   color: #fff;
 }
+/* 横向页签统一规范：始终单行，空间不足时由容器横向滚动。 */
+.single-line-tabs {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #b9c9c0 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.single-line-tabs > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.single-line-tabs::-webkit-scrollbar {
+  height: 5px;
+}
+.single-line-tabs::-webkit-scrollbar-thumb {
+  background: #b9c9c0;
+  border-radius: 999px;
+}
+.single-line-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 仓储/列表页统一结构：筛选与数据各自落在稳定卡片中。 */
+.admin-filter-panel,
+.admin-table-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px #163f2b08;
+}
+.admin-filter-panel {
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.admin-filter-panel--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.admin-filter-form {
+  width: 100%;
+  min-width: 0;
+}
+.admin-filter-panel--split .admin-filter-form {
+  flex: 0 1 720px;
+  min-width: 520px;
+}
+.admin-filter-form .el-form-item {
+  margin-bottom: 0;
+}
+.admin-filter-form .el-input,
+.admin-filter-form .el-select,
+.admin-filter-form .el-date-editor {
+  width: 100%;
+}
+.admin-table-panel {
+  overflow: hidden;
+}
+@media (max-width: 1280px) {
+  .admin-filter-panel--split {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .admin-filter-panel--split .admin-filter-form {
+    flex-basis: auto;
+    width: 100%;
+    min-width: 0;
+  }
+}
+@media (max-width: 760px) {
+  .admin-filter-panel {
+    padding: 12px;
+    border-radius: 14px;
+  }
+  .admin-filter-form .el-form-item {
+    margin-bottom: 10px;
+  }
+  .admin-filter-form .el-col:last-child .el-form-item {
+    margin-bottom: 0;
+  }
+  .admin-table-panel {
+    border-radius: 14px;
+  }
+}
 .chart {
   display: grid;
   grid-template-columns: 28px 1fr;

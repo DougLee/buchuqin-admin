@@ -3,7 +3,11 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { TXN_TYPE_TEXT } from "../../../../dicts";
-import { accountOrgLevel, activeCampus, sessionUser } from "../../../../session";
+import {
+  accountOrgLevel,
+  activeCampus,
+  sessionUser,
+} from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { InventoryTxn } from "../../../../types";
@@ -20,7 +24,7 @@ let keywordTimer: number | undefined;
 const operationalCampusId = computed(() =>
   accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
     ? activeCampus.value
-    : sessionUser.value?.campusId ?? "",
+    : (sessionUser.value?.campusId ?? ""),
 );
 
 function quantityText(row: InventoryTxn) {
@@ -28,7 +32,9 @@ function quantityText(row: InventoryTxn) {
   if (value === undefined || value === null) return "—";
   return row.type === "adjust" && value > 0 ? `+${value}` : String(value);
 }
-function asTxn(row: unknown): InventoryTxn { return row as InventoryTxn; }
+function asTxn(row: unknown): InventoryTxn {
+  return row as InventoryTxn;
+}
 
 async function load() {
   if (!operationalCampusId.value) {
@@ -71,24 +77,74 @@ onMounted(load);
 </script>
 
 <template>
-  <AdminPageShell title="出入库流水" eyebrow="INVENTORY LEDGER" description="采购入库、盘点调整与订单出库的全部流水记录。">
-    <div class="toolbar">
-      <ElInput v-model="keyword" class="filter-search" clearable placeholder="搜索商品、原因或操作人" aria-label="搜索出入库流水" />
-    </div>
-    <div class="data-panel">
-      <ElTable v-loading="loading" :data="rows" row-key="id" :empty-text="operationalCampusId ? '暂无流水' : '请先在顶部选择校区'">
-        <ElTableColumn label="时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
-        <ElTableColumn label="类型" min-width="120"><template #default="{ row }"><ElTag :type="row.type === 'stock-in' ? 'success' : row.type === 'stock-out' ? 'warning' : 'info'">{{ TXN_TYPE_TEXT[row.type] ?? row.type }}</ElTag></template></ElTableColumn>
-        <ElTableColumn label="商品" min-width="220"><template #default="{ row }">{{ row.product?.name || row.productId }}</template></ElTableColumn>
-        <ElTableColumn label="数量" width="110"><template #default="{ row }"><strong>{{ quantityText(asTxn(row)) }}</strong></template></ElTableColumn>
-        <ElTableColumn prop="reason" label="原因" min-width="220" show-overflow-tooltip />
-        <ElTableColumn label="操作人" min-width="150"><template #default="{ row }">{{ row.operatorName || row.operator || '—' }}</template></ElTableColumn>
+  <AdminPageShell
+    title="出入库流水"
+    eyebrow="INVENTORY LEDGER"
+    description="采购入库、盘点调整与订单出库的全部流水记录。"
+  >
+    <section class="admin-filter-panel" aria-label="流水筛选">
+      <ElForm class="admin-filter-form" label-position="top"
+        ><ElRow
+          ><ElCol :xs="24" :sm="12"
+            ><ElInput
+              v-model="keyword"
+              clearable
+              placeholder="搜索商品、原因或操作人" /></ElCol></ElRow
+      ></ElForm>
+    </section>
+    <section class="admin-table-panel" aria-label="出入库流水列表">
+      <ElTable
+        v-loading="loading"
+        :data="rows"
+        row-key="id"
+        :empty-text="operationalCampusId ? '暂无流水' : '请先在顶部选择校区'"
+      >
+        <ElTableColumn label="时间" min-width="170"
+          ><template #default="{ row }">{{
+            fmtDateTime(row.createdAt)
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="类型" min-width="120"
+          ><template #default="{ row }"
+            ><ElTag
+              :type="
+                row.type === 'stock-in'
+                  ? 'success'
+                  : row.type === 'stock-out'
+                    ? 'warning'
+                    : 'info'
+              "
+              >{{ TXN_TYPE_TEXT[row.type] ?? row.type }}</ElTag
+            ></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="商品" min-width="220"
+          ><template #default="{ row }">{{
+            row.product?.name || row.productId
+          }}</template></ElTableColumn
+        >
+        <ElTableColumn label="数量" width="110"
+          ><template #default="{ row }"
+            ><strong>{{ quantityText(asTxn(row)) }}</strong></template
+          ></ElTableColumn
+        >
+        <ElTableColumn
+          prop="reason"
+          label="原因"
+          min-width="220"
+          show-overflow-tooltip
+        />
+        <ElTableColumn label="操作人" min-width="150"
+          ><template #default="{ row }">{{
+            row.operatorName || row.operator || "—"
+          }}</template></ElTableColumn
+        >
       </ElTable>
-      <AdminPagination v-model:page="page" v-model:page-size="pageSize" :total="total" />
-    </div>
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+      />
+    </section>
   </AdminPageShell>
 </template>
-
-<style scoped>
-.filter-search { width: min(360px, 100%); }
-</style>
