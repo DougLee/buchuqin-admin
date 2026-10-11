@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import { hasPerm } from "../session";
 import type { RestockOrder } from "../types";
@@ -10,6 +11,7 @@ import type {
 } from "../types";
 import { fenToYuan } from "../utils/money";
 import { fmtDateTime } from "../utils/datetime";
+const notify = (message: string, error = false) => ElMessage({ message, type: error ? "error" : "success", showClose: true });
 
 /**
  * 采购管理（IKFOQ1，2026-09-15 grilling 定版）：
@@ -28,6 +30,8 @@ const isCampusView = computed(() => !hasPerm("GET /admin/purchase/orders"));
 const myOrders = ref<RestockOrder[]>([]);
 const myDetail = ref<RestockOrder | null>(null);
 const myDrawerOpen = ref(false);
+const asRestockOrder = (row: unknown) => row as RestockOrder;
+const asPurchaseOrder = (row: unknown) => row as PurchaseOrderRow;
 
 // 采购阶段字典见 src/dicts/inventory（PURCHASE_PHASE_TEXT/CLASS，IKIYMM 集中化）
 import { PURCHASE_PHASE_CLASS, PURCHASE_PHASE_TEXT } from "../dicts";
@@ -51,13 +55,14 @@ async function load() {
 /** 删除待审核订货单（IKJCJF：总部审核前可删）。 */
 const deleting = ref("");
 async function deleteMyOrder(id: string) {
-  if (!window.confirm("确认删除这张待审核订货单？")) return;
+  try { await ElMessageBox.confirm("确认删除这张待审核订货单？", "删除订货单", { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }); }
+  catch { return; }
   deleting.value = id;
   try {
     await api.deleteRestockOrder(id);
     await load();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   } finally {
     deleting.value = "";
   }
@@ -67,19 +72,15 @@ const receiptBusy = ref(false);
 async function confirmReceipt() {
   const target = myDetail.value;
   if (!target) return;
-  if (
-    !window.confirm(
-      "确认到货后库存按发货数全额入账（差异请线下核对登记），订货单随即完结。确认到货？",
-    )
-  )
-    return;
+  try { await ElMessageBox.confirm("确认到货后库存按发货数全额入账（差异请线下核对登记），订货单随即完结。", "确认到货", { type: "warning", confirmButtonText: "确认入账", cancelButtonText: "取消" }); }
+  catch { return; }
   receiptBusy.value = true;
   try {
     await api.confirmRestockReceipt(target.id);
     myDetail.value = await api.restockOrderDetail(target.id);
     await load();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   } finally {
     receiptBusy.value = false;
   }
@@ -129,28 +130,31 @@ async function submitReceive() {
       note: l.note.trim(),
     }))
     .filter((l) => l.receiveCases > 0 || l.badCases > 0);
-  if (!lines.length) return alert("请至少为一行填写本次到货件数");
+  if (!lines.length) return notify("请至少为一行填写本次到货件数", true);
   rxBusy.value = true;
   try {
     await api.receivePurchaseOrder(detail.value.id, lines);
-    alert("验收完成，总部仓库存已更新");
+    notify("验收完成，总部仓库存已更新");
     await refreshDetail();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "验收失败");
+    notify(e instanceof Error ? e.message : "验收失败", true);
   } finally {
     rxBusy.value = false;
   }
 }
 async function closeOrder() {
   if (!detail.value) return;
-  const note = window.prompt("关闭原因（欠收将作废，可留空）") ?? "";
-  if (note === null) return;
+  let note = "";
+  try {
+    const result = await ElMessageBox.prompt("欠收将作废，可留空。", "关闭采购单", { inputPlaceholder: "关闭原因", confirmButtonText: "确认关闭", cancelButtonText: "取消" });
+    note = result.value ?? "";
+  } catch { return; }
   try {
     await api.closePurchaseOrder(detail.value.id, note);
     await refreshDetail();
     await load();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   }
 }
 async function reopenOrder() {
@@ -160,7 +164,7 @@ async function reopenOrder() {
     await refreshDetail();
     await load();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   }
 }
 async function refreshDetail() {
@@ -191,56 +195,15 @@ async function refreshDetail() {
         </div>
         <p><span class="live-dot"></span>数据已同步 · 全部批次</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>批次</th>
-              <th>提交时间</th>
-              <th>提交人</th>
-              <th>商品</th>
-              <th>件数</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="7"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!myOrders.length">
-                <td :colspan="7" class="empty-cell">
-                  还没有订货单。到「订货单」选开放批次填写提交。
-                </td>
-              </tr>
-              <tr v-for="o in myOrders" :key="o.id">
-                <td><strong>{{ o.batchName || o.batchId }}</strong></td>
-                <td>{{ fmtDateTime(o.submittedAt) }}</td>
-                <td>{{ o.submitByName || "—" }}</td>
-                <td>{{ o.itemCount ?? o.items?.length ?? "—" }}</td>
-                <td>{{ o.totalCases ?? "—" }}</td>
-                <td>
-                  <span class="status" :class="RESTOCK_ORDER_STATUS_CLASS[o.status]">
-                    {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
-                  </span>
-                </td>
-                <td class="row-actions">
-                  <button class="btn mini primary" @click="openMyOrder(o.id)">详情</button>
-                  <button
-                    v-if="o.status === 'submitted' && hasPerm('DELETE /admin/restock/orders/:id')"
-                    class="btn mini danger-btn"
-                    :disabled="deleting === o.id"
-                    @click="deleteMyOrder(o.id)"
-                  >
-                    {{ deleting === o.id ? "删除中…" : "删除" }}
-                  </button>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="myOrders" row-key="id" empty-text="还没有订货单。到「订货单」选开放批次填写提交。">
+        <ElTableColumn label="批次" min-width="160"><template #default="{ row }"><strong>{{ row.batchName || row.batchId }}</strong></template></ElTableColumn>
+        <ElTableColumn label="提交时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.submittedAt) }}</template></ElTableColumn>
+        <ElTableColumn label="提交人" min-width="120"><template #default="{ row }">{{ row.submitByName || "—" }}</template></ElTableColumn>
+        <ElTableColumn label="商品" width="90"><template #default="{ row }">{{ row.itemCount ?? row.items?.length ?? "—" }}</template></ElTableColumn>
+        <ElTableColumn label="件数" width="90"><template #default="{ row }">{{ row.totalCases ?? "—" }}</template></ElTableColumn>
+        <ElTableColumn label="状态" width="120"><template #default="{ row }"><ElTag>{{ RESTOCK_ORDER_STATUS_TEXT[row.status] }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="160"><template #default="{ row }"><ElButton size="small" type="primary" @click="openMyOrder(row.id)">详情</ElButton><ElButton v-if="row.status === 'submitted' && hasPerm('DELETE /admin/restock/orders/:id')" size="small" type="danger" plain :loading="deleting === row.id" @click="deleteMyOrder(row.id)">删除</ElButton></template></ElTableColumn>
+      </ElTable>
     </div>
 
     <div v-else class="data-panel">
@@ -250,65 +213,22 @@ async function refreshDetail() {
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>采购批次</th>
-              <th>供应商</th>
-              <th>状态</th>
-              <th>应收 / 已收（件）</th>
-              <th>坏品</th>
-              <th>采购总额</th>
-              <th>已收金额</th>
-              <th>创建人 / 时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="9"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!orders.length">
-                <td :colspan="9" class="empty-cell">
-                  还没有采购单。到「订货单」打开批次详情，一键聚合生成。
-                </td>
-              </tr>
-              <tr v-for="row in orders" :key="row.id">
-                <td><strong>{{ row.batchName }}</strong></td>
-                <td>{{ row.supplierName }}</td>
-                <td>
-                  <span class="status" :class="PURCHASE_PHASE_CLASS[row.phase]">
-                    {{ PURCHASE_PHASE_TEXT[row.phase] }}
-                  </span>
-                </td>
-                <td>
-                  {{ row.requiredCases }} / {{ row.receivedCases }}
-                  <template v-if="row.phase === 'partial'">
-                    <em class="shortage">（欠 {{ row.requiredCases - row.receivedCases }}）</em>
-                  </template>
-                </td>
-                <td>{{ row.badCases || "—" }}</td>
-                <td>¥{{ fenToYuan(row.totalCost) }}</td>
-                <td>¥{{ fenToYuan(row.receivedCost) }}</td>
-                <td>
-                  {{ row.createdByName || "—" }}<br />{{ fmtDateTime(row.createdAt) }}
-                </td>
-                <td class="row-actions">
-                  <button v-if="hasPerm('GET /admin/purchase/orders/:id')" class="btn mini primary" @click="openDetail(row)">详情</button>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="orders" row-key="id" empty-text="还没有采购单。到「订货单」打开批次详情，一键聚合生成。">
+        <ElTableColumn prop="batchName" label="采购批次" min-width="160" />
+        <ElTableColumn prop="supplierName" label="供应商" min-width="140" />
+        <ElTableColumn label="状态" width="110"><template #default="{ row }"><ElTag>{{ PURCHASE_PHASE_TEXT[row.phase] }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="应收 / 已收（件）" min-width="150"><template #default="{ row }">{{ row.requiredCases }} / {{ row.receivedCases }}<em v-if="row.phase === 'partial'" class="shortage">（欠 {{ row.requiredCases - row.receivedCases }}）</em></template></ElTableColumn>
+        <ElTableColumn label="坏品" width="80"><template #default="{ row }">{{ row.badCases || "—" }}</template></ElTableColumn>
+        <ElTableColumn label="采购总额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.totalCost) }}</template></ElTableColumn>
+        <ElTableColumn label="已收金额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.receivedCost) }}</template></ElTableColumn>
+        <ElTableColumn label="创建人 / 时间" min-width="180"><template #default="{ row }">{{ row.createdByName || "—" }}<br />{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="100"><template #default="{ row }"><ElButton v-if="hasPerm('GET /admin/purchase/orders/:id')" size="small" type="primary" @click="openDetail(asPurchaseOrder(row))">详情</ElButton></template></ElTableColumn>
+      </ElTable>
     </div>
 
     <!-- 详情 + 验收弹框 -->
-    <div v-if="detailDrawer" class="drawer-mask" @click.self="detailDrawer = false">
-      <div class="drawer po-detail-drawer">
-        <div class="drawer-head">
+    <ElDialog v-model="detailDrawer" :title="detail?.supplierName ?? '采购单'" width="min(860px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+        <div class="purchase-dialog-head">
           <div>
             <p class="eyebrow">PURCHASE ORDER</p>
             <h2>{{ detail?.supplierName ?? "采购单" }}</h2>
@@ -322,7 +242,6 @@ async function refreshDetail() {
               </template>
             </p>
           </div>
-          <button @click="detailDrawer = false">✕</button>
         </div>
         <template v-if="detail">
           <!-- 验收编辑态（IQ3 快捷全收：预填欠收，可改小可 0） -->
@@ -342,9 +261,9 @@ async function refreshDetail() {
                 {{ detail.items.find((i) => i.productId === l.productId)?.requiredCases }} /
                 {{ detail.items.find((i) => i.productId === l.productId)?.receivedCases }}
               </span>
-              <input v-model.number="l.receive" type="number" min="0" step="1" />
-              <input v-model.number="l.bad" type="number" min="0" step="1" />
-              <input v-model="l.note" type="text" maxlength="100" placeholder="备注" />
+              <ElInputNumber v-model="l.receive" :min="0" :step="1" />
+              <ElInputNumber v-model="l.bad" :min="0" :step="1" />
+              <ElInput v-model="l.note" maxlength="100" placeholder="备注" />
             </div>
           </template>
           <!-- 只读行表 -->
@@ -365,35 +284,32 @@ async function refreshDetail() {
             </p>
           </template>
         </template>
-        <div v-if="detail" class="drawer-actions">
-          <button class="btn ghost" @click="detailDrawer = false; rxLines = []">关闭</button>
+        <template v-if="detail" #footer>
+          <ElButton @click="detailDrawer = false; rxLines = []">关闭</ElButton>
           <template v-if="detail.phase !== 'closed'">
-            <button
+            <ElButton
               v-if="hasPerm('POST /admin/purchase/orders/:id/close') && !rxLines.length && detail.phase !== 'completed'"
-              class="btn ghost"
               @click="closeOrder"
             >
               关闭采购单
-            </button>
-            <button v-if="hasPerm('POST /admin/purchase/orders/:id/receive') && !rxLines.length" class="btn primary" @click="openReceive">
+            </ElButton>
+            <ElButton v-if="hasPerm('POST /admin/purchase/orders/:id/receive') && !rxLines.length" type="primary" @click="openReceive">
               验收入库
-            </button>
+            </ElButton>
             <template v-else-if="rxLines.length && hasPerm('POST /admin/purchase/orders/:id/receive')">
-              <button class="btn ghost" @click="rxLines = []">取消验收</button>
-              <button class="btn primary" :disabled="rxBusy" @click="submitReceive">
+              <ElButton @click="rxLines = []">取消验收</ElButton>
+              <ElButton type="primary" :loading="rxBusy" @click="submitReceive">
                 {{ rxBusy ? "提交中…" : "确认验收" }}
-              </button>
+              </ElButton>
             </template>
           </template>
-          <button v-else-if="hasPerm('POST /admin/purchase/orders/:id/reopen')" class="btn primary" @click="reopenOrder">重开采购单</button>
-        </div>
-      </div>
-    </div>
+          <ElButton v-else-if="hasPerm('POST /admin/purchase/orders/:id/reopen')" type="primary" @click="reopenOrder">重开采购单</ElButton>
+        </template>
+    </ElDialog>
 
     <!-- 校区视角：订货单详情抽屉（IKJCJF） -->
-    <div v-if="myDrawerOpen" class="drawer-mask" @click.self="myDrawerOpen = false">
-      <div class="drawer">
-        <div class="drawer-head">
+    <ElDialog v-model="myDrawerOpen" title="订货单详情" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+        <div class="purchase-dialog-head">
           <div>
             <p class="eyebrow">RESTOCK ORDER</p>
             <h2>
@@ -403,7 +319,6 @@ async function refreshDetail() {
               </span>
             </h2>
           </div>
-          <button @click="myDrawerOpen = false">✕</button>
         </div>
         <div class="drawer-body">
           <p v-if="!myDetail" class="empty-cell">加载中…</p>
@@ -419,33 +334,23 @@ async function refreshDetail() {
               <dd v-if="myDetail.shipment?.receivedAt">{{ fmtDateTime(myDetail.shipment.receivedAt) }}</dd>
             </dl>
             <div v-if="myDetail.status === 'shipped'" class="drawer-actions">
-              <button
+              <ElButton
                 v-if="hasPerm('POST /admin/restock/orders/:id/receipt')"
-                class="btn primary"
-                :disabled="receiptBusy"
+                type="primary"
+                :loading="receiptBusy"
                 @click="confirmReceipt"
               >
                 {{ receiptBusy ? "入账中…" : "确认到货入账" }}
-              </button>
+              </ElButton>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>商品</th><th>件数</th><th>听数</th></tr>
-                </thead>
-                <tbody>
-                  <tr v-for="l in myDetail.items" :key="l.productId">
-                    <td>{{ l.product?.name ?? l.productId }}</td>
-                    <td>{{ l.cases }}</td>
-                    <td>{{ l.cases * l.unitsPerCase }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <ElTable :data="myDetail.items" row-key="productId" empty-text="暂无商品">
+              <ElTableColumn label="商品" min-width="180"><template #default="{ row }">{{ row.product?.name ?? row.productId }}</template></ElTableColumn>
+              <ElTableColumn prop="cases" label="件数" width="100" />
+              <ElTableColumn label="零售单位数" width="130"><template #default="{ row }">{{ row.cases * row.unitsPerCase }}</template></ElTableColumn>
+            </ElTable>
           </template>
         </div>
-      </div>
-    </div>
+    </ElDialog>
   </div>
 </template>
 

@@ -1,6 +1,6 @@
 /**
  * 状态 Tab 值域（IKIYMM 字典集中化）：key=前端过滤值，statuses=服务端逗号状态集。
- * 纯搬移重构——label 文案与 statuses 与原 DataPage 内定义逐字一致。
+ * 各领域列表共用的状态筛选值域。
  */
 export interface StatusTab {
   key: string;

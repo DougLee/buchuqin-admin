@@ -29,7 +29,7 @@ export const STATUS_TEXT: Record<string, string> = {
   completed: "已完成",
 };
 
-/** 售后类型（DataPage 用）。分叉提示：AfterSalesPage.TYPE_TEXT 同域文案不同
+/** 售后类型。分叉提示：AfterSalesPage.TYPE_TEXT 同域文案不同
  *  （missing 此处「商品缺失」/彼处「缺件」）——纯重构保持两套，统一待后续拍板。 */
 export const AFTER_SALE_TYPE_TEXT: Record<string, string> = {
   quality: "质量问题",
@@ -39,7 +39,7 @@ export const AFTER_SALE_TYPE_TEXT: Record<string, string> = {
   other: "其他",
 };
 
-/** 售后行内状态（DataPage 明细行，原 DataPage:2350 匿名 map 落地） */
+/** 售后行内状态。 */
 export const AFTER_SALE_ROW_STATUS_TEXT: Record<string, string> = {
   pending: "待处理",
   cancelled: "已取消",

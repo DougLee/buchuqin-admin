@@ -1,6 +1,5 @@
 import type { Component } from "vue";
 import Dashboard from "./pages/Dashboard.vue";
-import DataPage from "./pages/DataPage.vue";
 import Restock from "./pages/RestockPage.vue";
 import Purchase from "./pages/PurchasePage.vue";
 import Reports from "./pages/DailyReportPage.vue";
@@ -20,6 +19,12 @@ import Permissions from "./pages/RbacPermissionsPage.vue";
 import Audit from "./pages/RbacAuditPage.vue";
 import { catalogViews } from "./modules/catalog";
 import { fulfillmentViews } from "./modules/fulfillment";
+import { settingsViews } from "./modules/settings";
+import { warehouseViews } from "./modules/warehouse";
+import { governanceViews } from "./modules/governance";
+import { marketingViews } from "./modules/marketing";
+import { financeViews } from "./modules/finance";
+import { organizationViews } from "./modules/organization";
 // 组织管理（IKKRMS）：组织 B 平台端开通一条龙（列表/微信配置/开通向导）
 import Organizations from "./pages/OrganizationsPage.vue";
 function mergeViewRegistries(...registries: Record<string, Component>[]) {
@@ -38,8 +43,5 @@ const coreViews: Record<string, Component> = {
   "rbac-permissions": Permissions, "rbac-audit": Audit, organizations: Organizations,
   help: HelpCenter, changelog: Changelog,
 };
-const legacyViews = Object.fromEntries(
-  ["official-products", "products", "inventory", "inventory-txns", "locations", "banners", "pay-ads", "coupons", "promotions", "wheel", "wechat-groups", "staff", "recruit", "buildings", "campuses", "users", "dispatch", "finance", "rules", "audit", "printers"].map((key) => [key, DataPage]),
-) as Record<string, Component>;
-export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, legacyViews);
+export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, settingsViews, warehouseViews, governanceViews, marketingViews, financeViews, organizationViews);
 export const superViews = new Set(["rbac-roles", "rbac-menus", "rbac-permissions"]);

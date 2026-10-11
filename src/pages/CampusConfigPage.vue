@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { api } from "../api";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { api, uploadImage } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
-import { hasPerm, hasPlatformPerm, sessionUser, switchableCampuses } from "../session";
-import { fetchOrgCampuses } from "../dicts";
-import DataPage from "./DataPage.vue";
+import { accountOrgLevel, activeCampus, hasPerm, hasPlatformPerm, sessionUser, switchableCampuses } from "../session";
+import PrinterPage from "../modules/settings/printers/pages/PrinterPage.vue";
+import WechatGroupPage from "../modules/settings/wechat-groups/pages/WechatGroupPage.vue";
+import HomeBannerPage from "../modules/marketing/banners/pages/HomeBannerPage.vue";
+import PayAdPage from "../modules/marketing/banners/pages/PayAdPage.vue";
+import WheelPage from "../modules/marketing/wheel/pages/WheelPage.vue";
 import type {
   CampusConfigBundle,
   DeliverySlotRow,
@@ -15,7 +19,7 @@ import type {
  * 校区配置聚合页（IKHM1O 道哥 2026-09-21 定版全收）：
  * 顶部校区选择器（平台角色）+ Tab 分区，把原散在 6 处的校区维度配置收进一菜单。
  * - 参数类 Tab（档案/配送营业/楼长结算/送达时段/公告）走聚合接口，支持 ?campus=
- * - 内容类 Tab（群码/打印机/Banner/抽奖）内嵌 DataPage 板块复用——多校区授权
+ * - 内容类 Tab（群码/打印机/Banner/抽奖）组合各业务模块的独立页面——多校区授权
  *   账号经页内选择器切换（IKJA7Y：?campus= 授权集内即可写，顶栏切换器已移除）
  * - Tab 与写入操作按当前有效接口权限过滤，跨校区写入另校验该操作的平台授权。
  */
@@ -50,26 +54,29 @@ const TABS = computed(() => {
   return list;
 });
 const activeTab = ref("profile");
-const campusOptions = ref<Pick<
-  import("../types").Campus,
-  "id" | "name" | "shortName"
->[]>([]);
-const selectedCampus = ref("");
+const selectedCampus = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : sessionUser.value?.campusId ?? "",
+);
 const bundle = ref<CampusConfigBundle | null>(null);
 const loading = ref(false);
-const message = ref("");
-const messageError = ref(false);
 const saving = ref(false);
+const asSlot = (row: unknown) => row as DeliverySlotRow;
+const asNotice = (row: unknown) => row as NoticeRow;
 
 function notify(text: string, error = false) {
-  message.value = text;
-  messageError.value = error;
-  if (text) setTimeout(() => (message.value = ""), 2600);
+  ElMessage({ message: text, type: error ? "error" : "success", showClose: true });
 }
 
 let loadSequence = 0;
 async function load() {
   const sequence = ++loadSequence;
+  if (!selectedCampus.value) {
+    bundle.value = null;
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   bundle.value = null;
   try {
@@ -82,19 +89,11 @@ async function load() {
     if (sequence === loadSequence) loading.value = false;
   }
 }
-onMounted(async () => {
-  if (isPlatform.value) {
-    try {
-      campusOptions.value = await fetchOrgCampuses();
-      selectedCampus.value = campusOptions.value.find(c => c.id === sessionUser.value?.campusId)?.id
-        ?? campusOptions.value[0]?.id ?? "";
-    } catch {
-      selectedCampus.value = sessionUser.value?.campusId ?? "";
-    }
-  }
-  await load();
+onMounted(load);
+watch(selectedCampus, () => {
+  activeTab.value = "profile";
+  void load();
 });
-watch(selectedCampus, () => void load());
 
 /* ---------- 基础档案（平台角色可编辑；校区角色只读） ---------- */
 const profileForm = ref({
@@ -103,6 +102,7 @@ const profileForm = ref({
   warehouseName: "",
   address: "",
   servicePhone: "",
+  serviceQrcode: "",
   status: "active" as "active" | "inactive",
 });
 watch(bundle, (b) => {
@@ -113,9 +113,26 @@ watch(bundle, (b) => {
     warehouseName: b.campus.warehouseName,
     address: b.campus.address ?? "",
     servicePhone: (b.campus as { servicePhone?: string }).servicePhone ?? "",
+    serviceQrcode: (b.campus as { serviceQrcode?: string }).serviceQrcode ?? "",
     status: b.campus.status === "inactive" ? "inactive" : "active",
   };
 });
+const qrcodeUploading = ref(false);
+/** IKKTWP 客服二维码上传（COS webp） */
+async function onQrcodeChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  qrcodeUploading.value = true;
+  try {
+    profileForm.value.serviceQrcode = await uploadImage(file, "app");
+    ElMessage.success("二维码已上传");
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : "上传失败");
+  } finally {
+    qrcodeUploading.value = false;
+    (e.target as HTMLInputElement).value = "";
+  }
+}
 async function saveProfile() {
   if (!canEditProfile.value || !bundle.value || saving.value) return;
   saving.value = true;
@@ -127,6 +144,7 @@ async function saveProfile() {
       address: profileForm.value.address.trim(),
       // IKHMF1：客服电话（校区自定义，小程序拨号展示）
       servicePhone: profileForm.value.servicePhone.trim(),
+      serviceQrcode: profileForm.value.serviceQrcode.trim(),
       // status 不在此提交：防误改校区启停（归校区管理页）
     });
     notify("基础档案已保存");
@@ -271,7 +289,8 @@ async function toggleSlot(row: DeliverySlotRow) {
 }
 async function removeSlot(row: DeliverySlotRow) {
   if (!canWrite("DELETE /admin/delivery-slots/:id")) return;
-  if (!confirm(`删除时段「${row.label}」？`)) return;
+  try { await ElMessageBox.confirm(`删除时段「${row.label}」？`, "删除送达时段", { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }); }
+  catch { return; }
   try {
     await api.deleteSlot(row.id);
     notify("时段已删除");
@@ -332,7 +351,8 @@ async function toggleNotice(n: NoticeRow) {
 }
 async function removeNotice(n: NoticeRow) {
   if (!canWrite("DELETE /admin/notices/:id")) return;
-  if (!confirm(`删除公告「${n.content.slice(0, 20)}…」？`)) return;
+  try { await ElMessageBox.confirm(`删除公告「${n.content.slice(0, 20)}…」？`, "删除公告", { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }); }
+  catch { return; }
   try {
     await api.deleteNotice(n.id);
     notify("公告已删除");
@@ -342,14 +362,7 @@ async function removeNotice(n: NoticeRow) {
   }
 }
 
-/** 内容类 Tab：内嵌 DataPage 板块（按当前登录校区取数） */
-const EMBED_SECTIONS = [
-  "wechat-groups",
-  "printers",
-  "banners",
-  "pay-ads",
-  "wheel",
-];
+/** 内容类 Tab：组合业务模块页面（按顶部当前校区取数）。 */
 </script>
 <template>
   <div class="workspace">
@@ -359,42 +372,21 @@ const EMBED_SECTIONS = [
         <h1>校区配置</h1>
         <p>档案、配送营业、结算、时段、公告与营销内容——一个校区的全部配置。</p>
       </div>
-      <select
-        v-if="isPlatform"
-        v-model="selectedCampus"
-        class="filter-btn"
-        aria-label="校区选择"
-      >
-        <option
-          v-for="c in campusOptions"
-          :key="c.id"
-          :value="c.id"
-        >
-          {{ c.shortName || c.name }}
-        </option>
-      </select>
-    </div>
-    <!-- 保存反馈走全局 .toast（DataPage 同款 fixed 居中），不再行内文本条 -->
-    <div
-      v-if="message"
-      class="toast"
-      :class="{ error: messageError }"
-      role="status"
-    >
-      {{ message }}
     </div>
     <nav class="cc-tabs" aria-label="配置分区">
-      <button
+      <ElButton
         v-for="t in TABS"
         :key="t.key"
+        text
         :class="{ active: activeTab === t.key }"
         @click="activeTab = t.key"
       >
         {{ t.label }}
-      </button>
+      </ElButton>
     </nav>
 
-    <p v-if="loading" class="form-hint">加载中…</p>
+    <p v-if="!selectedCampus" class="form-hint">请先在顶部选择校区</p>
+    <p v-else-if="loading" class="form-hint">加载中…</p>
 
     <!-- 基础档案 -->
     <section v-else-if="activeTab === 'profile'" class="cc-panel">
@@ -402,43 +394,78 @@ const EMBED_SECTIONS = [
         <div class="cc-form">
           <label
             >校区全称
-            <input v-model.trim="profileForm.name" :disabled="!canEditProfile" /></label>
+            <ElInput v-model.trim="profileForm.name" :disabled="!canEditProfile" /></label>
           <label
             >简称
-            <input
+            <ElInput
               v-model.trim="profileForm.shortName"
               :disabled="!canEditProfile"
           /></label>
           <label
             >仓库名
-            <input
+            <ElInput
               v-model.trim="profileForm.warehouseName"
               :disabled="!canEditProfile"
           /></label>
           <label
             >地址
-            <input v-model.trim="profileForm.address" :disabled="!canEditProfile" /></label>
+            <ElInput v-model.trim="profileForm.address" :disabled="!canEditProfile" /></label>
           <label
             >客服电话（小程序拨号展示）
-            <input
+            <ElInput
               v-model.trim="profileForm.servicePhone"
               :disabled="!canEditProfile"
               maxlength="20"
               placeholder="如 4008002026"
           /></label>
+          <div class="qrcode-field">
+            <label>
+              客服微信二维码（小程序客服弹层展示）
+              <div class="qrcode-row">
+                <img
+                  v-if="profileForm.serviceQrcode"
+                  :src="profileForm.serviceQrcode"
+                  class="qrcode-preview"
+                  alt="客服二维码"
+                />
+                <div v-else class="qrcode-empty">未上传</div>
+                <div class="qrcode-ops" v-if="canEditProfile">
+                  <label class="qrcode-btn">
+                    {{ qrcodeUploading ? "上传中…" : "上传图片" }}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style="display: none"
+                      @change="onQrcodeChange"
+                    />
+                  </label>
+                  <ElButton
+                    v-if="profileForm.serviceQrcode"
+                    text
+                    type="danger"
+                    @click="profileForm.serviceQrcode = ''"
+                    >移除</ElButton
+                  >
+                </div>
+              </div>
+              <p class="qrcode-tip">
+                建议上传校区客服个人微信二维码；未上传时小程序客服入口回落拨打电话
+              </p>
+            </label>
+          </div>
           <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
                与「配送与营业」的打烊/闭店是两回事，界面上不做在一起防误触 -->
         </div>
         <p v-if="!canEditProfile" class="form-hint"
           >基础档案仅总部/平台账号可修改</p
         >
-        <button
+        <ElButton
           v-if="canEditProfile"
-          class="btn primary"
-          :disabled="saving"
+          type="primary"
+          :loading="saving"
           @click="saveProfile"
         >
-          保存档案</button
+          保存档案</ElButton
         >
       </template>
     </section>
@@ -447,67 +474,41 @@ const EMBED_SECTIONS = [
     <section v-else-if="activeTab === 'delivery'" class="cc-panel">
       <template v-if="bundle">
         <fieldset class="cc-form" :disabled="!canEditDelivery">
-          <label
-            >即时达配送费（元）
-            <input
-              v-model.number="deliveryForm.instant"
-              type="number"
-              min="0"
-              step="0.01" /></label>
-          <label
-            >预约达配送费（元）
-            <input
-              v-model.number="deliveryForm.scheduled"
-              type="number"
-              min="0"
-              step="0.01" /></label>
-          <label
-            >起送门槛（元）
-            <input
-              v-model.number="deliveryForm.threshold"
-              type="number"
-              min="0"
-              step="0.01" /></label>
+          <label>即时达配送费（元）<ElInputNumber v-model="deliveryForm.instant" :min="0" :precision="2" /></label>
+          <label>预约达配送费（元）<ElInputNumber v-model="deliveryForm.scheduled" :min="0" :precision="2" /></label>
+          <label>起送门槛（元）<ElInputNumber v-model="deliveryForm.threshold" :min="0" :precision="2" /></label>
           <label
             >闭店方式
-            <select v-model="closeMode">
-              <option value="always">24 小时营业</option>
-              <option value="on-time">按时间打烊</option>
-              <option value="now">立即闭店（手动）</option>
-            </select></label
+            <ElSelect v-model="closeMode"><ElOption label="24 小时营业" value="always" /><ElOption label="按时间打烊" value="on-time" /><ElOption label="立即闭店（手动）" value="now" /></ElSelect></label
           >
           <template v-if="closeMode === 'on-time'">
             <!-- 原生 time 控件显示格式跟浏览器语言走（英文环境 12 小时制、属性不可控），
                  改 30 分钟档下拉：天然 24 小时制，跨浏览器一致 -->
             <label
               >打烊开始
-              <select v-model="deliveryForm.closeStart">
-                <option v-for="t in TIME_OPTIONS" :key="t" :value="t">{{ t }}</option>
-              </select></label
+              <ElSelect v-model="deliveryForm.closeStart" filterable><ElOption v-for="t in TIME_OPTIONS" :key="t" :label="t" :value="t" /></ElSelect></label
             >
             <label
               >打烊结束
-              <select v-model="deliveryForm.closeEnd">
-                <option v-for="t in TIME_OPTIONS" :key="t" :value="t">{{ t }}</option>
-              </select></label
+              <ElSelect v-model="deliveryForm.closeEnd" filterable><ElOption v-for="t in TIME_OPTIONS" :key="t" :label="t" :value="t" /></ElSelect></label
             >
           </template>
           <label class="cc-form--wide"
             >无楼长提示（下单结算弹窗，空=默认文案）
-            <textarea
+            <ElInput
               v-model.trim="deliveryForm.noManagerTip"
-              rows="2"
+              type="textarea"
+              :rows="2"
               maxlength="60"
+              show-word-limit
               placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～"
-            ></textarea
+            />
           ></label>
         </fieldset>
         <p class="form-hint"
           >打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。</p
         >
-        <button v-if="canEditDelivery" class="btn primary" :disabled="saving" @click="saveDelivery">
-          保存配送与营业配置</button
-        >
+        <ElButton v-if="canEditDelivery" type="primary" :loading="saving" @click="saveDelivery">保存配送与营业配置</ElButton>
       </template>
     </section>
 
@@ -517,23 +518,22 @@ const EMBED_SECTIONS = [
         <div class="cc-form">
           <label
             >楼长月度底薪（元，0 = 无底薪纯提成）
-            <input
+            <ElInputNumber
               v-model.number="salaryForm.baseSalary"
-              type="number"
-              min="0"
-              step="1"
+              :min="0"
+              :step="1"
               :disabled="!canEditProfile" /></label>
         </div>
         <p v-if="!canEditProfile" class="form-hint"
           >底薪仅总部/平台账号可修改</p
         >
-        <button
+        <ElButton
           v-if="canEditProfile"
-          class="btn primary"
-          :disabled="saving"
+          type="primary"
+          :loading="saving"
           @click="saveSalary"
         >
-          保存底薪</button
+          保存底薪</ElButton
         >
       </template>
     </section>
@@ -542,51 +542,20 @@ const EMBED_SECTIONS = [
     <section v-else-if="activeTab === 'slots'" class="cc-panel">
       <template v-if="bundle">
         <div v-if="canWrite('POST /admin/delivery-slots')" class="cc-add-row">
-          <input
-            v-model.trim="slotForm.label"
+          <ElInput
+            v-model="slotForm.label"
             placeholder="时段文案，如 12:00-14:00"
             maxlength="20"
           />
-          <input
-            v-model.number="slotForm.capacity"
-            type="number"
-            min="0"
-            placeholder="容量"
-            style="width: 110px"
-          />
-          <button class="btn primary" @click="addSlot">新增时段</button>
+          <ElInputNumber v-model="slotForm.capacity" :min="0" placeholder="容量" />
+          <ElButton type="primary" @click="addSlot">新增时段</ElButton>
         </div>
-        <table class="cc-table">
-          <thead>
-            <tr>
-              <th>时段</th>
-              <th>容量</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in slots" :key="s.id">
-              <td>{{ s.label }}</td>
-              <td>{{ s.capacity }}</td>
-              <td
-                ><span class="status" :class="s.available ? 'ok' : 'muted'">{{
-                  s.available ? "可用" : "停用"
-                }}</span></td
-              >
-              <td class="cc-actions">
-                <button class="btn mini ghost" v-if="canWrite('PATCH /admin/delivery-slots/:id')" @click="toggleSlot(s)">
-                  {{ s.available ? "停用" : "启用" }}</button
-                ><button class="btn mini danger-btn" v-if="canWrite('DELETE /admin/delivery-slots/:id')" @click="removeSlot(s)">
-                  删除</button
-                ></td
-              >
-            </tr>
-            <tr v-if="!slots.length"
-              ><td colspan="4" class="cc-empty">暂无送达时段（预约达下单需要）</td></tr
-            >
-          </tbody>
-        </table>
+        <ElTable :data="slots" row-key="id" empty-text="暂无送达时段（预约达下单需要）">
+          <ElTableColumn prop="label" label="时段" min-width="160" />
+          <ElTableColumn prop="capacity" label="容量" width="100" />
+          <ElTableColumn label="状态" width="100"><template #default="{ row }"><ElTag :type="row.available ? 'success' : 'info'">{{ row.available ? "可用" : "停用" }}</ElTag></template></ElTableColumn>
+          <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><ElButton v-if="canWrite('PATCH /admin/delivery-slots/:id')" size="small" @click="toggleSlot(asSlot(row))">{{ row.available ? "停用" : "启用" }}</ElButton><ElButton v-if="canWrite('DELETE /admin/delivery-slots/:id')" size="small" type="danger" plain @click="removeSlot(asSlot(row))">删除</ElButton></template></ElTableColumn>
+        </ElTable>
       </template>
     </section>
 
@@ -594,82 +563,52 @@ const EMBED_SECTIONS = [
     <section v-else-if="activeTab === 'notices'" class="cc-panel">
       <template v-if="bundle">
         <div v-if="canWrite('POST /admin/notices')" class="cc-add-col">
-          <textarea
-            v-model.trim="noticeForm.content"
-            rows="2"
+          <ElInput
+            v-model="noticeForm.content"
+            type="textarea"
+            :rows="2"
             maxlength="200"
             placeholder="公告内容（小程序首页跑马灯显示，多条自动用「｜」拼接）"
-          ></textarea>
+          />
           <div class="cc-add-row">
             <label
               >生效起
-              <input v-model="noticeForm.startsAt" type="datetime-local" /></label>
+              <ElDatePicker v-model="noticeForm.startsAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择开始时间" /></label>
             <label
               >生效止
-              <input v-model="noticeForm.endsAt" type="datetime-local" /></label>
-            <button class="btn primary" @click="addNotice">发布公告</button>
+              <ElDatePicker v-model="noticeForm.endsAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择结束时间" /></label>
+            <ElButton type="primary" @click="addNotice">发布公告</ElButton>
           </div>
         </div>
-        <table class="cc-table">
-          <thead>
-            <tr>
-              <th>内容</th>
-              <th>生效窗</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="n in notices" :key="n.id">
-              <td style="max-width: 320px">{{ n.content }}</td>
-              <td class="cc-mono"
-                >{{
-                  new Date(n.startsAt).toLocaleString("zh-CN", {
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                }}
-                ~
-               {{
-                  new Date(n.endsAt).toLocaleString("zh-CN", {
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                }}</td
-              >
-              <td>
-                <span class="status" :class="noticeState(n).tone">{{
-                  noticeState(n).text
-                }}</span></td
-              >
-              <td class="cc-actions">
-                <button class="btn mini ghost" v-if="canWrite('PATCH /admin/notices/:id')" @click="toggleNotice(n)">
-                  {{ n.status === "active" ? "停用" : "启用" }}</button
-                ><button class="btn mini danger-btn" v-if="canWrite('DELETE /admin/notices/:id')" @click="removeNotice(n)">
-                  删除</button
-                ></td
-              >
-            </tr>
-            <tr v-if="!notices.length"
-              ><td colspan="4" class="cc-empty"
-                >暂无公告——发布后小程序首页顶部跑马灯显示</td
-              ></tr
-            >
-          </tbody>
-        </table>
+        <ElTable :data="notices" row-key="id" empty-text="暂无公告——发布后小程序首页顶部跑马灯显示">
+          <ElTableColumn prop="content" label="内容" min-width="280" show-overflow-tooltip />
+          <ElTableColumn label="生效窗" min-width="280"><template #default="{ row }">{{ new Date(row.startsAt).toLocaleString("zh-CN", { hour12: false }) }} ~ {{ new Date(row.endsAt).toLocaleString("zh-CN", { hour12: false }) }}</template></ElTableColumn>
+          <ElTableColumn label="状态" width="100"><template #default="{ row }"><ElTag :type="noticeState(asNotice(row)).tone === 'ok' ? 'success' : 'info'">{{ noticeState(asNotice(row)).text }}</ElTag></template></ElTableColumn>
+          <ElTableColumn label="操作" fixed="right" width="180"><template #default="{ row }"><ElButton v-if="canWrite('PATCH /admin/notices/:id')" size="small" @click="toggleNotice(asNotice(row))">{{ row.status === "active" ? "停用" : "启用" }}</ElButton><ElButton v-if="canWrite('DELETE /admin/notices/:id')" size="small" type="danger" plain @click="removeNotice(asNotice(row))">删除</ElButton></template></ElTableColumn>
+        </ElTable>
       </template>
     </section>
 
-    <!-- 内容类 Tab：内嵌 DataPage 板块（按当前登录校区） -->
-    <template v-else-if="EMBED_SECTIONS.includes(activeTab)">
-      <p class="form-hint"
-        >此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。</p
-      >
-      <DataPage :fixed-section="activeTab" />
+    <!-- 内容类 Tab：组合独立业务模块（按顶部当前校区） -->
+    <template v-else-if="activeTab === 'printers'">
+      <p class="form-hint">此分区按当前登录校区取数；平台账号配置其他校区请先在顶栏切换校区。</p>
+      <PrinterPage />
+    </template>
+    <template v-else-if="activeTab === 'wechat-groups'">
+      <p class="form-hint">此分区按顶部当前校区取数。</p>
+      <WechatGroupPage />
+    </template>
+    <template v-else-if="activeTab === 'banners'">
+      <p class="form-hint">此分区按顶部当前校区取数。</p>
+      <HomeBannerPage />
+    </template>
+    <template v-else-if="activeTab === 'pay-ads'">
+      <p class="form-hint">此分区按顶部当前校区取数。</p>
+      <PayAdPage />
+    </template>
+    <template v-else-if="activeTab === 'wheel'">
+      <p class="form-hint">此分区按顶部当前校区取数。</p>
+      <WheelPage embedded />
     </template>
   </div>
 </template>
@@ -805,5 +744,48 @@ const EMBED_SECTIONS = [
 .cc-mono {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.qrcode-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 7px;
+}
+.qrcode-preview {
+  width: 88px;
+  height: 88px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+.qrcode-empty {
+  width: 88px;
+  height: 88px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.qrcode-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.qrcode-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.qrcode-btn:hover {
+  border-color: var(--brand);
+}
+.qrcode-tip {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 </style>

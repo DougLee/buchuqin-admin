@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { superViews } from "./view-catalog";
 import AppIcon from "./components/AppIcon.vue";
 import { api, clearToken } from "./api";
 import {
   authorizationEpoch,
+  accountOrganizationId,
+  accountOrgLevel,
+  activeCampus,
+  applySession,
   isSuper,
   canSee,
   clearSession,
-  isPlatform,
   loadRbac,
   menuTree,
   roleLabel,
@@ -200,8 +204,82 @@ watch(
       expandedGroups.value = [...expandedGroups.value, label];
   },
 );
-/* IKJA7Y：顶栏校区切换器已移除——校区上下文降级为请求级参数，
- * 多校区授权账号在各页面的页内筛选下拉切换（DataPage/CampusConfigPage）。 */
+/* ---------- 顶栏校区上下文：账号数据范围决定可选项，角色不参与数据放大 ---------- */
+type HeaderCampus = {
+  id: string;
+  name: string;
+  shortName: string;
+  organizationId?: string | null;
+  current: boolean;
+};
+const campusChoices = ref<HeaderCampus[]>([]);
+const organizationChoices = ref<{ id: string; name: string; shortName?: string }[]>([]);
+const selectedOrganizationId = ref("");
+const campusSwitching = ref(false);
+const showCampusSwitcher = computed(
+  () => accountOrgLevel.value === "platform" || accountOrgLevel.value === "org",
+);
+const headerCampusChoices = computed(() =>
+  accountOrgLevel.value === "platform"
+    ? campusChoices.value.filter((campus) => campus.organizationId === selectedOrganizationId.value)
+    : campusChoices.value,
+);
+const currentCampusId = computed(() => sessionUser.value?.campusId ?? "");
+async function loadCampusChoices() {
+  if (!showCampusSwitcher.value || !localStorage.getItem("adminToken")) {
+    campusChoices.value = [];
+    organizationChoices.value = [];
+    selectedOrganizationId.value = "";
+    return;
+  }
+  try {
+    campusChoices.value = await api.adminCampuses("filter");
+    if (accountOrgLevel.value === "org") {
+      selectedOrganizationId.value = accountOrganizationId.value ?? "";
+      activeCampus.value = campusChoices.value.some((campus) => campus.id === currentCampusId.value)
+        ? currentCampusId.value
+        : "";
+      return;
+    }
+    try {
+      organizationChoices.value = await api.organizations();
+    } catch {
+      // 没有组织管理菜单时仍允许切换；组织 ID 是服务端数据范围返回值。
+      organizationChoices.value = [...new Set(campusChoices.value.flatMap((campus) =>
+        campus.organizationId ? [campus.organizationId] : [],
+      ))].map((id) => ({ id, name: id }));
+    }
+    const current = campusChoices.value.find((campus) => campus.id === currentCampusId.value);
+    selectedOrganizationId.value = current?.organizationId ?? "";
+    activeCampus.value = current?.id ?? "";
+  } catch {
+    campusChoices.value = [];
+    activeCampus.value = "";
+  }
+}
+watch(
+  [() => sessionUser.value?.id, accountOrgLevel, accountOrganizationId],
+  ([accountId]) => { if (accountId) void loadCampusChoices(); },
+  { immediate: true },
+);
+function selectHeaderOrganization(organizationId: string) {
+  selectedOrganizationId.value = organizationId;
+  const current = campusChoices.value.find((campus) => campus.id === currentCampusId.value);
+  activeCampus.value = current?.organizationId === organizationId ? current.id : "";
+}
+async function switchCampus(campusId: string) {
+  if (!campusId || campusId === currentCampusId.value || campusSwitching.value) return;
+  campusSwitching.value = true;
+  try {
+    const result = await api.switchAdminCampus(campusId);
+    applySession(result.user);
+    await loadRbac();
+    window.location.reload();
+  } catch (error) {
+    campusSwitching.value = false;
+    ElMessage.error(error instanceof Error ? error.message : "校区切换失败");
+  }
+}
 /* ---------- IKHFWV 新订单提醒：30s 轮询水位线（今日已支付累计）----------
    受众=canSee('orders')（订单配送菜单可见者全收，道哥定版）；顶栏铃铛可关
    （localStorage）；形态=右下浮窗+叮两声（WebAudio 合成免音频资产）+
@@ -399,10 +477,52 @@ onBeforeUnmount(() => {
         >
           <span></span><span></span><span></span>
         </button>
+        <div v-if="showCampusSwitcher" class="campus-select">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div class="campus-picker">
+            <small>{{ accountOrgLevel === "platform" ? "当前组织 / 校区" : "当前运营校区" }}</small>
+            <div class="campus-picker-row">
+              <ElSelect
+                v-if="accountOrgLevel === 'platform'"
+                :model-value="selectedOrganizationId"
+                class="header-scope-select header-organization-select"
+                size="small"
+                placeholder="选择组织"
+                :disabled="campusSwitching"
+                aria-label="选择组织"
+                @change="selectHeaderOrganization"
+              >
+                <ElOption
+                  v-for="organization in organizationChoices"
+                  :key="organization.id"
+                  :label="organization.shortName || organization.name"
+                  :value="organization.id"
+                />
+              </ElSelect>
+              <ElSelect
+                :model-value="headerCampusChoices.some((campus) => campus.id === currentCampusId) ? currentCampusId : ''"
+                class="header-scope-select header-campus-select"
+                size="small"
+                :placeholder="campusSwitching ? '切换中…' : '选择校区'"
+                :disabled="campusSwitching || (accountOrgLevel === 'platform' && !selectedOrganizationId)"
+                :loading="campusSwitching"
+                aria-label="切换运营校区"
+                @change="switchCampus"
+              >
+                <ElOption
+                  v-for="campus in headerCampusChoices"
+                  :key="campus.id"
+                  :label="campus.shortName || campus.name"
+                  :value="campus.id"
+                />
+              </ElSelect>
+            </div>
+          </div>
+        </div>
         <div class="header-actions">
           <input
             v-model="globalKeyword"
-            class="search"
+            class="header-global-search"
             aria-label="全局搜索"
             placeholder="搜索订单 / SKU / 人员"
             @keyup.enter="search"

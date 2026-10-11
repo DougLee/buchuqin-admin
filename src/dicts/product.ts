@@ -3,7 +3,7 @@
  * 匿名内联 map 落地为具名字典（值不变）。
  */
 
-/** 商品状态（原 DataPage display() 内联 map） */
+/** 商品状态 */
 export const PRODUCT_STATUS_TEXT: Record<string, string> = {
   "on-sale": "在售",
   "off-sale": "已下架",

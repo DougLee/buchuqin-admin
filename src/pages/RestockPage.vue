@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { useRouter } from "vue-router";
 import { api } from "../api";
 import ProductPickerField from "../components/ProductPickerField.vue";
-import { canSee, hasPerm, isPlatform, menuPath } from "../session";
+import { accountOrgLevel, canSee, hasPerm, menuPath } from "../session";
 import type {
   Product,
   RestockBatch,
@@ -23,7 +24,7 @@ import { fmtDateTime } from "../utils/datetime";
  * - RBAC V1（2026-09-19）：isHqScope→isPlatform（服务端上下文）；
  *   RBAC 蛋词：canManage/canOrder 直接认 URL 模式串（建批次/保存订货单）
  */
-const isHqScope = computed(() => isPlatform.value);
+const isHqScope = computed(() => accountOrgLevel.value === "platform");
 const canManage = computed(() => hasPerm("POST /admin/restock/batches"));
 const canOrder = computed(() =>
   hasPerm("PUT /admin/restock/batches/:batchId/order"),
@@ -43,6 +44,10 @@ import {
   RESTOCK_PHASE_TEXT,
 } from "../dicts";
 const router = useRouter();
+const notify = (message: string, error = false) =>
+  ElMessage({ message, type: error ? "error" : "success", showClose: true });
+const asRestockBatch = (row: unknown) => row as RestockBatch;
+const asRestockOrder = (row: unknown) => row as RestockOrder;
 
 async function loadBatches() {
   loading.value = true;
@@ -102,12 +107,12 @@ async function openBatchForm(batch?: RestockBatch) {
 }
 async function submitBatch() {
   const name = batchForm.value.name.trim();
-  if (!name) return alert("请填写批次名称");
+  if (!name) return notify("请填写批次名称", true);
   const startAt = new Date(batchForm.value.startAt);
   const endAt = new Date(batchForm.value.endAt);
   if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()))
-    return alert("请填写完整的起止时间");
-  if (endAt <= startAt) return alert("结束时间必须晚于开始时间");
+    return notify("请填写完整的起止时间", true);
+  if (endAt <= startAt) return notify("结束时间必须晚于开始时间", true);
   batchSaving.value = true;
   try {
     if (batchEditId.value) {
@@ -126,20 +131,25 @@ async function submitBatch() {
     batchDrawer.value = false;
     refresh();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "保存失败");
+    notify(e instanceof Error ? e.message : "保存失败", true);
   } finally {
     batchSaving.value = false;
   }
 }
 async function closeBatch(batch: RestockBatch) {
   if (batch.closedAt) return;
-  if (!window.confirm(`确认提前关闭「${batch.name}」？关闭后校区不能再订货`))
-    return;
+  try {
+    await ElMessageBox.confirm(
+      `确认提前关闭「${batch.name}」？关闭后校区不能再订货。`,
+      "关闭订货批次",
+      { type: "warning", confirmButtonText: "确认关闭", cancelButtonText: "取消" },
+    );
+  } catch { return; }
   try {
     await api.closeRestockBatch(batch.id);
     refresh();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   }
 }
 
@@ -173,7 +183,7 @@ function openPurchaseForm() {
   for (const o of d.orders.filter((x) => x.status === "confirmed"))
     for (const l of o.items ?? [])
       agg.set(l.productId, (agg.get(l.productId) ?? 0) + l.cases);
-  if (!agg.size) return alert("该批次还没有已确认的订货单，无法生成采购单");
+  if (!agg.size) return notify("该批次还没有已确认的订货单，无法生成采购单", true);
   // 名称/进货价从官方全集行取（下架行回退 —）
   const info = new Map(d.items.map((i) => [i.productId, i.product]));
   poLines.value = [...agg.entries()].map(([productId, cases]) => ({
@@ -187,7 +197,7 @@ function openPurchaseForm() {
 }
 async function submitPurchaseOrder() {
   const supplierName = poSupplier.value.trim();
-  if (!supplierName) return alert("请填写供应商名称");
+  if (!supplierName) return notify("请填写供应商名称", true);
   poSaving.value = true;
   try {
     await api.createPurchaseOrder(detail.value!.id, {
@@ -198,11 +208,11 @@ async function submitPurchaseOrder() {
       })),
     });
     poDrawer.value = false;
-    alert("采购单已生成，请到「采购管理」菜单验收入库");
+    notify("采购单已生成，请到「采购管理」菜单验收入库");
     refresh();
     detail.value = await api.restockBatchDetail(detail.value!.id);
   } catch (e) {
-    alert(e instanceof Error ? e.message : "生成失败");
+    notify(e instanceof Error ? e.message : "生成失败", true);
   } finally {
     poSaving.value = false;
   }
@@ -221,7 +231,7 @@ function openAudit(order: RestockOrder) {
 async function audit(action: "confirm" | "reject" | "revoke") {
   if (!auditTarget.value) return;
   if (action === "reject" && !auditNote.value.trim())
-    return alert("驳回请填写理由，方便校区修改后重新提交");
+    return notify("驳回请填写理由，方便校区修改后重新提交", true);
   auditBusy.value = true;
   try {
     await api.auditRestockOrder(
@@ -235,7 +245,7 @@ async function audit(action: "confirm" | "reject" | "revoke") {
       detail.value = await api.restockBatchDetail(detail.value.id);
   } catch (e) {
     // 确认时库存不足等后端阻断信息原样透出
-    alert(e instanceof Error ? e.message : "操作失败");
+    notify(e instanceof Error ? e.message : "操作失败", true);
   } finally {
     auditBusy.value = false;
   }
@@ -303,13 +313,13 @@ async function submitMyOrder() {
       cases: Number(lineCases.value[i.productId]) || 0,
     }))
     .filter((i) => i.cases > 0);
-  if (!items.length) return alert("请至少为一个商品填写件数");
+  if (!items.length) return notify("请至少为一个商品填写件数", true);
   try {
     await api.saveRestockOrder(orderBatch.value.id, items);
     orderDrawer.value = false;
     refresh();
   } catch (e) {
-    alert(e instanceof Error ? e.message : "提交失败");
+    notify(e instanceof Error ? e.message : "提交失败", true);
   }
 }
 
@@ -327,7 +337,7 @@ async function openShip(order: RestockOrder) {
     const detail = await api.restockOrderDetail(order.id);
     shipLines.value = detail.items ?? [];
   } catch (e) {
-    alert(e instanceof Error ? e.message : "加载订货单明细失败");
+    notify(e instanceof Error ? e.message : "加载订货单明细失败", true);
   }
 }
 async function submitShip() {
@@ -341,7 +351,7 @@ async function submitShip() {
       detail.value = await api.restockBatchDetail(detail.value.id);
   } catch (e) {
     // 库存不足拦截（含缺货数量）原样透出
-    alert(e instanceof Error ? e.message : "发货失败");
+    notify(e instanceof Error ? e.message : "发货失败", true);
   } finally {
     shipSaving.value = false;
   }
@@ -354,7 +364,7 @@ async function openShipment(orderId: string) {
   try {
     shipment.value = await api.restockShipmentDetail(orderId);
   } catch (e) {
-    alert(e instanceof Error ? e.message : "加载发货单失败");
+    notify(e instanceof Error ? e.message : "加载发货单失败", true);
   }
 }
 /** 追溯：发货单 → 本批次详情 */
@@ -388,25 +398,25 @@ function gotoPurchase() {
         </p>
       </div>
       <div class="head-actions">
-        <button
+        <ElButton
           v-if="canManage && tab === 'batches'"
-          class="btn primary"
+          type="primary"
           @click="openBatchForm()"
         >
           <span>＋</span>新建批次
-        </button>
+        </ElButton>
       </div>
     </div>
 
-    <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar（DataPage 同款 segmented） -->
+    <!-- IKFOQ0 样式对齐：板块内子 tab 收进 toolbar -->
     <div v-if="isHqScope" class="toolbar">
       <div class="segmented inv-tabs">
-        <button :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
+        <ElButton text :class="{ active: tab === 'batches' }" @click="tab = 'batches'">
           订货批次
-        </button>
-        <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">
+        </ElButton>
+        <ElButton text :class="{ active: tab === 'orders' }" @click="tab = 'orders'">
           全部订货单
-        </button>
+        </ElButton>
       </div>
     </div>
 
@@ -421,85 +431,13 @@ function gotoPurchase() {
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>批次名称</th>
-              <th>阶段</th>
-              <th>订货窗口</th>
-              <th>我的订货单</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="5"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!batches.length">
-                <td :colspan="5" class="empty-cell">
-                  暂无订货批次，总部开放后这里会出现批次。
-                </td>
-              </tr>
-              <tr v-for="b in batches" :key="b.id">
-                <td>
-                  <strong>{{ b.name }}</strong>
-                </td>
-                <td>
-                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{
-                    RESTOCK_PHASE_TEXT[b.phase]
-                  }}</span>
-                </td>
-                <td>
-                  {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
-                </td>
-                <td>
-                  <template v-if="b.orderTotal">
-                    <span
-                      class="status"
-                      :class="
-                        b.orderShipped
-                          ? 'info'
-                          : b.orderConfirmed
-                            ? 'success'
-                            : 'warning'
-                      "
-                    >
-                      {{ b.orderTotal }} 张
-                    </span>
-                    <small class="order-progress">
-                      {{
-                        b.orderReceived
-                          ? `已到货 ${b.orderReceived}`
-                          : b.orderShipped
-                            ? `已发货 ${b.orderShipped}`
-                            : b.orderConfirmed
-                              ? `已确认 ${b.orderConfirmed}`
-                              : `待审核 ${b.orderTotal}`
-                      }}
-                    </small>
-                  </template>
-                  <span v-else class="status">未填单</span>
-                </td>
-                <td class="row-actions">
-                  <!-- IKJCJF 收敛：订货管理只保留订货动作，跟踪在采购管理 -->
-                  <button
-                    class="btn mini primary"
-                    v-if="canOrder && b.phase === 'open'"
-                    @click="openMyOrder(b)"
-                  >
-                    填写订货单
-                  </button>
-                  <small v-else-if="b.orderTotal" class="order-progress"
-                    >见采购管理</small
-                  >
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="batches" row-key="id" empty-text="暂无订货批次，总部开放后这里会出现批次">
+        <ElTableColumn prop="name" label="批次名称" min-width="180"><template #default="{ row: b }"><strong>{{ b.name }}</strong></template></ElTableColumn>
+        <ElTableColumn label="阶段" width="110"><template #default="{ row: b }"><ElTag :type="b.phase === 'open' ? 'success' : b.phase === 'upcoming' ? 'warning' : 'info'">{{ RESTOCK_PHASE_TEXT[b.phase] }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="订货窗口" min-width="280"><template #default="{ row: b }">{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</template></ElTableColumn>
+        <ElTableColumn label="我的订货单" min-width="160"><template #default="{ row: b }"><template v-if="b.orderTotal"><ElTag :type="b.orderShipped ? 'info' : b.orderConfirmed ? 'success' : 'warning'">{{ b.orderTotal }} 张</ElTag><small class="order-progress">{{ b.orderReceived ? `已到货 ${b.orderReceived}` : b.orderShipped ? `已发货 ${b.orderShipped}` : b.orderConfirmed ? `已确认 ${b.orderConfirmed}` : `待审核 ${b.orderTotal}` }}</small></template><ElTag v-else type="info">未填单</ElTag></template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="140"><template #default="{ row: b }"><ElButton v-if="canOrder && b.phase === 'open'" size="small" type="primary" @click="openMyOrder(asRestockBatch(b))">填写订货单</ElButton><small v-else-if="b.orderTotal" class="order-progress">见采购管理</small></template></ElTableColumn>
+      </ElTable>
     </div>
 
     <!-- 总部：批次表 -->
@@ -511,79 +449,14 @@ function gotoPurchase() {
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>批次名称</th>
-              <th>阶段</th>
-              <th>订货窗口</th>
-              <th>订货单</th>
-              <th>创建人</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="6"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!batches.length">
-                <td :colspan="6" class="empty-cell">
-                  还没有订货批次，点右上角「新建批次」开始。
-                </td>
-              </tr>
-              <tr v-for="b in batches" :key="b.id">
-                <td>
-                  <strong>{{ b.name }}</strong>
-                </td>
-                <td>
-                  <span class="status" :class="RESTOCK_PHASE_CLASS[b.phase]">{{
-                    RESTOCK_PHASE_TEXT[b.phase]
-                  }}</span>
-                </td>
-                <td>
-                  {{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}
-                </td>
-                <td>
-                  {{ b.orderTotal ?? 0 }} 单 /
-                  {{ b.orderConfirmed ?? 0 }} 已确认
-                </td>
-                <td>{{ b.createdByName || "—" }}</td>
-                <td class="row-actions">
-                  <button
-                    v-if="hasPerm('GET /admin/restock/batches/:id')"
-                    class="btn mini ghost"
-                    @click="openBatchDetail(b)"
-                  >
-                    详情
-                  </button>
-                  <button
-                    v-if="
-                      hasPerm('PATCH /admin/restock/batches/:id') &&
-                      (b.phase === 'upcoming' || b.phase === 'open')
-                    "
-                    class="btn mini ghost"
-                    @click="openBatchForm(b)"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    v-if="
-                      hasPerm('POST /admin/restock/batches/:id/close') &&
-                      !b.closedAt
-                    "
-                    class="btn mini ghost danger-btn"
-                    @click="closeBatch(b)"
-                  >
-                    关闭
-                  </button>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="batches" row-key="id" empty-text="还没有订货批次，点右上角「新建批次」开始">
+        <ElTableColumn prop="name" label="批次名称" min-width="180"><template #default="{ row: b }"><strong>{{ b.name }}</strong></template></ElTableColumn>
+        <ElTableColumn label="阶段" width="110"><template #default="{ row: b }"><ElTag :type="b.phase === 'open' ? 'success' : b.phase === 'upcoming' ? 'warning' : 'info'">{{ RESTOCK_PHASE_TEXT[b.phase] }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="订货窗口" min-width="280"><template #default="{ row: b }">{{ fmtDateTime(b.startAt) }} ~ {{ fmtDateTime(b.endAt) }}</template></ElTableColumn>
+        <ElTableColumn label="订货单" width="160"><template #default="{ row: b }">{{ b.orderTotal ?? 0 }} 单 / {{ b.orderConfirmed ?? 0 }} 已确认</template></ElTableColumn>
+        <ElTableColumn prop="createdByName" label="创建人" width="120"><template #default="{ row: b }">{{ b.createdByName || "—" }}</template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="220"><template #default="{ row: b }"><ElButton v-if="hasPerm('GET /admin/restock/batches/:id')" size="small" @click="openBatchDetail(asRestockBatch(b))">详情</ElButton><ElButton v-if="hasPerm('PATCH /admin/restock/batches/:id') && (b.phase === 'upcoming' || b.phase === 'open')" size="small" type="primary" @click="openBatchForm(asRestockBatch(b))">编辑</ElButton><ElButton v-if="hasPerm('POST /admin/restock/batches/:id/close') && !b.closedAt" size="small" type="danger" plain @click="closeBatch(asRestockBatch(b))">关闭</ElButton></template></ElTableColumn>
+      </ElTable>
     </div>
 
     <!-- 总部：全部订货单 -->
@@ -595,184 +468,29 @@ function gotoPurchase() {
         </div>
         <p><span class="live-dot"></span>数据已同步</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>批次</th>
-              <th>校区</th>
-              <th>状态</th>
-              <th>合计</th>
-              <th>提交人 / 时间</th>
-              <th>审核</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="7"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!hqOrders.length">
-                <td :colspan="7" class="empty-cell">还没有校区提交订货单。</td>
-              </tr>
-              <tr v-for="o in hqOrders" :key="o.id">
-                <td>
-                  <strong>{{ o.batchName }}</strong>
-                </td>
-                <td>{{ o.campusShortName || o.campusName }}</td>
-                <td>
-                  <span
-                    class="status"
-                    :class="RESTOCK_ORDER_STATUS_CLASS[o.status]"
-                  >
-                    {{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}
-                  </span>
-                  <em v-if="o.shippedAt" class="ship-note">
-                    发 {{ fmtDateTime(o.shippedAt) }}
-                  </em>
-                  <em v-if="o.receivedAt" class="ship-note">
-                    收 {{ fmtDateTime(o.receivedAt) }}
-                  </em>
-                </td>
-                <td>
-                  {{ o.totalCases ?? 0 }} 件<br />折算 {{ o.totalUnits ?? 0 }}
-                </td>
-                <td>
-                  {{ o.submitByName || "—" }}<br />{{
-                    o.submittedAt ? fmtDateTime(o.submittedAt) : "—"
-                  }}
-                </td>
-                <td>
-                  <template v-if="o.auditAt">
-                    {{ o.auditByName }}<br />{{ fmtDateTime(o.auditAt) }}
-                    <em v-if="o.auditNote" class="audit-note"
-                      >「{{ o.auditNote }}」</em
-                    >
-                  </template>
-                  <template v-else>—</template>
-                </td>
-                <td class="row-actions">
-                  <button
-                    v-if="
-                      hasPerm('POST /admin/restock/orders/:id/audit') &&
-                      o.status === 'submitted'
-                    "
-                    class="btn mini primary"
-                    @click="openAudit(o)"
-                  >
-                    审核
-                  </button>
-                  <template v-else-if="o.status === 'confirmed'">
-                    <button
-                      v-if="
-                        hasPerm('POST /admin/restock/orders/:id/ship') &&
-                        hasPerm('GET /admin/restock/orders/:id')
-                      "
-                      class="btn mini primary"
-                      @click="openShip(o)"
-                    >
-                      发货
-                    </button>
-                    <button
-                      v-if="hasPerm('POST /admin/restock/orders/:id/audit')"
-                      class="btn mini ghost danger-btn"
-                      @click="openAudit(o)"
-                    >
-                      撤销确认
-                    </button>
-                  </template>
-                  <button
-                    v-else-if="
-                      hasPerm('GET /admin/restock/orders/:id/shipment') &&
-                      (o.status === 'shipped' || o.status === 'received')
-                    "
-                    class="btn mini ghost"
-                    @click="openShipment(o.id)"
-                  >
-                    发货单
-                  </button>
-                  <span v-else>—</span>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="hqOrders" row-key="id" empty-text="还没有校区提交订货单">
+        <ElTableColumn prop="batchName" label="批次" min-width="160"><template #default="{ row: o }"><strong>{{ o.batchName }}</strong></template></ElTableColumn>
+        <ElTableColumn label="校区" min-width="130"><template #default="{ row: o }">{{ o.campusShortName || o.campusName }}</template></ElTableColumn>
+        <ElTableColumn label="状态" min-width="150"><template #default="{ row: o }"><ElTag :type="o.status === 'confirmed' || o.status === 'received' ? 'success' : o.status === 'submitted' ? 'warning' : 'info'">{{ RESTOCK_ORDER_STATUS_TEXT[o.status] }}</ElTag><em v-if="o.shippedAt" class="ship-note">发 {{ fmtDateTime(o.shippedAt) }}</em><em v-if="o.receivedAt" class="ship-note">收 {{ fmtDateTime(o.receivedAt) }}</em></template></ElTableColumn>
+        <ElTableColumn label="合计" width="130"><template #default="{ row: o }">{{ o.totalCases ?? 0 }} 件<br><span class="cell-sub">折算 {{ o.totalUnits ?? 0 }}</span></template></ElTableColumn>
+        <ElTableColumn label="提交人 / 时间" min-width="180"><template #default="{ row: o }">{{ o.submitByName || "—" }}<br><span class="cell-sub">{{ o.submittedAt ? fmtDateTime(o.submittedAt) : "—" }}</span></template></ElTableColumn>
+        <ElTableColumn label="审核" min-width="170"><template #default="{ row: o }"><template v-if="o.auditAt">{{ o.auditByName }}<br><span class="cell-sub">{{ fmtDateTime(o.auditAt) }}</span><em v-if="o.auditNote" class="audit-note">「{{ o.auditNote }}」</em></template><span v-else>—</span></template></ElTableColumn>
+        <ElTableColumn label="操作" fixed="right" width="210"><template #default="{ row: o }"><ElButton v-if="hasPerm('POST /admin/restock/orders/:id/audit') && o.status === 'submitted'" size="small" type="primary" @click="openAudit(asRestockOrder(o))">审核</ElButton><template v-else-if="o.status === 'confirmed'"><ElButton v-if="hasPerm('POST /admin/restock/orders/:id/ship') && hasPerm('GET /admin/restock/orders/:id')" size="small" type="primary" @click="openShip(asRestockOrder(o))">发货</ElButton><ElButton v-if="hasPerm('POST /admin/restock/orders/:id/audit')" size="small" type="danger" plain @click="openAudit(asRestockOrder(o))">撤销确认</ElButton></template><ElButton v-else-if="hasPerm('GET /admin/restock/orders/:id/shipment') && (o.status === 'shipped' || o.status === 'received')" size="small" @click="openShipment(o.id)">发货单</ElButton><span v-else>—</span></template></ElTableColumn>
+      </ElTable>
     </div>
 
     <!-- 新建/编辑批次 -->
-    <div
-      v-if="batchDrawer"
-      class="drawer-mask"
-      @click.self="batchDrawer = false"
-    >
-      <div class="drawer batch-form-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">RESTOCK BATCH</p>
-            <h2>{{ batchEditId ? "编辑批次" : "新建订货批次" }}</h2>
-          </div>
-          <button @click="batchDrawer = false">✕</button>
-        </div>
-        <div class="product-form batch-form-body">
-          <label class="field-label">批次名称</label>
-          <input
-            v-model="batchForm.name"
-            maxlength="60"
-            placeholder="如：9 月第 2 期补货"
-          />
-          <div class="time-row">
-            <div>
-              <label class="field-label">开始时间</label>
-              <input v-model="batchForm.startAt" type="datetime-local" />
-            </div>
-            <div>
-              <label class="field-label">结束时间</label>
-              <input v-model="batchForm.endAt" type="datetime-local" />
-            </div>
-          </div>
-        </div>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="batchDrawer = false">取消</button>
-          <button
-            class="btn primary"
-            :disabled="batchSaving"
-            @click="submitBatch"
-          >
-            {{
-              batchSaving ? "保存中…" : batchEditId ? "保存修改" : "创建批次"
-            }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ElDialog v-model="batchDrawer" :title="batchEditId ? '编辑批次' : '新建订货批次'" width="min(620px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+      <ElForm label-position="top">
+        <ElFormItem label="批次名称"><ElInput v-model="batchForm.name" maxlength="60" placeholder="如：9 月第 2 期补货" /></ElFormItem>
+        <div class="time-row"><ElFormItem label="开始时间"><ElDatePicker v-model="batchForm.startAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择开始时间" /></ElFormItem><ElFormItem label="结束时间"><ElDatePicker v-model="batchForm.endAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" placeholder="选择结束时间" /></ElFormItem></div>
+      </ElForm>
+      <template #footer><ElButton @click="batchDrawer = false">取消</ElButton><ElButton type="primary" :loading="batchSaving" @click="submitBatch">{{ batchEditId ? "保存修改" : "创建批次" }}</ElButton></template>
+    </ElDialog>
 
     <!-- 批次详情（总部） -->
-    <div
-      v-if="detailDrawer"
-      class="drawer-mask"
-      @click.self="detailDrawer = false"
-    >
-      <div class="drawer detail-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">BATCH DETAIL</p>
-            <h2>{{ detail?.name ?? "批次详情" }}</h2>
-            <p v-if="detail" class="detail-window">
-              {{ fmtDateTime(detail.startAt) }} ~
-              {{ fmtDateTime(detail.endAt) }}
-              <span
-                class="status"
-                :class="RESTOCK_PHASE_CLASS[detail.phase]"
-                style="margin-left: 8px"
-              >
-                {{ RESTOCK_PHASE_TEXT[detail.phase] }}
-              </span>
-            </p>
-          </div>
-          <button @click="detailDrawer = false">✕</button>
-        </div>
+    <ElDialog v-model="detailDrawer" :title="detail?.name ?? '批次详情'" width="min(880px, calc(100vw - 24px))" align-center :close-on-click-modal="false">
+        <p v-if="detail" class="detail-window">{{ fmtDateTime(detail.startAt) }} ~ {{ fmtDateTime(detail.endAt) }} <ElTag :type="detail.phase === 'open' ? 'success' : detail.phase === 'upcoming' ? 'warning' : 'info'">{{ RESTOCK_PHASE_TEXT[detail.phase] }}</ElTag></p>
         <!-- 骨架屏：批次详情加载中（毛利盒/商品范围/订货单三段占位） -->
         <template v-if="!detail">
           <div class="detail-section skeleton-box">
@@ -805,15 +523,15 @@ function gotoPurchase() {
                 >¥{{ fenToYuan(detail.grossEstimate) }}</strong
               >
             </div>
-            <button
+            <ElButton
               v-if="
                 hasPerm('POST /admin/restock/batches/:batchId/purchase-order')
               "
-              class="btn mini ghost po-btn"
+              class="po-btn"
               @click="openPurchaseForm"
             >
               ＋ 生成采购单
-            </button>
+            </ElButton>
           </div>
           <div class="detail-section">
             <h4>校区订货单（{{ detail.orders.length }}）</h4>
@@ -847,136 +565,64 @@ function gotoPurchase() {
                 审核备注（{{ o.auditByName }}）：{{ o.auditNote }}
               </p>
               <div class="order-brief-ops">
-                <button
+                <ElButton
                   v-if="
                     hasPerm('POST /admin/restock/orders/:id/audit') &&
                     o.status === 'submitted'
                   "
-                  class="btn mini ghost"
+                  size="small"
                   @click="openAudit(o)"
                 >
                   审核
-                </button>
+                </ElButton>
                 <template v-else-if="o.status === 'confirmed'">
-                  <button
+                  <ElButton
                     v-if="
                       hasPerm('POST /admin/restock/orders/:id/ship') &&
                       hasPerm('GET /admin/restock/orders/:id')
                     "
-                    class="btn mini primary"
+                    size="small"
+                    type="primary"
                     @click="openShip(o)"
                   >
                     发货
-                  </button>
-                  <button
+                  </ElButton>
+                  <ElButton
                     v-if="hasPerm('POST /admin/restock/orders/:id/audit')"
-                    class="btn mini ghost danger-btn"
+                    size="small"
+                    type="danger"
+                    plain
                     @click="openAudit(o)"
                   >
                     撤销确认
-                  </button>
+                  </ElButton>
                 </template>
-                <button
+                <ElButton
                   v-else-if="
                     hasPerm('GET /admin/restock/orders/:id/shipment') &&
                     (o.status === 'shipped' || o.status === 'received')
                   "
-                  class="btn mini ghost"
+                  size="small"
                   @click="openShipment(o.id)"
                 >
                   发货单
-                </button>
+                </ElButton>
               </div>
             </div>
           </div>
         </template>
-      </div>
-    </div>
+    </ElDialog>
 
     <!-- 审核弹框（总部） -->
-    <div
-      v-if="auditDrawer"
-      class="drawer-mask"
-      @click.self="auditDrawer = false"
-    >
-      <div class="drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">AUDIT</p>
-            <h2>订货单审核</h2>
-            <p v-if="auditTarget" class="detail-window">
-              {{ auditTarget.campusShortName || auditTarget.campusName }} ·
-              {{ auditTarget.batchName }} · 共
-              {{ auditTarget.totalCases ?? 0 }} 件 (折算
-              {{ auditTarget.totalUnits ?? 0 }})
-            </p>
-          </div>
-          <button @click="auditDrawer = false">✕</button>
-        </div>
-        <div class="audit-form">
-          <label class="audit-form__label" for="audit-note">
-            备注{{
-              auditTarget?.status === "confirmed"
-                ? "（撤销时选填）"
-                : "（驳回必填，确认选填）"
-            }}
-          </label>
-          <textarea
-            id="audit-note"
-            v-model="auditNote"
-            rows="3"
-            maxlength="200"
-            placeholder="如：数量超出本月预算，请酌减"
-          ></textarea>
-        </div>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="auditDrawer = false">取消</button>
-          <button
-            v-if="auditTarget?.status === 'submitted'"
-            class="btn ghost danger-btn"
-            :disabled="auditBusy"
-            @click="audit('reject')"
-          >
-            驳回
-          </button>
-          <button
-            v-if="auditTarget?.status === 'submitted'"
-            class="btn primary"
-            :disabled="auditBusy"
-            @click="audit('confirm')"
-          >
-            确认审核
-          </button>
-          <button
-            v-if="auditTarget?.status === 'confirmed'"
-            class="btn primary"
-            :disabled="auditBusy"
-            @click="audit('revoke')"
-          >
-            撤销确认并放锁
-          </button>
-        </div>
-      </div>
-    </div>
+    <ElDialog v-model="auditDrawer" title="订货单审核" width="min(620px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+      <p v-if="auditTarget" class="detail-window">{{ auditTarget.campusShortName || auditTarget.campusName }} · {{ auditTarget.batchName }} · 共 {{ auditTarget.totalCases ?? 0 }} 件（折算 {{ auditTarget.totalUnits ?? 0 }}）</p>
+      <ElForm label-position="top"><ElFormItem :label="`备注${auditTarget?.status === 'confirmed' ? '（撤销时选填）' : '（驳回必填，确认选填）'}`"><ElInput v-model="auditNote" type="textarea" :rows="4" maxlength="200" show-word-limit placeholder="如：数量超出本月预算，请酌减" /></ElFormItem></ElForm>
+      <template #footer><ElButton @click="auditDrawer = false">取消</ElButton><ElButton v-if="auditTarget?.status === 'submitted'" type="danger" plain :loading="auditBusy" @click="audit('reject')">驳回</ElButton><ElButton v-if="auditTarget?.status === 'submitted'" type="primary" :loading="auditBusy" @click="audit('confirm')">确认审核</ElButton><ElButton v-if="auditTarget?.status === 'confirmed'" type="primary" :loading="auditBusy" @click="audit('revoke')">撤销确认并放锁</ElButton></template>
+    </ElDialog>
 
     <!-- 我的订货单（校区） -->
-    <div
-      v-if="orderDrawer"
-      class="drawer-mask"
-      @click.self="orderDrawer = false"
-    >
-      <div class="drawer order-editor-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">MY ORDER</p>
-            <h2>{{ orderBatch?.name }}</h2>
-            <p v-if="orderBatch" class="detail-window">
-              {{ fmtDateTime(orderBatch.startAt) }} ~
-              {{ fmtDateTime(orderBatch.endAt) }}
-            </p>
-          </div>
-          <button @click="orderDrawer = false">✕</button>
-        </div>
+    <ElDialog v-model="orderDrawer" :title="orderBatch?.name || '填写订货单'" width="min(960px, calc(100vw - 24px))" align-center destroy-on-close :close-on-click-modal="false">
+        <p v-if="orderBatch" class="detail-window">{{ fmtDateTime(orderBatch.startAt) }} ~ {{ fmtDateTime(orderBatch.endAt) }}</p>
         <!-- 骨架屏：批次商品清单加载中 -->
         <template v-if="!orderDetail">
           <div class="detail-section skeleton-box">
@@ -1002,133 +648,27 @@ function gotoPurchase() {
             </template>
           </div>
         </template>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="orderDrawer = false">取消</button>
-          <button
-            v-if="hasPerm('PUT /admin/restock/batches/:batchId/order')"
-            class="btn primary"
-            @click="submitMyOrder"
-          >
-            提交审核
-          </button>
-        </div>
-      </div>
-    </div>
+        <template #footer><ElButton @click="orderDrawer = false">取消</ElButton><ElButton v-if="hasPerm('PUT /admin/restock/batches/:batchId/order')" type="primary" @click="submitMyOrder">提交审核</ElButton></template>
+    </ElDialog>
 
     <!-- 生成采购单（IKFOQ1：一键聚合，单价预填 costPrice 可改） -->
-    <div v-if="poDrawer" class="drawer-mask" @click.self="poDrawer = false">
-      <div class="drawer po-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">PURCHASE ORDER</p>
-            <h2>生成采购单</h2>
-            <p class="detail-window">
-              {{ detail?.name }} ·
-              已确认订货单按商品聚合；单价默认进货价，可逐行改
-            </p>
-          </div>
-          <button @click="poDrawer = false">✕</button>
-        </div>
-        <div class="product-form po-form-body">
-          <label class="field-label">供应商名称</label>
-          <input
-            v-model="poSupplier"
-            maxlength="60"
-            placeholder="如：XX 食品经销部（一期不建档案）"
-          />
-          <label class="field-label">采购行（聚合结果）</label>
-          <div class="po-line po-line-head">
-            <span>商品</span><span>应收（件）</span><span>单价（元）</span>
-          </div>
-          <div v-for="l in poLines" :key="l.productId" class="po-line">
-            <span class="po-line-name">{{ l.name }}</span>
-            <span class="po-line-cases">{{ l.cases }}</span>
-            <input
-              v-model.number="l.unitCost"
-              type="number"
-              min="0"
-              step="0.01"
-            />
-          </div>
-        </div>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="poDrawer = false">取消</button>
-          <button
-            class="btn primary"
-            :disabled="poSaving"
-            @click="submitPurchaseOrder"
-          >
-            {{ poSaving ? "生成中…" : "生成采购单" }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ElDialog v-model="poDrawer" title="生成采购单" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+      <p class="detail-window">{{ detail?.name }} · 已确认订货单按商品聚合；单价默认进货价，可逐行修改</p>
+      <ElForm label-position="top"><ElFormItem label="供应商名称"><ElInput v-model="poSupplier" maxlength="60" placeholder="如：XX 食品经销部" /></ElFormItem></ElForm>
+      <ElTable :data="poLines" row-key="productId" empty-text="暂无采购行"><ElTableColumn prop="name" label="商品" min-width="220" /><ElTableColumn prop="cases" label="应收（件）" width="120" /><ElTableColumn label="单价（元）" width="180"><template #default="{ row }"><ElInputNumber v-model="row.unitCost" :min="0" :precision="2" /></template></ElTableColumn></ElTable>
+      <template #footer><ElButton @click="poDrawer = false">取消</ElButton><ElButton type="primary" :loading="poSaving" @click="submitPurchaseOrder">生成采购单</ElButton></template>
+    </ElDialog>
 
     <!-- 发货核对（IKFOQ2：整单发不拆包，数量不可改；库存不足后端拦截） -->
-    <div v-if="shipDrawer" class="drawer-mask" @click.self="shipDrawer = false">
-      <div class="drawer ship-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">SHIPMENT</p>
-            <h2>确认发货</h2>
-            <p v-if="shipTarget" class="detail-window">
-              {{ shipTarget.campusShortName || shipTarget.campusName }} ·
-              {{ shipTarget.batchName }} · 共
-              {{ shipTarget.totalCases ?? 0 }} 件 (折算
-              {{ shipTarget.totalUnits ?? 0 }})
-            </p>
-          </div>
-          <button @click="shipDrawer = false">✕</button>
-        </div>
-        <div class="ship-line ship-line-head">
-          <span>商品</span><span>件数</span><span>折算</span>
-        </div>
-        <div v-for="l in shipLines" :key="l.productId" class="ship-line">
-          <span class="ship-name">{{ l.product?.name }}</span>
-          <span>{{ caseText(l.cases, l.unitsPerCase) }}</span>
-          <span
-            >{{ l.cases * l.unitsPerCase }}
-            {{ l.product?.retailUnit || "个" }}</span
-          >
-        </div>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="shipDrawer = false">取消</button>
-          <button
-            class="btn primary"
-            :disabled="shipSaving"
-            @click="submitShip"
-          >
-            {{ shipSaving ? "发货中…" : "确认发货" }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ElDialog v-model="shipDrawer" title="确认发货" width="min(760px, calc(100vw - 32px))" align-center :close-on-click-modal="false">
+      <p v-if="shipTarget" class="detail-window">{{ shipTarget.campusShortName || shipTarget.campusName }} · {{ shipTarget.batchName }} · 共 {{ shipTarget.totalCases ?? 0 }} 件（折算 {{ shipTarget.totalUnits ?? 0 }}）</p>
+      <ElTable :data="shipLines" row-key="productId" empty-text="暂无发货商品"><ElTableColumn label="商品" min-width="220"><template #default="{ row }">{{ row.product?.name }}</template></ElTableColumn><ElTableColumn label="件数" width="160"><template #default="{ row }">{{ caseText(row.cases, row.unitsPerCase) }}</template></ElTableColumn><ElTableColumn label="折算" width="160"><template #default="{ row }">{{ row.cases * row.unitsPerCase }} {{ row.product?.retailUnit || "个" }}</template></ElTableColumn></ElTable>
+      <template #footer><ElButton @click="shipDrawer = false">取消</ElButton><ElButton type="primary" :loading="shipSaving" @click="submitShip">确认发货</ElButton></template>
+    </ElDialog>
 
     <!-- 发货单详情（IKFOQ2：行快照价+发货/收货信息+全链路跳转） -->
-    <div
-      v-if="shipmentDrawer"
-      class="drawer-mask"
-      @click.self="shipmentDrawer = false"
-    >
-      <div class="drawer ship-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">SHIPMENT DETAIL</p>
-            <h2>发货单</h2>
-            <p v-if="shipment" class="detail-window">
-              {{ shipment.campusShortName || shipment.campusName }} ·
-              {{ shipment.batchName }}
-              <span
-                class="status"
-                :class="shipment.receivedAt ? 'success' : 'info'"
-                style="margin-left: 8px"
-              >
-                {{ shipment.receivedAt ? "已到货" : "已发货" }}
-              </span>
-            </p>
-          </div>
-          <button @click="shipmentDrawer = false">✕</button>
-        </div>
+    <ElDialog v-model="shipmentDrawer" title="发货单" width="min(760px, calc(100vw - 32px))" align-center :close-on-click-modal="false">
+        <p v-if="shipment" class="detail-window">{{ shipment.campusShortName || shipment.campusName }} · {{ shipment.batchName }} <ElTag :type="shipment.receivedAt ? 'success' : 'info'">{{ shipment.receivedAt ? "已到货" : "已发货" }}</ElTag></p>
         <template v-if="shipment">
           <p class="ship-meta">
             发货：{{ shipment.shippedByName || "—" }} ·
@@ -1174,23 +714,8 @@ function gotoPurchase() {
             </div>
           </div>
         </template>
-        <div class="drawer-actions">
-          <button class="btn ghost" @click="shipmentDrawer = false">
-            关闭
-          </button>
-          <button v-if="shipment" class="btn ghost" @click="gotoBatch">
-            查看本批次
-          </button>
-          <button
-            v-if="shipment && canSee('purchase')"
-            class="btn ghost"
-            @click="gotoPurchase"
-          >
-            去采购管理
-          </button>
-        </div>
-      </div>
-    </div>
+        <template #footer><ElButton @click="shipmentDrawer = false">关闭</ElButton><ElButton v-if="shipment" @click="gotoBatch">查看本批次</ElButton><ElButton v-if="shipment && canSee('purchase')" type="primary" @click="gotoPurchase">去采购管理</ElButton></template>
+    </ElDialog>
   </div>
 </template>
 

@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
 import type { Building, CampusDailyRow } from "../types";
 import { fenToYuan } from "../utils/money";
-import { canSee, isPlatform, sessionUser } from "../session";
-import { fetchOperationalCampuses, type CampusOption } from "../dicts";
+import { accountOrgLevel, activeCampus, sessionUser } from "../session";
 
 /**
  * 校区经营日报（IKFOPS，2026-09-16 grilling 定版）：
  * - 校区账 = 学生实付销售额 − 行批发成本快照（IKFOPQ），只计 completed 订单
  * - paidAt 支付时间落日（零售营收按支付日），实时聚合 T+1 缺省昨日
- * - hq/admin 跨校区筛选；校区角色本校区 + 楼栋筛选（address.buildingId）
+ * - 顶部校区是唯一校区上下文；楼栋筛选只加载该校区楼栋
  */
 const loading = ref(true);
 const error = ref("");
 const report = ref<Awaited<ReturnType<typeof api.campusDailyReport>> | null>(null);
-const campuses = ref<CampusOption[]>([]);
 const buildings = ref<Building[]>([]);
 
 /* 数据范围与后端 isHqScope 同口径：平台上下文跨校区，其余锁本校区
    （RBAC V1：role 判断换服务端 platform 上下文） */
-const isHqScope = computed(() => isPlatform.value);
+const isHqScope = computed(() => accountOrgLevel.value !== "campus");
+const operationalCampusId = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : sessionUser.value?.campusId ?? "",
+);
 
 function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -30,7 +34,6 @@ function localDate(d: Date): string {
 const yd = new Date(Date.now() - 86400 * 1000);
 const startDate = ref(localDate(yd));
 const endDate = ref(localDate(yd));
-const campusId = ref("");
 const buildingId = ref("");
 
 /** 综合毛利率（综合毛利/实付） */
@@ -43,44 +46,54 @@ const marginRawRateText = computed(() =>
 );
 
 async function load() {
-  if (!startDate.value || !endDate.value) return alert("请选择完整的起止日期");
-  if (startDate.value > endDate.value) return alert("开始日期不能晚于结束日期");
+  if (!startDate.value || !endDate.value) return ElMessage.warning("请选择完整的起止日期");
+  if (startDate.value > endDate.value) return ElMessage.warning("开始日期不能晚于结束日期");
+  if (!operationalCampusId.value) {
+    report.value = null;
+    loading.value = false;
+    error.value = "";
+    return;
+  }
   loading.value = true;
   error.value = "";
   try {
     report.value = await api.campusDailyReport(
       startDate.value,
       endDate.value,
-      isHqScope.value ? campusId.value || undefined : undefined,
+      operationalCampusId.value,
       buildingId.value || undefined,
     );
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载失败";
+    ElMessage.error(error.value);
   } finally {
     loading.value = false;
   }
 }
-onMounted(async () => {
-  load();
+async function loadBuildings() {
+  buildings.value = [];
+  buildingId.value = "";
+  if (!operationalCampusId.value) return;
   try {
-    if (isHqScope.value) {
-      // 校区筛选下拉：运营口径（fetchOperationalCampuses 按 id 排除总部仓，active 白名单排除官方库/停用）
-      campuses.value = await fetchOperationalCampuses();
-    } else if (sessionUser.value?.campusId) {
-      // 楼栋筛选下拉（校区角色）：数据源=本校区楼栋
-      const list = await api.buildings({
-        page: 1,
-        pageSize: 100,
-        campusId: sessionUser.value.campusId,
-      });
-      buildings.value = (Array.isArray(list) ? list : (list as any).items ?? []).filter(
-        (b: Building) => b.status === "active",
-      );
-    }
+    const list = await api.buildings({
+      page: 1,
+      pageSize: 100,
+      campusId: operationalCampusId.value,
+    });
+    buildings.value = (Array.isArray(list) ? list : (list as any).items ?? []).filter(
+      (b: Building) => b.status === "active",
+    );
   } catch {
-    /* 下拉加载失败不阻断日报 */
+    /* 楼栋筛选加载失败不阻断日报 */
   }
-});
+}
+async function reloadCampusReport() {
+  report.value = null;
+  await loadBuildings();
+  await load();
+}
+onMounted(() => void reloadCampusReport());
+watch(operationalCampusId, () => void reloadCampusReport());
 
 function rateText(row: CampusDailyRow) {
   return `${(row.marginRate / 100).toFixed(2)}%`;
@@ -103,28 +116,20 @@ function rawRateText(row: CampusDailyRow) {
         </p>
       </div>
       <div class="head-actions report-filter">
-        <input v-model="startDate" type="date" />
+        <ElDatePicker v-model="startDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="开始日期" />
         <span class="report-sep">至</span>
-        <input v-model="endDate" type="date" />
-        <select v-if="isHqScope" v-model="campusId">
-          <option value="">全部校区</option>
-          <option v-for="c in campuses" :key="c.id" :value="c.id">
-            {{ c.name }}
-          </option>
-        </select>
-        <select v-else v-model="buildingId">
-          <option value="">全部楼栋</option>
-          <option v-for="b in buildings" :key="b.id" :value="b.id">
-            {{ b.name }}
-          </option>
-        </select>
-        <button class="btn primary" :disabled="loading" @click="load">
-          {{ loading ? "查询中…" : "查询" }}
-        </button>
+        <ElDatePicker v-model="endDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="结束日期" />
+        <ElSelect v-model="buildingId" clearable placeholder="全部楼栋" :disabled="!operationalCampusId || !buildings.length">
+          <ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
+        </ElSelect>
+        <ElButton type="primary" :loading="loading" :disabled="!operationalCampusId" @click="load">查询</ElButton>
       </div>
     </div>
 
     <p v-if="error" class="load-error">{{ error }}</p>
+    <div v-if="!operationalCampusId && !loading" class="data-panel">
+      <p class="empty-cell">请先在顶部选择校区。</p>
+    </div>
 
     <!-- 五卡（范围合计，IKISZ2+ 双口径对称） -->
     <div v-if="report" class="report-cards">
@@ -168,48 +173,15 @@ function rawRateText(row: CampusDailyRow) {
         </div>
         <p><span class="live-dot"></span>数据已同步 · {{ startDate }} ~ {{ endDate }}</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th v-if="isHqScope">校区</th>
-              <th>订单数</th>
-              <th>销售额</th>
-              <th>批发成本</th>
-              <th title="商品金额 − 批发成本（未扣券）">毛利</th>
-              <th title="实付 − 配送费 − 批发成本（扣券）">综合毛利</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 4" :key="i">
-              <td :colspan="isHqScope ? 7 : 6"><div class="row-skeleton"></div></td>
-            </tr>
-            <template v-else>
-              <tr v-if="!report.rows.length">
-                <td :colspan="isHqScope ? 7 : 6" class="empty-cell">
-                  所选范围内没有已完成的订单（只计 completed，退款/未完成单不计）。
-                </td>
-              </tr>
-              <tr v-for="r in report.rows" :key="`${r.date}-${r.campusId}`">
-                <td><strong>{{ r.date }}</strong></td>
-                <td v-if="isHqScope">{{ r.campusShortName || r.campusName }}</td>
-                <td>{{ r.orders }}</td>
-                <td>¥{{ fenToYuan(r.salesTotal) }}</td>
-                <td>¥{{ fenToYuan(r.costTotal) }}</td>
-                <td>
-                  ¥{{ fenToYuan(r.marginTotal) }}
-                  <small class="cell-sub">{{ rawRateText(r) }}</small>
-                </td>
-                <td class="report-gross">
-                  ¥{{ fenToYuan(r.gross) }}
-                  <small class="cell-sub">{{ rateText(r) }}</small>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+      <ElTable v-loading="loading" :data="report.rows" row-key="date" empty-text="所选范围内没有已完成的订单">
+        <ElTableColumn prop="date" label="日期" min-width="120"><template #default="{ row }"><strong>{{ row.date }}</strong></template></ElTableColumn>
+        <ElTableColumn v-if="isHqScope" label="校区" min-width="150"><template #default="{ row }">{{ row.campusShortName || row.campusName }}</template></ElTableColumn>
+        <ElTableColumn prop="orders" label="订单数" min-width="90" />
+        <ElTableColumn label="销售额" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.salesTotal) }}</template></ElTableColumn>
+        <ElTableColumn label="批发成本" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.costTotal) }}</template></ElTableColumn>
+        <ElTableColumn label="毛利" min-width="140"><template #default="{ row }">¥{{ fenToYuan(row.marginTotal) }} <small class="cell-sub">{{ rawRateText(row as CampusDailyRow) }}</small></template></ElTableColumn>
+        <ElTableColumn label="综合毛利" min-width="150"><template #default="{ row }"><span class="report-gross">¥{{ fenToYuan(row.gross) }} <small class="cell-sub">{{ rateText(row as CampusDailyRow) }}</small></span></template></ElTableColumn>
+      </ElTable>
     </div>
   </div>
 </template>

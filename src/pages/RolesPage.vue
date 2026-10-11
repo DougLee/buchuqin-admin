@@ -23,7 +23,7 @@ function notify(msg: string, error = false) {
   toast.value = msg;
   toastError.value = error;
   if (toastTimer) clearTimeout(toastTimer);
-  // 错误停留 4.2s（同 DataPage 口径）
+  // 错误提示停留 4.2s
   toastTimer = setTimeout(() => (toast.value = ""), error ? 4200 : 2600);
 }
 

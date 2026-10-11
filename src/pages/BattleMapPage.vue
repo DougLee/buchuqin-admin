@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
 import type {
   BattleFloor,
@@ -7,11 +8,9 @@ import type {
   BattleRoomCell,
   BattleRoomDetail,
   Building,
-  Campus,
 } from "../types";
 import { fenToYuan } from "../utils/money";
-import { isPlatform } from "../session";
-import { fetchOperationalCampuses, type CampusOption } from "../dicts";
+import { accountOrgLevel, activeCampus, sessionUser } from "../session";
 // 寝室三色字典见 src/dicts/misc（BATTLE_ROOM_STATUS_TEXT，IKIYMM 集中化）
 import { BATTLE_ROOM_STATUS_TEXT } from "../dicts";
 
@@ -19,8 +18,8 @@ import { BATTLE_ROOM_STATUS_TEXT } from "../dicts";
  * 营销作战地图（IKFOQ3，2026-09-17 grilling 定版）：
  * - 楼栋→楼层→寝室格子三色：🟢 已下单（paidAt 非空）/🟡 注册未下单/⚪ 未开发
  * - 点格子开抽屉：注册用户列表+下单统计，高频客户=近 30 天 ≥3 单
- * - 校区上下文（IKISDN）：平台账号页内选校区（记住上次，摆脱顶栏切换依赖）；
- *   校区级账号跟账号本校区，无下拉
+ * - 校区上下文统一取顶部选择；平台/组织未选校区时不加载数据；
+ *   校区级账号使用账号固有校区。
  */
 const loading = ref(true);
 const error = ref("");
@@ -29,12 +28,11 @@ const buildingId = ref("");
 const map = ref<BattleMapBuilding | null>(null);
 const floorNo = ref<number | null>(null);
 
-const CAMPUS_KEY = "battle-campus";
-const campuses = ref<CampusOption[]>([]);
-const campusId = ref("");
-
-/** 平台账号可选校区（IKJCJF：fetchOperationalCampuses 已按 id 排除总部仓） */
-const campusOptions = computed(() => campuses.value);
+const operationalCampusId = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : sessionUser.value?.campusId ?? "",
+);
 
 const drawerOpen = ref(false);
 const roomLoading = ref(false);
@@ -45,18 +43,25 @@ const floor = computed<BattleFloor | null>(
 );
 
 async function loadMap() {
-  if (!buildingId.value) return;
+  if (!buildingId.value) {
+    map.value = null;
+    floorNo.value = null;
+    loading.value = false;
+    error.value = "";
+    return;
+  }
   loading.value = true;
   error.value = "";
   try {
     map.value = await api.battleMapBuilding(
       buildingId.value,
-      campusId.value || undefined,
+      operationalCampusId.value,
     );
     // 缺省选最低楼层
     floorNo.value = map.value.floors[0]?.floor ?? null;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载失败";
+    ElMessage.error(error.value);
     map.value = null;
   } finally {
     loading.value = false;
@@ -70,64 +75,50 @@ async function openRoom(cell: BattleRoomCell) {
   try {
     roomDetail.value = await api.battleMapRoom(
       cell.roomId,
-      campusId.value || undefined,
+      operationalCampusId.value,
     );
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载寝室详情失败";
+    ElMessage.error(error.value);
     drawerOpen.value = false;
   } finally {
     roomLoading.value = false;
   }
 }
 
-/** 拉当前校区楼栋并自动落到第一栋；校区级账号不传 → 后端回落账号本校区 */
+/** 拉当前校区楼栋；保持空值，让用户通过占位提示主动选择目标楼栋。 */
 async function loadBuildings() {
+  buildings.value = [];
+  buildingId.value = "";
+  map.value = null;
+  floorNo.value = null;
+  drawerOpen.value = false;
+  if (!operationalCampusId.value) {
+    loading.value = false;
+    error.value = "";
+    return;
+  }
   loading.value = true;
   error.value = "";
   try {
     const list = await api.buildings({
       page: 1,
       pageSize: 100,
-      campusId: campusId.value || undefined,
+      campusId: operationalCampusId.value,
     });
     buildings.value = list.items;
-    const first = buildings.value[0];
-    if (first) {
-      buildingId.value = first.id;
-      await loadMap();
-    } else {
-      buildingId.value = "";
-      map.value = null;
-      loading.value = false;
-    }
+    buildingId.value = "";
+    map.value = null;
+    loading.value = false;
   } catch {
     loading.value = false;
     error.value = "楼栋列表加载失败";
+    ElMessage.error(error.value);
   }
 }
 
-async function onCampusChange() {
-  localStorage.setItem(CAMPUS_KEY, campusId.value);
-  await loadBuildings();
-}
-
-onMounted(async () => {
-  try {
-    // 平台账号：页内选校区（IKISDN），恢复上次选择、缺省第一个校区
-    if (isPlatform.value) {
-      campuses.value = await fetchOperationalCampuses();
-      const saved = localStorage.getItem(CAMPUS_KEY) ?? "";
-      campusId.value =
-        campusOptions.value.find((c) => c.id === saved)?.id ??
-        campusOptions.value[0]?.id ??
-        "";
-    }
-    await loadBuildings();
-  } catch {
-    loading.value = false;
-    error.value = "楼栋列表加载失败";
-  }
-});
+onMounted(() => void loadBuildings());
+watch(operationalCampusId, () => void loadBuildings());
 </script>
 
 <template>
@@ -142,20 +133,17 @@ onMounted(async () => {
         </p>
       </div>
       <div class="head-actions battle-filter">
-        <select
-          v-if="isPlatform && campusOptions.length"
-          v-model="campusId"
-          @change="onCampusChange"
+        <ElSelect
+          v-model="buildingId"
+          class="battle-building-select"
+          clearable
+          placeholder="请选择楼栋"
+          aria-label="选择楼栋"
+          :disabled="!buildings.length"
+          @change="loadMap"
         >
-          <option v-for="c in campusOptions" :key="c.id" :value="c.id">
-            {{ c.name }}
-          </option>
-        </select>
-        <select v-model="buildingId" :disabled="!buildings.length" @change="loadMap">
-          <option v-for="b in buildings" :key="b.id" :value="b.id">
-            {{ b.name }}
-          </option>
-        </select>
+          <ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
+        </ElSelect>
       </div>
     </div>
 
@@ -212,70 +200,45 @@ onMounted(async () => {
       <p class="empty-cell">
         {{
           buildings.length
-            ? "该楼栋暂无寝室数据（先到楼栋管理建寝室）。"
-            : "当前校区暂无楼栋，先到楼栋管理新建。"
+            ? "请选择楼栋查看寝室下单覆盖情况。"
+            : operationalCampusId
+              ? "当前校区暂无楼栋，先到楼栋管理新建。"
+              : "请先在顶部选择校区。"
         }}
       </p>
     </div>
 
-    <!-- 寝室详情抽屉 -->
-    <div v-if="drawerOpen" class="drawer-mask" @click.self="drawerOpen = false">
-      <div class="drawer battle-room-drawer">
-        <div class="drawer-head">
-          <div>
-            <p class="eyebrow">BATTLE ROOM</p>
-            <h2>
-              {{ roomDetail?.room.roomNo }}
-              <small v-if="roomDetail">· {{ roomDetail.room.floor }} 层 · {{ roomDetail.orderCount }} 单</small>
-            </h2>
-          </div>
-          <button @click="drawerOpen = false">✕</button>
-        </div>
+    <ElDialog v-model="drawerOpen" class="battle-room-dialog" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close>
+      <template #header><div><p class="eyebrow">BATTLE ROOM</p><h2>{{ roomDetail?.room.roomNo }} <small v-if="roomDetail">· {{ roomDetail.room.floor }} 层 · {{ roomDetail.orderCount }} 单</small></h2></div></template>
         <div v-if="roomLoading" class="drawer-body"><div class="row-skeleton"></div></div>
         <div v-else-if="roomDetail" class="drawer-body">
           <p v-if="!roomDetail.users.length" class="empty-cell">
             还没有注册用户落到这个寝室——未开发格子，先推二维码。
           </p>
-          <div v-else class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>用户</th>
-                  <th>手机号</th>
-                  <th>下单次数</th>
-                  <th>累计金额</th>
-                  <th>注册时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="u in roomDetail.users" :key="u.userId">
-                  <td>
-                    <strong>{{ u.nickname }}</strong>
-                    <span v-if="u.highFrequency" class="hf-badge">高频</span>
-                  </td>
-                  <td>{{ u.phone }}</td>
-                  <td>{{ u.orderCount }}</td>
-                  <td>¥{{ fenToYuan(u.totalAmount) }}</td>
-                  <td>{{ u.registeredAt.slice(0, 10) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <ElTable v-else :data="roomDetail.users" row-key="userId">
+            <ElTableColumn label="用户" min-width="130"><template #default="{ row }"><strong>{{ row.nickname }}</strong> <ElTag v-if="row.highFrequency" size="small" type="success">高频</ElTag></template></ElTableColumn>
+            <ElTableColumn prop="phone" label="手机号" min-width="130" />
+            <ElTableColumn prop="orderCount" label="下单次数" width="100" />
+            <ElTableColumn label="累计金额" min-width="110"><template #default="{ row }">¥{{ fenToYuan(row.totalAmount) }}</template></ElTableColumn>
+            <ElTableColumn label="注册时间" min-width="120"><template #default="{ row }">{{ row.registeredAt.slice(0, 10) }}</template></ElTableColumn>
+          </ElTable>
         </div>
-      </div>
-    </div>
+    </ElDialog>
   </div>
 </template>
 
 <style scoped>
-.battle-filter select {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 0 10px;
-  font-size: 13px;
-  background: #fff;
-  outline: 0;
+.battle-building-select {
+  width: clamp(240px, 24vw, 340px);
+}
+@media (max-width: 760px) {
+  .page-head {
+    flex-direction: column;
+  }
+  .battle-filter,
+  .battle-building-select {
+    width: 100%;
+  }
 }
 .load-error {
   padding: 0 0 14px;

@@ -13,7 +13,7 @@ export interface PageQuery {
 
 /**
  * 列表请求参数（IK8W5X 契约）：page/pageSize 分页透传；
- * keyword 随请求发送，后端未实现 keyword 过滤前由前端对当前页兜底（见 DataPage TODO）。
+ * keyword 随请求发送；未实现服务端过滤的旧接口由对应领域页兜底。
  */
 export interface ListQuery extends PageQuery {
   keyword?: string;
@@ -154,6 +154,11 @@ export interface Product {
   sourceProductId?: string | null;
   /** 上游已更新（IKAJSO）：官方库资料晚于本校区同步时间，可一键拉取。 */
   upstreamChanged?: boolean;
+  /** 多层商品目录归属（平台目录 / 组织目录 / 校区商品）。 */
+  organizationId?: string | null;
+  catalogScope?: "platform" | "org" | "campus" | null;
+  /** 组织目录采购来源：平台供货或组织自主采购。 */
+  supplyMode?: "platform" | "local" | null;
 }
 
 export interface OrderAddress {
@@ -684,7 +689,7 @@ export interface AfterSale {
 
 /**
  * 售后列表扁平化视图行（IK97FJ）：typeText 为类型中文文案
- * （映射表见 DataPage AFTER_SALE_TYPE_TEXT，未命中 fallback 原值）。
+ * （映射表见售后领域字典，未命中 fallback 原值）。
  */
 export interface AfterSaleRow {
   id: string;

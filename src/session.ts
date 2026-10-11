@@ -40,7 +40,15 @@ export interface MeMenu {
 
 /** GET /admin/rbac/permmenu 返回的授权上下文。 */
 export interface RbacMe {
-  account: { id: string; username: string; nickname: string; status: string; campusId: string };
+  account: {
+    id: string;
+    username: string;
+    nickname: string;
+    status: string;
+    campusId: string;
+    orgLevel?: "platform" | "org" | "campus";
+    organizationId?: string | null;
+  };
   platform: boolean;
   platformPerms?: string[];
   super: boolean;
@@ -100,6 +108,8 @@ export const ROUTE_PERM: Record<string, string[]> = {
   ],
   products: ["POST /admin/products", "PATCH /admin/products/:id"],
   "official-products": ["POST /admin/products", "PATCH /admin/products/:id"],
+  "platform-products": ["POST /admin/platform-products", "PATCH /admin/platform-products/:id"],
+  "org-products": ["POST /admin/org-products", "PATCH /admin/org-products/:id", "POST /admin/org-products/:id/import"],
   categories: [
     "POST /admin/categories",
     "PATCH /admin/categories/:id",
@@ -193,9 +203,19 @@ export const patterns = ref<Set<string>>(new Set());
 export const menuTree = ref<MeMenu[]>([]);
 export const isSuper = ref(false);
 export const isPlatform = ref(false);
+/** 账号固有数据边界；不能由角色授权 scope 推导。 */
+export const accountOrgLevel = ref<"platform" | "org" | "campus">("campus");
+export const accountOrganizationId = ref<string | null>(null);
 const platformPatterns = ref<Set<string>>(new Set());
 export const rbacRoles = ref<RbacMe["roles"]>([]);
 export const switchableCampuses = ref<string[]>([]);
+/** 账号可跨校区查看；来源是账号数据边界，不由某一个角色决定。 */
+export const isMultiCampusAccount = computed(
+  () =>
+    accountOrgLevel.value === "platform" ||
+    accountOrgLevel.value === "org" ||
+    switchableCampuses.value.length > 1,
+);
 /** IKJA7Y 页内校区切换：api.request 统一注入 ?campus=（多校区授权账号的数据
  *  视角）。空串=不注入（单校区账号/平台全量语义不受影响）。切换账号时清空。 */
 export const activeCampus = ref<string>("");
@@ -298,7 +318,16 @@ export function applySession(user: SessionUser) {
 
 /** 应用 /admin/rbac/permmenu 结果（登录/切校区/权限变更后调用）。 */
 export function applyRbac(me: RbacMe) {
-  const signature = JSON.stringify([me.account.id, me.contextCampusId, me.perms, me.platformPerms, me.menus, me.super]);
+  const signature = JSON.stringify([
+    me.account.id,
+    me.account.orgLevel,
+    me.account.organizationId,
+    me.contextCampusId,
+    me.perms,
+    me.platformPerms,
+    me.menus,
+    me.super,
+  ]);
   if (signature !== authorizationSignature) {
     authorizationSignature = signature;
     authorizationEpoch.value++;
@@ -309,9 +338,12 @@ export function applyRbac(me: RbacMe) {
   menuTree.value = Array.isArray(me.menus) ? me.menus : [];
   isSuper.value = me.super;
   isPlatform.value = me.platform;
+  accountOrgLevel.value = me.account.orgLevel ?? (me.platform ? "platform" : "campus");
+  accountOrganizationId.value = me.account.organizationId ?? null;
   rbacRoles.value = me.roles ?? [];
   switchableCampuses.value = me.switchableCampuses ?? [];
-  activeCampus.value = "";
+  // 顶部校区是用户显式选择的经营上下文；权限定时刷新不能清空它。
+  // 登出或换账号仍由 clearSession 统一清理。
   clearCampusCache();
   rbacVersion.value = me.rbacVersion ?? 0;
   rbacLoaded.value = true;
@@ -345,6 +377,8 @@ export async function loadRbac(): Promise<boolean> {
     menuTree.value = [];
     isSuper.value = false;
     isPlatform.value = false;
+    accountOrgLevel.value = "campus";
+    accountOrganizationId.value = null;
     rbacLoaded.value = false;
     capabilities.value = [];
     return false;
@@ -361,6 +395,8 @@ export function clearSession() {
   menuTree.value = [];
   isSuper.value = false;
   isPlatform.value = false;
+  accountOrgLevel.value = "campus";
+  accountOrganizationId.value = null;
   rbacRoles.value = [];
   switchableCampuses.value = [];
   activeCampus.value = "";

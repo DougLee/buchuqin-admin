@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
 import { ACTIVITY_ROUTES, FLOW_LABELS } from "../dicts";
-import { isPlatform, menuPath } from "../session";
+import { accountOrgLevel, menuPath } from "../session";
 import type {
   DashboardActivity,
   DashboardData,
@@ -20,7 +20,11 @@ const router = useRouter();
    后端本就落 hqDashboard）——原来只认 hq，admin 登录时出现三重错位：标题显示
    校区文案、数据是跨校区合计、履约完成率卡渲染 undefined 只剩「%」。
    RBAC V1（2026-09-19）：role 判断换服务端 platform 上下文。 */
-const isHq = computed(() => isPlatform.value);
+const isPlatformScope = computed(() => accountOrgLevel.value === "platform");
+const isOrganizationScope = computed(() => accountOrgLevel.value === "org");
+const isMultiCampusScope = computed(
+  () => isPlatformScope.value || isOrganizationScope.value,
+);
 const hqData = ref<HqDashboardData>();
 const drillCampus = ref("");
 const drillName = ref("");
@@ -28,14 +32,14 @@ async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    if (isHq.value && !drillCampus.value) {
+    if (isMultiCampusScope.value && !drillCampus.value) {
       data.value = undefined;
       hqData.value = (await api.dashboard()) as HqDashboardData;
     } else {
       hqData.value = undefined;
       // hq 下钻带 campus 返回单校区 DashboardData（与校区角色同构）
       data.value = (await api.dashboard(
-        isHq.value ? drillCampus.value : undefined,
+        isMultiCampusScope.value ? drillCampus.value : undefined,
       )) as DashboardData;
     }
   } catch (error) {
@@ -56,7 +60,9 @@ function backToSummary() {
   load();
 }
 /** hq 汇总视角：隐藏单校区导出/履约入口（下钻后恢复） */
-const isHqSummary = computed(() => isHq.value && !drillCampus.value);
+const isHqSummary = computed(
+  () => isMultiCampusScope.value && !drillCampus.value,
+);
 
 /* 近 7 日趋势：曲线、坐标轴、增幅全部来自接口 trend 字段（paidAmount 为分，统一转元后绘图） */
 const trend = computed<TrendPoint[]>(() => {
@@ -185,10 +191,18 @@ function exportReport() {
     <div class="page-head">
       <div>
         <p class="eyebrow">实时经营</p>
-        <h1>{{ isHqSummary ? "跨校区运营总览" : "校园运营总览" }}</h1>
+        <h1>{{
+          isHqSummary
+            ? isOrganizationScope
+              ? "组织经营总览"
+              : "全平台经营总览"
+            : "校园运营总览"
+        }}</h1>
         <p>{{
           isHqSummary
-            ? "总部视角：各校区今日经营与异常一览。"
+            ? isOrganizationScope
+              ? "组织视角：所属校区今日经营与异常一览。"
+              : "平台视角：所有校区今日经营与异常一览。"
             : "从交易到寝室交付，掌握每一个履约节点。"
         }}</p>
       </div>

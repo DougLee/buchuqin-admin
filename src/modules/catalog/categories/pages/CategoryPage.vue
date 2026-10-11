@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
-import { activeCampus, hasPerm } from "../../../../session";
+import { accountOrgLevel, activeCampus, hasPerm, sessionUser } from "../../../../session";
 import type { Category } from "../../../../types";
 import { resolveImageUrl } from "../../../../utils/image";
-import AdminDataView from "../../../../shared/ui/AdminDataView.vue";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import CampusScopeSelect from "../../../../shared/ui/CampusScopeSelect.vue";
 import { useAsyncCollection } from "../../../../shared/data/useAsyncCollection";
-import { useTransientMessage } from "../../../../shared/feedback/useTransientMessage";
 import { categoryApi, type CategoryInput } from "../api";
 
 const { rows, loading, error: loadError, load } = useAsyncCollection(categoryApi.list);
-const { message, messageError, notify } = useTransientMessage();
+const notify = (message: string, error = false) => ElMessage({ message, type: error ? "error" : "success", showClose: true });
 const keyword = ref("");
 const page = ref(1), pageSize = ref(20);
 const editorOpen = ref(false), saving = ref(false), editingId = ref<string | null>(null);
@@ -22,6 +20,12 @@ const form = ref<CategoryInput & { visible: boolean }>({ name: "", sort: 10, ima
 const canCreate = computed(() => hasPerm("POST /admin/categories"));
 const canUpdate = computed(() => hasPerm("PATCH /admin/categories/:id"));
 const canDelete = computed(() => hasPerm("DELETE /admin/categories/:id"));
+const asCategory = (row: unknown) => row as Category;
+const operationalCampusId = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : sessionUser.value?.campusId ?? "",
+);
 const filtered = computed(() => {
   const query = keyword.value.trim();
   return query ? rows.value.filter((row) => row.name.includes(query)) : rows.value;
@@ -30,11 +34,6 @@ const total = computed(() => filtered.value.length);
 const pagedRows = computed(() => filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
 watch([keyword, pageSize], () => { page.value = 1; });
 
-function changeCampus(campusId: string) {
-  activeCampus.value = campusId;
-  page.value = 1;
-  void load();
-}
 function createCategory() {
   editingId.value = null;
   form.value = { name: "", sort: (rows.value.length + 1) * 10, image: "", hidden: false, visible: true };
@@ -66,61 +65,55 @@ async function remove(row: Category) {
   try { await categoryApi.remove(row.id); confirmDeleteId.value = ""; notify("类别已删除"); await load(); }
   catch (error) { confirmDeleteId.value = ""; notify(error instanceof Error ? error.message : "删除失败", true); }
 }
-onMounted(load);
+function loadForCampus() {
+  if (!operationalCampusId.value) {
+    rows.value = [];
+    return;
+  }
+  void load();
+}
+onMounted(loadForCampus);
+watch(operationalCampusId, () => {
+  page.value = 1;
+  editorOpen.value = false;
+  loadForCampus();
+});
 </script>
 
 <template>
   <AdminPageShell title="商品类别" eyebrow="PRODUCT CATEGORIES" description="维护小程序分类 tab 的类别字典，排序越小越靠前。">
-    <template #actions><button v-if="canCreate" class="btn primary" @click="createCategory">＋ 新建类别</button></template>
+    <template #actions><ElButton v-if="canCreate" type="primary" :disabled="!operationalCampusId" @click="createCategory">＋ 新建类别</ElButton></template>
     <div class="toolbar">
-      <div class="filter-search"><span></span><input v-model="keyword" placeholder="搜索类别名称" /></div>
-      <CampusScopeSelect :model-value="activeCampus" @change="changeCampus" />
+      <ElInput v-model="keyword" clearable placeholder="搜索类别名称" class="category-search" />
       <div class="toolbar-spacer"></div>
-      <button class="btn ghost" :disabled="loading" @click="load">刷新</button>
+      <ElButton :loading="loading" :disabled="!operationalCampusId" @click="loadForCampus">刷新</ElButton>
     </div>
-    <div v-if="loadError" class="load-error"><span>{{ loadError }}</span><button class="btn ghost" @click="load">重试</button></div>
-    <AdminDataView>
-      <template #desktop>
-        <div class="table-wrap"><table><thead><tr><th>图片</th><th>类别名称</th><th>排序</th><th>商品数</th><th>小程序显示</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-if="loading" v-for="i in 5" :key="i"><td colspan="6"><div class="row-skeleton"></div></td></tr>
-            <tr v-else-if="!pagedRows.length"><td colspan="6" class="empty-cell">暂无数据</td></tr>
-            <tr v-for="row in loading ? [] : pagedRows" :key="row.id">
-              <td><img v-if="row.image" class="cell-thumb" :src="resolveImageUrl(row.image)" alt="类别图片" /></td>
-              <td><strong>{{ row.name }}</strong></td><td>{{ row.sort }}</td><td>{{ row.productCount ?? 0 }}</td>
-              <td><span class="status" :class="{ success: !row.hidden, warning: row.hidden }">{{ row.hidden ? "已隐藏" : "显示中" }}</span></td>
-              <td class="row-actions"><button v-if="canUpdate" class="btn mini ghost" @click="toggleVisible(row)">{{ row.hidden ? "显示" : "隐藏" }}</button><button v-if="canUpdate" class="btn mini primary" @click="editCategory(row)">编辑</button><button v-if="canDelete" class="btn mini danger-btn" @click="remove(row)">{{ confirmDeleteId === row.id ? "确认删除" : "删除" }}</button></td>
-            </tr>
-          </tbody></table></div>
-      </template>
-      <template #mobile>
-        <article v-for="row in loading ? [] : pagedRows" :key="row.id" class="category-card" :class="{ 'category-card--no-image': !row.image }">
-          <img v-if="row.image" :src="resolveImageUrl(row.image)" alt="类别图片" /><div><header><strong>{{ row.name }}</strong><span class="status" :class="{ success: !row.hidden }">{{ row.hidden ? "已隐藏" : "显示中" }}</span></header><p>排序 {{ row.sort }} · {{ row.productCount ?? 0 }} 个商品</p><footer><button v-if="canUpdate" class="btn mini ghost" @click="toggleVisible(row)">{{ row.hidden ? "显示" : "隐藏" }}</button><button v-if="canUpdate" class="btn mini primary" @click="editCategory(row)">编辑</button><button v-if="canDelete" class="btn mini danger-btn" @click="remove(row)">{{ confirmDeleteId === row.id ? "确认" : "删除" }}</button></footer></div>
-        </article>
-        <div v-if="loading" v-for="i in 4" :key="i" class="category-card category-card--no-image"><div class="row-skeleton"></div></div>
-        <p v-else-if="!pagedRows.length" class="mobile-empty">暂无数据</p>
-      </template>
-    </AdminDataView>
+    <div v-if="loadError" class="load-error"><span>{{ loadError }}</span><ElButton @click="loadForCampus">重试</ElButton></div>
+    <ElTable v-loading="loading" :data="pagedRows" row-key="id" :empty-text="operationalCampusId ? '暂无数据' : '请先在顶部选择校区'">
+      <ElTableColumn label="图片" width="88"><template #default="{ row }"><img v-if="row.image" class="cell-thumb" :src="resolveImageUrl(row.image)" alt="类别图片" /></template></ElTableColumn>
+      <ElTableColumn prop="name" label="类别名称" min-width="160"><template #default="{ row }"><strong>{{ row.name }}</strong></template></ElTableColumn>
+      <ElTableColumn prop="sort" label="排序" width="90" />
+      <ElTableColumn prop="productCount" label="商品数" width="100" />
+      <ElTableColumn label="小程序显示" width="120"><template #default="{ row }"><ElTag :type="row.hidden ? 'warning' : 'success'">{{ row.hidden ? "已隐藏" : "显示中" }}</ElTag></template></ElTableColumn>
+      <ElTableColumn label="操作" fixed="right" width="230"><template #default="{ row }"><ElButton v-if="canUpdate" size="small" @click="toggleVisible(asCategory(row))">{{ row.hidden ? "显示" : "隐藏" }}</ElButton><ElButton v-if="canUpdate" size="small" type="primary" @click="editCategory(asCategory(row))">编辑</ElButton><ElButton v-if="canDelete" size="small" type="danger" plain @click="remove(asCategory(row))">{{ confirmDeleteId === row.id ? "确认删除" : "删除" }}</ElButton></template></ElTableColumn>
+    </ElTable>
     <AdminPagination v-model:page="page" v-model:page-size="pageSize" :total="total" />
 
-    <div v-if="editorOpen" class="drawer-mask" @click.self="editorOpen = false"><aside class="drawer product-create"><div class="drawer-head"><div><p class="eyebrow">{{ editingId ? "EDIT CATEGORY" : "NEW CATEGORY" }}</p><h2>{{ editingId ? "编辑商品类别" : "新建商品类别" }}</h2></div><button aria-label="关闭" @click="editorOpen = false">×</button></div><form class="category-form" @submit.prevent="save"><label>类别名称<input v-model="form.name" placeholder="如：饮料" /></label><label>排序（越小越靠前）<input v-model.number="form.sort" type="number" /></label><label class="wide">类别图片<ImageUploadField v-model="form.image!" folder="app/category" /></label><label class="wide checkbox-line"><input v-model="form.visible" type="checkbox" />在小程序显示该分类</label></form><div class="drawer-actions"><button class="btn ghost" @click="editorOpen = false">取消</button><button class="btn primary" :disabled="saving" @click="save">{{ saving ? "保存中..." : "保存" }}</button></div></aside></div>
-    <div v-if="message" class="toast" :class="{ error: messageError }">{{ message }}</div>
+    <ElDialog v-model="editorOpen" :title="editingId ? '编辑商品类别' : '新建商品类别'" width="min(620px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
+      <ElForm label-position="top" class="category-form">
+        <ElFormItem label="类别名称"><ElInput v-model="form.name" placeholder="如：饮料" /></ElFormItem>
+        <ElFormItem label="排序（越小越靠前）"><ElInputNumber v-model="form.sort" :min="0" /></ElFormItem>
+        <ElFormItem label="类别图片" class="wide"><ImageUploadField v-model="form.image!" folder="app/category" /></ElFormItem>
+        <ElFormItem class="wide"><ElCheckbox v-model="form.visible">在小程序显示该分类</ElCheckbox></ElFormItem>
+      </ElForm>
+      <template #footer><ElButton @click="editorOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存</ElButton></template>
+    </ElDialog>
   </AdminPageShell>
 </template>
 
 <style scoped>
-.category-card { display: grid; grid-template-columns: 58px 1fr; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 13px; }
-.category-card--no-image { grid-template-columns: 1fr; }
-.category-card > img { width: 58px; height: 58px; border-radius: 11px; object-fit: cover; }
-.category-card header, .category-card footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.category-card p { color: var(--muted); font-size: 12px; }
-.category-card footer { justify-content: flex-end; flex-wrap: wrap; }
-.mobile-empty { padding: 30px; text-align: center; color: var(--muted); }
-.category-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 26px; }
-.category-form label { display: grid; gap: 8px; color: #37423c; font-size: 13px; font-weight: 600; }
-.category-form label > input:not([type='checkbox']) { width: 100%; height: 40px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; }
+.category-search { width: min(320px, 100%); }
+.category-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .category-form .wide { grid-column: 1 / -1; }
-.checkbox-line { display: flex; grid-template-columns: auto 1fr; align-items: center; }
-.checkbox-line input { width: 20px; height: 20px; }
 @media (max-width: 760px) { .category-form { grid-template-columns: 1fr; margin: 16px; } .category-form .wide { grid-column: auto; } }
 </style>

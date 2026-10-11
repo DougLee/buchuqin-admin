@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { api } from "../api";
-import { hasPerm, isPlatform } from "../session";
-import { fetchOperationalCampuses } from "../dicts";
+import { accountOrgLevel, activeCampus, hasPerm, sessionUser } from "../session";
 import type { RefundApplication } from "../types";
 import { fenToYuan } from "../utils/money";
 
@@ -15,7 +15,7 @@ import { fenToYuan } from "../utils/money";
  */
 // 字典见 src/dicts（IKIYMM 集中化）：
 // TABS→REFUND_STATUS_TABS、SOURCE_TEXT→REFUND_SOURCE_TEXT、
-// TYPE_TEXT→AFTERSALE_PAGE_TYPE_TEXT（与 DataPage AFTER_SALE_TYPE_TEXT 分叉）、
+// TYPE_TEXT→AFTERSALE_PAGE_TYPE_TEXT（与共享售后字典分叉）、
 // ORDER_STATUS_TEXT→REFUND_ROLLBACK_STATUS_TEXT
 import {
   AFTERSALE_PAGE_TYPE_TEXT,
@@ -34,16 +34,32 @@ const pageSize = 20;
 const loading = ref(false);
 const pendingCount = ref(0);
 const toast = ref("");
-/** IKJCJF：校区筛选（平台账号跨校区查退款） */
-const campusFilter = ref("");
-const campusOptions = ref<Awaited<ReturnType<typeof fetchOperationalCampuses>>>([]);
+watch(toast, (message) => {
+  if (!message) return;
+  const error = /失败|错误|请|未找到|拒绝时/.test(message);
+  ElMessage({ message, type: error ? "error" : "success", showClose: true });
+  toast.value = "";
+});
+/** 顶部校区是订单/退款唯一数据上下文；校区账号使用其固有校区。 */
+const operationalCampusId = computed(() =>
+  accountOrgLevel.value === "platform" || accountOrgLevel.value === "org"
+    ? activeCampus.value
+    : sessionUser.value?.campusId ?? "",
+);
 
 const canAudit = computed(() =>
   hasPerm("POST /admin/refunds/:id/audit"),
 );
 const hasMore = computed(() => rows.value.length < total.value);
+const asRefund = (row: unknown) => row as RefundApplication;
 
 async function load(append = false) {
+  if (!operationalCampusId.value) {
+    rows.value = [];
+    total.value = 0;
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
     const res = await api.refunds(
@@ -51,7 +67,7 @@ async function load(append = false) {
         page: page.value,
         pageSize,
         keyword: keyword.value.trim() || undefined,
-        campusId: isPlatform.value ? campusFilter.value || undefined : undefined,
+        campusId: operationalCampusId.value,
       },
       tab.value,
       source.value === "all" ? undefined : source.value,
@@ -65,8 +81,15 @@ async function load(append = false) {
   }
 }
 async function loadPendingCount() {
+  if (!operationalCampusId.value) {
+    pendingCount.value = 0;
+    return;
+  }
   try {
-    const res = await api.refunds({ page: 1, pageSize: 1 }, "pending");
+    const res = await api.refunds(
+      { page: 1, pageSize: 1, campusId: operationalCampusId.value },
+      "pending",
+    );
     pendingCount.value = res.total;
   } catch {
     /* 角标失败不影响列表 */
@@ -95,6 +118,10 @@ function loadMore() {
 
 /* ---------- 详情弹窗 + 审核 ---------- */
 const detail = ref<RefundApplication | null>(null);
+const detailOpen = computed({
+  get: () => detail.value !== null,
+  set: (open: boolean) => { if (!open) detail.value = null; },
+});
 const auditMode = ref<"approve" | "reject" | null>(null);
 const remark = ref("");
 const submitting = ref(false);
@@ -191,7 +218,12 @@ async function searchOrder() {
   if (!no) return;
   createSearching.value = true;
   try {
-    const res = await api.orders("all", { page: 1, pageSize: 10, keyword: no });
+    const res = await api.orders("all", {
+      page: 1,
+      pageSize: 10,
+      keyword: no,
+      campusId: operationalCampusId.value,
+    });
     const hit =
       res.items.find((o) => String(o.orderNo) === no) ?? res.items[0];
     // Order 行结构宽松断言（模板只用 orderNo/实付/配送费/items 快照）
@@ -249,12 +281,13 @@ async function submitCreate() {
 }
 
 onMounted(() => {
-  // 校区筛选字典（平台账号跨校区查退款，IKJCJF）
-  if (isPlatform.value) {
-    fetchOperationalCampuses()
-      .then((list) => (campusOptions.value = list))
-      .catch(() => {});
-  }
+  void load();
+  void loadPendingCount();
+});
+watch(operationalCampusId, () => {
+  page.value = 1;
+  rows.value = [];
+  detail.value = null;
   void load();
   void loadPendingCount();
 });
@@ -271,7 +304,7 @@ onMounted(() => {
         </p>
       </div>
       <div class="head-actions">
-        <button v-if="canAudit" class="btn primary" @click="openCreate">
+        <button v-if="canAudit" class="btn primary" :disabled="!operationalCampusId" @click="openCreate">
           按商品退款
         </button>
         <button class="btn" :disabled="loading" @click="load(); loadPendingCount()">
@@ -279,8 +312,6 @@ onMounted(() => {
         </button>
       </div>
     </div>
-
-    <p v-if="toast" class="as-toast">{{ toast }}</p>
 
     <!-- 状态 Tab + 来源筛选 -->
     <div class="as-toolbar panel">
@@ -297,97 +328,34 @@ onMounted(() => {
         </button>
       </div>
       <div class="as-filters">
-        <select
-          v-if="isPlatform"
-          v-model="campusFilter"
-          class="as-select"
-          aria-label="校区筛选"
-          @change="search"
-        >
-          <option value="">全校区</option>
-          <option v-for="c in campusOptions" :key="c.id" :value="c.id">
-            {{ c.shortName || c.name }}
-          </option>
-        </select>
-        <select v-model="source" class="as-select" @change="switchSource">
-          <option value="all">全部来源</option>
-          <option value="pre-delivery">未发货</option>
-          <option value="after-sale">送达后售后</option>
-        </select>
-        <input
+        <ElSelect v-model="source" class="as-select" aria-label="退款来源" @change="switchSource">
+          <ElOption label="全部来源" value="all" />
+          <ElOption label="未发货" value="pre-delivery" />
+          <ElOption label="送达后售后" value="after-sale" />
+        </ElSelect>
+        <ElInput
           v-model="keyword"
           class="as-input"
           placeholder="搜订单号 / 用户"
           @keyup.enter="search"
         />
-        <button class="btn" @click="search">搜索</button>
+        <ElButton @click="search">搜索</ElButton>
       </div>
     </div>
 
     <!-- 列表 -->
     <div class="panel">
-      <table class="as-table">
-        <thead>
-          <tr>
-            <th>订单号</th>
-            <th>校区</th>
-            <th>用户</th>
-            <th>来源</th>
-            <th>原因</th>
-            <th class="num">退款金额</th>
-            <th>申请时间</th>
-            <th>状态</th>
-            <th v-if="canAudit">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading && !rows.length">
-            <td colspan="9" class="as-empty">加载中…</td>
-          </tr>
-          <tr v-else-if="!rows.length">
-            <td colspan="9" class="as-empty">暂无申请</td>
-          </tr>
-          <tr
-            v-for="row in rows"
-            :key="row.id"
-            class="as-row"
-            @click="openDetail(row)"
-          >
-            <td class="mono">{{ row.orderNo }}</td>
-            <td>{{ row.campusShortName || row.campusName || "—" }}</td>
-            <td>{{ row.userName || row.userPhone || "用户" }}</td>
-            <td>
-              <span class="as-src" :class="row.source">{{ REFUND_SOURCE_TEXT[row.source] ?? row.source }}</span>
-            </td>
-            <td class="as-reason">
-              {{ row.source === "pre-delivery" ? row.reason || "—" : (AFTERSALE_PAGE_TYPE_TEXT[row.type ?? ""] ?? row.type) }}
-            </td>
-            <td class="num">¥{{ fenToYuan(row.amount) }}</td>
-            <td>{{ new Date(row.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</td>
-            <td>
-              <span class="as-status" :class="row.status">{{ row.statusText }}</span>
-              <div v-if="row.status === 'failed' && row.refundError" class="as-err">{{ row.refundError }}</div>
-            </td>
-            <td v-if="canAudit" class="as-actions" @click.stop>
-              <button
-                v-if="row.status === 'pending'"
-                class="btn small primary"
-                @click="openDetail(row); startAudit('approve')"
-              >批准</button>
-              <button
-                v-if="row.status === 'pending'"
-                class="btn small danger"
-                @click="openDetail(row); startAudit('reject')"
-              >拒绝</button>
-              <button
-                v-if="['refunding', 'approved', 'failed'].includes(row.status)"
-                class="btn small"
-                @click="sync(row)"
-              >同步状态</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <ElTable v-loading="loading" :data="rows" row-key="id" :empty-text="operationalCampusId ? '暂无申请' : '请先在顶部选择校区'" @row-click="openDetail">
+        <ElTableColumn prop="orderNo" label="订单号" min-width="170" />
+        <ElTableColumn label="校区" min-width="120"><template #default="{ row }">{{ row.campusShortName || row.campusName || "—" }}</template></ElTableColumn>
+        <ElTableColumn label="用户" min-width="130"><template #default="{ row }">{{ row.userName || row.userPhone || "用户" }}</template></ElTableColumn>
+        <ElTableColumn label="来源" width="100"><template #default="{ row }"><ElTag size="small" type="info">{{ REFUND_SOURCE_TEXT[row.source] ?? row.source }}</ElTag></template></ElTableColumn>
+        <ElTableColumn label="原因" min-width="180"><template #default="{ row }">{{ row.source === "pre-delivery" ? row.reason || "—" : (AFTERSALE_PAGE_TYPE_TEXT[row.type ?? ""] ?? row.type) }}</template></ElTableColumn>
+        <ElTableColumn label="退款金额" width="110"><template #default="{ row }">¥{{ fenToYuan(row.amount) }}</template></ElTableColumn>
+        <ElTableColumn label="申请时间" min-width="170"><template #default="{ row }">{{ new Date(row.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</template></ElTableColumn>
+        <ElTableColumn label="状态" min-width="120"><template #default="{ row }"><ElTag :type="row.status === 'failed' ? 'danger' : row.status === 'pending' ? 'warning' : 'success'">{{ row.statusText }}</ElTag></template></ElTableColumn>
+        <ElTableColumn v-if="canAudit" label="操作" fixed="right" width="190"><template #default="{ row }"><div @click.stop><ElButton v-if="row.status === 'pending'" size="small" type="primary" @click="openDetail(asRefund(row)); startAudit('approve')">批准</ElButton><ElButton v-if="row.status === 'pending'" size="small" type="danger" plain @click="openDetail(asRefund(row)); startAudit('reject')">拒绝</ElButton><ElButton v-if="['refunding', 'approved', 'failed'].includes(row.status)" size="small" @click="sync(asRefund(row))">同步状态</ElButton></div></template></ElTableColumn>
+      </ElTable>
       <div v-if="hasMore" class="as-more">
         <button class="btn" :disabled="loading" @click="loadMore">
           {{ loading ? "加载中…" : `加载更多（已载 ${rows.length}/${total}）` }}
@@ -396,30 +364,25 @@ onMounted(() => {
     </div>
 
     <!-- 详情 + 审核弹窗 -->
-    <div v-if="detail" class="as-mask" @click.self="detail = null">
-      <div class="as-modal panel">
-        <div class="as-modal-head">
-          <h3>退款申请详情</h3>
-          <button class="btn small" @click="detail = null">关闭</button>
-        </div>
+    <ElDialog v-model="detailOpen" title="退款申请详情" width="min(860px, calc(100vw - 32px))" align-center destroy-on-close>
+      <template v-if="detail">
         <dl class="as-grid">
           <!-- v2 部分退款：商品行（整单退不显示） -->
           <div v-if="detail.items.length" class="as-imgs-row">
             <dt>退款商品</dt>
             <dd>
-              <table class="as-items">
-                <thead>
-                  <tr><th>商品</th><th>单价</th><th>数量</th><th>金额</th></tr>
-                </thead>
-                <tbody>
-                  <tr v-for="i in detail.items" :key="i.id">
-                    <td>{{ i.productName }}</td>
-                    <td>¥{{ fenToYuan(i.unitPrice) }}</td>
-                    <td>×{{ i.quantity }}</td>
-                    <td>¥{{ fenToYuan(i.amount) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+              <ElTable :data="detail.items" row-key="id" size="small">
+                <ElTableColumn prop="productName" label="商品" min-width="180" />
+                <ElTableColumn label="单价" width="100">
+                  <template #default="{ row }">¥{{ fenToYuan(row.unitPrice) }}</template>
+                </ElTableColumn>
+                <ElTableColumn label="数量" width="80">
+                  <template #default="{ row }">×{{ row.quantity }}</template>
+                </ElTableColumn>
+                <ElTableColumn label="金额" width="100">
+                  <template #default="{ row }">¥{{ fenToYuan(row.amount) }}</template>
+                </ElTableColumn>
+              </ElTable>
             </dd>
           </div>
           <div><dt>订单号</dt><dd class="mono">{{ detail.orderNo }}</dd></div>
@@ -509,15 +472,10 @@ onMounted(() => {
         <p v-else-if="canAudit && detail.status === 'failed'" class="as-audit-tip">
           可在列表对该申请「同步状态」；微信侧已关闭时可重新批准发起。
         </p>
-      </div>
-    </div>
+      </template>
+    </ElDialog>
   <!-- v2 按商品退款弹窗：搜订单 → 勾商品 → 核定金额 → 提交即退款 -->
-  <div v-if="createOpen" class="as-mask" @click.self="createOpen = false">
-    <div class="as-modal panel">
-      <div class="as-modal-head">
-        <h3>按商品退款</h3>
-        <button class="btn small" @click="createOpen = false">关闭</button>
-      </div>
+  <ElDialog v-model="createOpen" title="按商品退款" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close>
       <div class="as-create-search">
         <input
           v-model="createOrderNo"
@@ -575,8 +533,7 @@ onMounted(() => {
           <button class="btn" :disabled="submitting" @click="createOpen = false">取消</button>
         </div>
       </template>
-    </div>
-  </div>
+  </ElDialog>
   </div>
 </template>
 
@@ -617,17 +574,20 @@ onMounted(() => {
   padding: 0 5px;
 }
 .as-filters { display: flex; gap: 8px; align-items: center; }
-.as-select,
-.as-input {
+/* 原生表单才自行绘制边框；Element Plus 根节点只负责布局，避免根节点和
+   内部 wrapper 同时出现一层边框。 */
+select.as-select,
+input.as-input {
   border: 1px solid var(--line, #e5e7eb);
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 13px;
   background: #fff;
 }
+.as-select,
 .as-input { width: 200px; }
-.as-select:focus,
-.as-input:focus,
+select.as-select:focus,
+input.as-input:focus,
 .as-textarea:focus {
   outline: none;
   border-color: var(--brand, #16a34a);

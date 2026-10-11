@@ -14,7 +14,7 @@ import AdminPagination from "../shared/ui/AdminPagination.vue";
 
 /**
  * 账号管理（RBAC V1，2026-09-19）：
- * - 列表/新建/编辑走新 grants 授权模型（一账号多角色，角色×范围×校区）；
+ * - 列表/新建/编辑将角色（功能权限）与账号数据范围分开展示；
  * - 行内「预览权限」调 /admin/rbac/accounts/:id/preview 展示有效角色+权限码；
  * - 写操作按钮由 rbac.accounts.write 门控（路由层已挡只读用户，此处双保险）。
  */
@@ -115,10 +115,20 @@ function campusLabel(id?: string | null): string {
   const hit = campusOptions.value.find((c) => c.id === id);
   return hit?.shortName || hit?.name || id;
 }
-function grantLabel(g: AccountGrant): string {
-  return g.scope === "platform"
-    ? `${g.roleName}·平台`
-    : `${g.roleName}·${campusLabel(g.campusId)}`;
+function accountRoleNames(row: AdminAccount): string[] {
+  return [...new Set((row.grants ?? []).map((grant) => grant.roleName || grant.roleCode))];
+}
+function accountScopeLabel(row: AdminAccount): string {
+  if (row.orgLevel === "platform") return "整个平台";
+  if (row.orgLevel === "org") return `整个组织 · ${orgLabel(row.organizationId)}`;
+  if (row.orgLevel === "campus") {
+    const campuses = [...new Set((row.grants ?? []).flatMap((grant) => grant.campusId ? [campusLabel(grant.campusId)] : []))];
+    return campuses.length ? `指定校区 · ${campuses.join("、")}` : "指定校区";
+  }
+  // 兼容尚未迁移 orgLevel 的历史账号，仅用于展示，不参与权限判定。
+  return (row.grants ?? []).some((grant) => grant.scope === "platform")
+    ? "整个平台（历史账号）"
+    : "指定校区（历史账号）";
 }
 
 async function load() {
@@ -175,6 +185,7 @@ const form = ref({
  */
 const selectedRoleCodes = ref<string[]>([]);
 const selectedCampusIds = ref<string[]>([]);
+const hasCampusAdminRole = computed(() => selectedRoleCodes.value.includes("campus-admin"));
 function showDrawerError(message: string) {
   ElMessage({ message, type: "error", duration: 3500, showClose: true });
 }
@@ -212,21 +223,35 @@ function openEdit(row: AdminAccount) {
 }
 function validateGrants(): string | null {
   if (!selectedRoleCodes.value.length) return "请至少选择一个角色";
+  if (hasCampusAdminRole.value && form.value.orgLevel !== "campus")
+    return "校区管理员的数据范围只能设置为指定校区";
   if (form.value.orgLevel === "campus" && !campusFilterOrgId.value)
     return "请先选择校区所属组织";
   if (form.value.orgLevel === "campus" && !selectedCampusIds.value.length)
     return "请选择该账号可以管理的校区";
+  if (hasCampusAdminRole.value && selectedCampusIds.value.length !== 1)
+    return "校区管理员只能管理一个校区";
   return null;
 }
 function roleNameOf(code: string): string {
   return roleOptions.value.find((r) => r.code === code)?.name ?? code;
 }
 function toggleRole(code: string) {
-  selectedRoleCodes.value = selectedRoleCodes.value.includes(code)
+  const adding = !selectedRoleCodes.value.includes(code);
+  selectedRoleCodes.value = !adding
     ? selectedRoleCodes.value.filter((item) => item !== code)
     : [...selectedRoleCodes.value, code];
+  if (adding && code === "campus-admin") {
+    form.value.orgLevel = "campus";
+    form.value.organizationId = "";
+    selectedCampusIds.value = selectedCampusIds.value.slice(0, 1);
+  }
 }
 function toggleCampus(id: string) {
+  if (hasCampusAdminRole.value) {
+    selectedCampusIds.value = selectedCampusIds.value.includes(id) ? [] : [id];
+    return;
+  }
   selectedCampusIds.value = selectedCampusIds.value.includes(id)
     ? selectedCampusIds.value.filter((item) => item !== id)
     : [...selectedCampusIds.value, id];
@@ -243,6 +268,10 @@ function toggleVisibleCampuses() {
   }
 }
 function setOrgLevel(level: "platform" | "org" | "campus") {
+  if (hasCampusAdminRole.value && level !== "campus") {
+    showDrawerError("校区管理员只能绑定一个指定校区");
+    return;
+  }
   form.value.orgLevel = level;
   if (level !== "org") form.value.organizationId = "";
 }
@@ -440,15 +469,20 @@ async function confirmDelete() {
           <template #default="{ row }">
             <div class="grant-badges">
               <ElTag
-                v-for="(grant, index) in row.grants ?? []"
-                :key="`${grant.roleCode}-${grant.campusId ?? 'platform'}-${index}`"
-                :type="grant.roleStatus === 'active' ? 'info' : 'warning'"
+                v-for="roleName in accountRoleNames(accountRow(row))"
+                :key="roleName"
+                type="info"
                 effect="light"
               >
-                {{ grantLabel(grant) }}
+                {{ roleName }}
               </ElTag>
               <span v-if="!(row.grants ?? []).length" class="muted">未授权</span>
             </div>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="数据范围" min-width="220">
+          <template #default="{ row }">
+            <span>{{ accountScopeLabel(accountRow(row)) }}</span>
           </template>
         </ElTableColumn>
         <ElTableColumn prop="status" label="状态" width="90">
@@ -563,11 +597,14 @@ async function confirmDelete() {
 
           <fieldset class="permission-step">
             <legend><span>2</span>设置数据范围</legend>
-            <p class="step-help">数据范围属于账号本身，不会因选择不同角色而改变。</p>
+            <p class="step-help">
+              {{ hasCampusAdminRole ? "校区管理员只能绑定一个校区。" : "数据范围属于账号本身，不会因选择不同角色而改变。" }}
+            </p>
             <div class="scope-options" role="radiogroup" aria-label="账号数据范围">
               <button
                 type="button"
                 role="radio"
+                :disabled="hasCampusAdminRole"
                 :aria-checked="form.orgLevel === 'platform'"
                 :class="{ selected: form.orgLevel === 'platform' }"
                 @click="setOrgLevel('platform')"
@@ -575,6 +612,7 @@ async function confirmDelete() {
               <button
                 type="button"
                 role="radio"
+                :disabled="hasCampusAdminRole"
                 :aria-checked="form.orgLevel === 'org'"
                 :class="{ selected: form.orgLevel === 'org' }"
                 @click="setOrgLevel('org')"
@@ -618,7 +656,7 @@ async function confirmDelete() {
                     <span>2</span>
                     <div><strong>选择校区</strong><small>{{ campusFilterOrgId ? `仅显示 ${orgLabel(campusFilterOrgId)} 的校区` : "完成上一步后可选择" }}</small></div>
                   </div>
-                  <ElButton v-if="campusFilterOrgId && groupedCampuses.length" link type="primary" @click="toggleVisibleCampuses">
+                  <ElButton v-if="!hasCampusAdminRole && campusFilterOrgId && groupedCampuses.length" link type="primary" @click="toggleVisibleCampuses">
                     {{ allVisibleCampusesSelected ? "取消全选" : "全选当前结果" }}
                   </ElButton>
                 </div>
@@ -671,6 +709,10 @@ async function confirmDelete() {
     >
       <div v-loading="previewLoading" class="permission-preview-body">
         <template v-if="previewMe">
+          <p class="drawer-sec">账号数据范围</p>
+          <div class="preview-perms">
+            <ElTag type="success">{{ previewAccount ? accountScopeLabel(previewAccount) : "—" }}</ElTag>
+          </div>
           <p class="drawer-sec">生效角色</p>
           <div class="preview-roles">
             <div
@@ -680,8 +722,7 @@ async function confirmDelete() {
             >
               <ElTag :type="r.status === 'active' ? 'info' : 'warning'">{{ r.name }}</ElTag>
               <small>
-                {{ r.scope === "platform" ? "平台/跨校区" : `校区 · ${campusLabel(r.campusId)}` }}
-                {{ r.builtin ? "· 内置" : "" }}
+                {{ r.builtin ? "系统内置角色" : "自定义角色" }}
                 {{ r.status === "active" ? "" : "· 已停用" }}
               </small>
             </div>

@@ -1,0 +1,1 @@
+<script setup lang="ts">import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";import WheelPage from "./WheelPage.vue";</script><template><AdminPageShell title="抽奖转盘" eyebrow="LUCKY WHEEL" description="维护小程序抽奖活动和奖池。"><WheelPage /></AdminPageShell></template>

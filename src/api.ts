@@ -297,7 +297,13 @@ export const api = {
   /** view（IKCHEW 商品双视角）：仅 admin 生效——official 官方库 / campus 本校区 */
   products: (query?: ListQuery, view?: string, campus?: string) =>
     request<PagedResponse<Product>>(
-      `/admin/products${withQuery(listQuery(query), view ? `view=${view}` : undefined, campus ? `campus=${campus}` : undefined)}`,
+      `/admin/products${withQuery(
+        listQuery(query),
+        view ? `view=${view}` : undefined,
+        // campusId 已由 listQuery 序列化为 campus；两处同时拼接会令
+        // Nest/Express 将 query.campus 解析为 string[]，最终触发后端 500。
+        campus && !query?.campusId ? `campus=${campus}` : undefined,
+      )}`,
     ),
   /** 商品状态计数（IKB3K9 列表 Tab 角标）：口径同列表（含售罄映射）。 */
   productStatusCounts: (view?: string, campus?: string) =>
@@ -308,6 +314,39 @@ export const api = {
   officialProducts: (query?: ListQuery) =>
     request<PagedResponse<Product>>(
       `/admin/products/official-library${withQuery(listQuery(query))}`,
+    ),
+  platformProducts: (query?: ListQuery) =>
+    request<PagedResponse<Product>>(
+      `/admin/platform-products${withQuery(listQuery(query))}`,
+    ),
+  createPlatformProduct: (data: Record<string, unknown>) =>
+    request<Product>("/admin/platform-products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updatePlatformProduct: (id: string, data: Record<string, unknown>) =>
+    request<Product>(`/admin/platform-products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  orgProducts: (query?: ListQuery, organizationId?: string) =>
+    request<PagedResponse<Product>>(
+      `/admin/org-products${withQuery(listQuery(query), organizationId ? `organizationId=${encodeURIComponent(organizationId)}` : undefined)}`,
+    ),
+  createOrgProduct: (data: Record<string, unknown>, organizationId?: string) =>
+    request<Product>(
+      `/admin/org-products${withQuery(organizationId ? `organizationId=${encodeURIComponent(organizationId)}` : undefined)}`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  updateOrgProduct: (id: string, data: Record<string, unknown>, organizationId?: string) =>
+    request<Product>(
+      `/admin/org-products/${id}${withQuery(organizationId ? `organizationId=${encodeURIComponent(organizationId)}` : undefined)}`,
+      { method: "PATCH", body: JSON.stringify(data) },
+    ),
+  importOrgProduct: (id: string, campusId: string, organizationId?: string) =>
+    request<Product>(
+      `/admin/org-products/${id}/import${withQuery(organizationId ? `organizationId=${encodeURIComponent(organizationId)}` : undefined)}`,
+      { method: "POST", body: JSON.stringify({ campusId }) },
     ),
   /** 从官方库批量导入本校区（IKAJSO）：初始下架零库存，售价/库存/上下架自管。 */
   importProducts: (productIds: string[]) =>

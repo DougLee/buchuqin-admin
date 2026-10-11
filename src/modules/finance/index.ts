@@ -1,0 +1,1 @@
+import SettlementPage from"./settlements/pages/SettlementPage.vue";import CommissionRulePage from"./rules/pages/CommissionRulePage.vue";export const financeViews={finance:SettlementPage,rules:CommissionRulePage};
