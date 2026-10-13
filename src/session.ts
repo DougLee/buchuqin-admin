@@ -390,7 +390,10 @@ export async function loadRbac(): Promise<boolean> {
       status === 408 ||
       status === 429 ||
       status >= 500;
-    if (rbacLoaded.value && transient) return true;
+    // 瞬态失败一律不视为权限撤销：曾授权会话保住权限（true）；从未授权的
+    // 会话保持「未知」态（不清空、不抬 epoch）——「没加载出来」≠「被拒绝」，
+    // 出路由由拒绝页的重试按钮引导恢复（2026-10-13 道哥：闲置后回页误报修复）
+    if (transient) return rbacLoaded.value;
     authorizationEpoch.value++;
     patterns.value = new Set();
     platformPatterns.value = new Set();
