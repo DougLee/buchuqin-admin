@@ -689,6 +689,13 @@ a {
 .hero-kpi strong small {
   color: var(--lime);
 }
+.hero-kpi .kpi-sub {
+  border-top-color: #ffffff40;
+  color: #fff;
+}
+.hero-kpi .kpi-sub strong {
+  color: #fff;
+}
 .orb {
   position: absolute;
   width: 160px;

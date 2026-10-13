@@ -750,6 +750,8 @@ export interface HotBuilding {
 export interface DashboardKpis {
   /** 今日支付金额（分）。 */
   revenue: number;
+  /** 今日优惠券消耗（分）：今日已支付有效单的订单优惠抵扣。 */
+  coupon: number;
   orders: number;
   paidUsers: number;
   newUsers: number;

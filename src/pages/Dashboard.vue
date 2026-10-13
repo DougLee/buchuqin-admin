@@ -168,7 +168,7 @@ function flowLabel(key: string): string {
   return FLOW_LABELS[key] ?? key;
 }
 /** KPI 中的金额指标（分），CSV 导出统一转元。 */
-const MONEY_KPI_KEYS = new Set(["revenue", "refundedAmount"]);
+const MONEY_KPI_KEYS = new Set(["revenue", "coupon", "refundedAmount"]);
 function exportReport() {
   if (!data.value) return;
   const rows = [
@@ -378,6 +378,10 @@ function exportReport() {
           <strong
             ><small>¥</small>{{ fenToYuan(data.kpis.revenue, true) }}</strong
           >
+          <p class="kpi-sub" :title="data.caliber.coupon">
+            优惠券消耗
+            <strong>¥{{ fenToYuan(data.kpis.coupon ?? 0, true) }}</strong>
+          </p>
           <div class="delta" :class="(revenueDelta ?? 0) >= 0 ? 'up' : 'down'">
             <template v-if="deltaText(revenueDelta)"
               >{{ deltaText(revenueDelta) }} <span>较昨日</span></template
