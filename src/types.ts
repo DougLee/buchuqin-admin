@@ -204,7 +204,10 @@ export interface Order {
   items?: OrderItem[];
   /** 履约凭证快照（IKA57U）：交接拍照 / 送达凭证由履约端写入 package JSON。 */
   package?: {
+    lastMileMode?: "building-manager" | "customer-pickup";
     handoverProof?: { images?: string[]; time?: string };
+    proof?: { images?: string[]; location?: string; remark?: string; time?: string };
+    /** 历史前端字段，仅用于兼容旧数据。新送达凭证由 API 写入 proof。 */
     deliveredProof?: { images?: string[]; remark?: string; time?: string };
   } | null;
 }

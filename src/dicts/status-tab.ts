@@ -15,31 +15,23 @@ export const PICKING_STATUS_TABS: StatusTab[] = [
   { key: "picking", label: "拣货中", statuses: ["picking"] },
 ];
 
-/** 订单配送：9 tab 聚合 13 个原始状态（delivering 为前端聚合桶） */
+/**
+ * 订单配送：一级筛选只保留运营需要处理的 7 个阶段。
+ * delivered 沿用既有接口枚举以兼容已发布小程序，后台语义统一为「待用户确认」。
+ */
 export const ORDER_STATUS_TABS: StatusTab[] = [
   { key: "all", label: "全部", statuses: [] },
-  { key: "pending-payment", label: "待支付", statuses: ["pending-payment"] },
   { key: "awaiting-outbound", label: "待出库", statuses: ["paid", "picking"] },
   {
     key: "delivering",
     label: "配送中",
-    statuses: ["waiting-first-mile", "first-mile", "last-mile"],
+    statuses: ["waiting-first-mile", "first-mile", "waiting-handover", "last-mile"],
   },
-  {
-    key: "waiting-handover",
-    label: "楼下待交接",
-    statuses: ["waiting-handover"],
-  },
-  { key: "delivered", label: "已送达", statuses: ["delivered"] },
-  { key: "completed", label: "已完成", statuses: ["completed"] },
-  {
-    key: "closed",
-    label: "取消/退款",
-    statuses: ["cancelled", "refunded"],
-  },
-  /* 异常独立成桶：工作台「待处理异常」直达定位（?status=exception），
-     混在取消/退款里按时间倒序翻不到 */
+  { key: "awaiting-confirmation", label: "待用户确认", statuses: ["delivered"] },
+  /* 异常放在完成/关闭之前，优先暴露需要运营介入的订单。 */
   { key: "exception", label: "异常", statuses: ["exception"] },
+  { key: "completed", label: "已完成", statuses: ["completed"] },
+  { key: "closed", label: "已关闭", statuses: ["cancelled", "refunded"] },
 ];
 
 /* IKB3K9：商品状态 Tab（口径含售罄映射——在售但库存 0 = 售罄）。 */

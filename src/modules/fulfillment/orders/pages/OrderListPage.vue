@@ -53,6 +53,16 @@ function addressText(order: Order) {
   return [order.address?.buildingName, order.address?.room].filter(Boolean).join("") || "—";
 }
 
+function statusText(order: Order) {
+  return order.status === "delivered" ? "待用户确认" : order.statusText || order.status;
+}
+
+function canAdvance(order: Order) {
+  return ["paid", "picking", "waiting-first-mile", "first-mile", "waiting-handover"].includes(
+    order.status,
+  );
+}
+
 function tabCount(key: string) {
   const tab = ORDER_STATUS_TABS.find((item) => item.key === key);
   return tab?.statuses.length
@@ -256,7 +266,7 @@ onMounted(load);
         </ElTableColumn>
         <ElTableColumn prop="statusText" label="状态" width="140">
           <template #default="{ row }">
-            <ElTag>{{ row.statusText || row.status }}</ElTag>
+            <ElTag>{{ statusText(asOrder(row)) }}</ElTag>
           </template>
         </ElTableColumn>
         <ElTableColumn label="下单时间" width="175">
@@ -267,7 +277,7 @@ onMounted(load);
             <div class="order-actions" @click.stop>
               <ElButton size="small" type="primary" @click="openDetail(asOrder(row))">查看</ElButton>
               <ElButton
-                v-if="hasPerm('POST /admin/orders/:id/actions/advance')"
+                v-if="hasPerm('POST /admin/orders/:id/actions/advance') && canAdvance(asOrder(row))"
                 size="small"
                 @click="advance(asOrder(row))"
               >
@@ -303,7 +313,7 @@ onMounted(load);
       <template v-if="selected">
         <ElDescriptions :column="3" border>
           <ElDescriptionsItem label="订单编号">{{ selected.orderNo }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="状态">{{ selected.statusText || selected.status }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="状态">{{ statusText(selected) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="实付">¥{{ fenToYuan(selected.payableAmount) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="收货人">{{ selected.address?.contactName || "—" }}</ElDescriptionsItem>
           <ElDescriptionsItem label="电话">{{ selected.address?.phone || selected.userPhone || "—" }}</ElDescriptionsItem>
@@ -319,7 +329,10 @@ onMounted(load);
         <div
           v-for="group in [
             { label: '骑手交接', images: selected.package?.handoverProof?.images || [] },
-            { label: '楼长送达', images: selected.package?.deliveredProof?.images || [] },
+            {
+              label: '送达凭证',
+              images: selected.package?.proof?.images || selected.package?.deliveredProof?.images || [],
+            },
           ]"
           :key="group.label"
           v-show="group.images.length"
@@ -363,8 +376,6 @@ onMounted(load);
                 <ElOption label="待出库" value="paid" />
                 <ElOption label="拣货中" value="picking" />
                 <ElOption label="配送中" value="last-mile" />
-                <ElOption label="已送达" value="delivered" />
-                <ElOption label="已完成" value="completed" />
                 <ElOption label="异常" value="exception" />
                 <ElOption label="已取消" value="cancelled" />
               </ElSelect>
