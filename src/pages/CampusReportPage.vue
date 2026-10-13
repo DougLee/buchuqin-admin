@@ -107,8 +107,9 @@ function rawRateText(row: CampusDailyRow) {
       <div>
         <h1>经营日报</h1>
         <p>
-          校区账 = 学生实付 − 批发成本快照。按订单支付时间落日、只计已完成订单
-          （退款单不计），与订单行内毛利同口径，数字可对账。
+          校区账 = 学生实付 − 批发成本快照。按订单支付时间落日、有效单口径（除
+          待支付/取消/退款，IKLEDG）——与订单列表可对账，数字不随确认收货漂移；
+          退款单单独一列。
         </p>
       </div>
       <ElForm class="head-actions report-filter" label-position="top" @submit.prevent="load"><ElRow :gutter="8" align="bottom">
@@ -153,9 +154,11 @@ function rawRateText(row: CampusDailyRow) {
         </p>
       </div>
       <div class="report-card">
-        <p class="report-label">已完成订单</p>
+        <p class="report-label">有效订单</p>
         <strong>{{ report.totals.orders }}</strong>
-        <p class="report-sub">只计 completed，退款单不计</p>
+        <p class="report-sub">
+          除待付/取消/退款 · 退款 ¥{{ fenToYuan(report.totals.refundedTotal) }}
+        </p>
       </div>
     </div>
 
@@ -166,11 +169,12 @@ function rawRateText(row: CampusDailyRow) {
         </div>
         <p><span class="live-dot"></span>数据已同步 · {{ startDate }} ~ {{ endDate }}</p>
       </div>
-      <ElTable v-loading="loading" :data="report.rows" row-key="date" empty-text="所选范围内没有已完成的订单">
+      <ElTable v-loading="loading" :data="report.rows" row-key="date" empty-text="所选范围内没有有效订单">
         <ElTableColumn prop="date" label="日期" min-width="120"><template #default="{ row }"><strong>{{ row.date }}</strong></template></ElTableColumn>
         <ElTableColumn v-if="isHqScope" label="校区" min-width="150"><template #default="{ row }">{{ row.campusShortName || row.campusName }}</template></ElTableColumn>
         <ElTableColumn prop="orders" label="订单数" min-width="90" />
         <ElTableColumn label="销售额" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.salesTotal) }}</template></ElTableColumn>
+        <ElTableColumn label="退款" min-width="100"><template #default="{ row }">{{ row.refundedTotal ? '¥' + fenToYuan(row.refundedTotal) : '—' }}</template></ElTableColumn>
         <ElTableColumn label="批发成本" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.costTotal) }}</template></ElTableColumn>
         <ElTableColumn label="毛利" min-width="140"><template #default="{ row }">¥{{ fenToYuan(row.marginTotal) }} <small class="cell-sub">{{ rawRateText(row as CampusDailyRow) }}</small></template></ElTableColumn>
         <ElTableColumn label="综合毛利" min-width="150"><template #default="{ row }"><span class="report-gross">¥{{ fenToYuan(row.gross) }} <small class="cell-sub">{{ rateText(row as CampusDailyRow) }}</small></span></template></ElTableColumn>

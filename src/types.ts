@@ -1138,6 +1138,8 @@ export interface CampusDailyRow {
   orders: number;
   /** 销售额（分）=Σ payableAmount 实付 */
   salesTotal: number;
+  /** 退款合计（分）=当日支付且已退款（IKLEDG，不进销售额） */
+  refundedTotal: number;
   /** 商品金额合计（分）=Σ productAmount（IKISZ2 毛利未扣券口径） */
   productTotal: number;
   /** 批发成本（分）=Σ 行数量×unitWholesaleCost 快照（缺快照按 0） */
@@ -1155,6 +1157,8 @@ export interface CampusDailyReport {
   totals: {
     orders: number;
     salesTotal: number;
+    /** 退款合计（分）（IKLEDG） */
+    refundedTotal: number;
     costTotal: number;
     /** 商品金额合计（分）=Σ productAmount（IKISZ2） */
     productTotal: number;
