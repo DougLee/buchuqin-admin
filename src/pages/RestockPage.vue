@@ -12,7 +12,7 @@ import type {
   RestockOrderLine,
   RestockShipmentDetail,
 } from "../types";
-import { fenToYuan } from "../utils/money";
+import { fenToYuan, yuanToFen } from "../utils/money";
 import { fmtDateTime } from "../utils/datetime";
 
 /**
@@ -190,7 +190,8 @@ function openPurchaseForm() {
     productId,
     cases,
     name: info.get(productId)?.name ?? "（已下架商品）",
-    unitCost: info.get(productId)?.costPrice ?? 0,
+    // P0-2（审查报告）：预填分→元——列头与输入框承诺元语义，进货价 costPrice 是分
+    unitCost: Number(fenToYuan(info.get(productId)?.costPrice ?? 0)),
   }));
   poSupplier.value = "";
   poDrawer.value = true;
@@ -204,7 +205,8 @@ async function submitPurchaseOrder() {
       supplierName,
       lines: poLines.value.map((l) => ({
         productId: l.productId,
-        unitCost: Math.max(0, Math.round(l.unitCost)),
+        // P0-2（审查报告）：提交元→分——表单值按元语义上送换回分（防改价缩小100倍）
+        unitCost: yuanToFen(l.unitCost),
       })),
     });
     poDrawer.value = false;
