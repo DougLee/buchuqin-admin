@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import { effectiveCampusId, canWrite, hasPerm } from "../../../../session";
@@ -83,23 +83,28 @@ async function testPrint() {
   }
 }
 
-async function unbind() {
+/** 解绑确认弹窗（对齐账号/角色管理删除确认统一形态：卡片 + 取消/危险主按钮） */
+const unbindDialogOpen = ref(false);
+const unbindSaving = ref(false);
+
+function unbind() {
   if (!printer.value) return;
-  try {
-    await ElMessageBox.confirm(
-      `确认解绑打印机「${printer.value.name}」？`,
-      "解绑打印机",
-      { type: "warning", confirmButtonText: "确认解绑", cancelButtonText: "取消" },
-    );
-  } catch {
-    return;
-  }
+  unbindDialogOpen.value = true;
+}
+
+async function confirmUnbind() {
+  if (!printer.value || unbindSaving.value) return;
+  unbindSaving.value = true;
   try {
     await api.unbindPrinter(printer.value.id);
+    unbindDialogOpen.value = false;
     notify("打印机已解绑");
     await load();
   } catch (error) {
+    unbindDialogOpen.value = false;
     notify(error instanceof Error ? error.message : "解绑失败", true);
+  } finally {
+    unbindSaving.value = false;
   }
 }
 
@@ -151,12 +156,83 @@ watch(effectiveCampusId, load);
       </ElForm>
       <template #footer><ElButton @click="dialogOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" @click="save">保存绑定</ElButton></template>
     </ElDialog>
+
+    <!-- 解绑确认弹窗（与账号管理「删除账号」同款卡片形态，文案不变） -->
+    <ElDialog
+      v-model="unbindDialogOpen"
+      class="printer-unbind-dialog"
+      title="解绑打印机"
+      width="min(420px, 92vw)"
+      align-center
+      modal-class="printer-unbind-overlay"
+      :show-close="!unbindSaving"
+      :close-on-click-modal="!unbindSaving"
+      :close-on-press-escape="!unbindSaving"
+    >
+      <p class="unbind-copy">确认解绑打印机「{{ printer?.name }}」？</p>
+      <template #footer>
+        <ElButton :disabled="unbindSaving" @click="unbindDialogOpen = false">取消</ElButton>
+        <ElButton type="danger" :loading="unbindSaving" @click="confirmUnbind">确认解绑</ElButton>
+      </template>
+    </ElDialog>
   </AdminPageShell>
 </template>
 
 <style scoped>
 .printer-view :deep(.el-descriptions) { margin-bottom: 16px; }
 .printer-view__actions { flex-wrap: wrap; }
+/* 解绑确认弹窗：Element Plus 承载行为与可访问性，视觉延续账号/角色管理删除确认卡片。 */
+.unbind-copy {
+  margin: 0;
+  color: #4c5c53;
+  font-size: 14px;
+  line-height: 1.7;
+}
+:global(.printer-unbind-overlay) {
+  background: #061d1680;
+  backdrop-filter: blur(3px);
+}
+:global(.printer-unbind-dialog.el-dialog) {
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+}
+:global(.printer-unbind-dialog .el-dialog__header) {
+  min-height: 64px;
+  margin: 0;
+  padding: 20px 26px 16px;
+  border-bottom: 1px solid var(--line);
+}
+:global(.printer-unbind-dialog .el-dialog__title) {
+  color: #153628;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+:global(.printer-unbind-dialog .el-dialog__headerbtn) {
+  top: 18px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f0f4f1;
+}
+:global(.printer-unbind-dialog .el-dialog__headerbtn:hover) {
+  background: #e3ece6;
+}
+:global(.printer-unbind-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #52645a;
+  font-size: 20px;
+}
+:global(.printer-unbind-dialog .el-dialog__body) {
+  padding: 18px 26px 8px;
+}
+:global(.printer-unbind-dialog .el-dialog__footer) {
+  padding: 14px 26px 26px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 -10px 24px #163f2b0a;
+}
 @media (max-width: 760px) {
   .printer-view { max-width: none; padding: 18px; }
   .printer-view :deep(.el-descriptions__body) { overflow-x: auto; }
