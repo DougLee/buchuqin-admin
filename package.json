@@ -8,7 +8,9 @@
     "build": "vue-tsc --noEmit && vite build",
     "type-check": "vue-tsc --noEmit",
     "test:admin-foundation": "node --test scripts/test-admin-page-foundation.mjs",
-    "test:rbac-session": "node --test scripts/test-rbac-session.mjs"
+    "test:rbac-session": "node --test scripts/test-rbac-session.mjs",
+    "dev:test": "VITE_API_PROXY_TARGET=https://admin-test.buchuqin.com vite",
+    "dev:prod": "VITE_API_PROXY_TARGET=https://admin.buchuqin.com vite"
   },
   "dependencies": {
     "dompurify": "^3.4.15",
