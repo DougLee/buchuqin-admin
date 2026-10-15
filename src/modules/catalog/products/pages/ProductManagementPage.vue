@@ -444,6 +444,9 @@ async function save() {
       location: form.location.trim(),
       locationCode: form.locationCode.trim(),
       status: form.status,
+      // 采购来源编辑保存（道哥 2026-10-15 反馈）：此前仅创建分支携带，
+      // 编辑改「总部供货/自主采购」保存请求体不含该字段 → 静默不生效
+      ...(!official.value ? { procurementMode: form.procurementMode } : {}),
     };
     const prices = {
       price: yuanToFen(form.price),
