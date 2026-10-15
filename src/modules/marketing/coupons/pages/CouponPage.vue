@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { api } from "../../../../api";
+import { api, fetchAllPages } from "../../../../api";
 import { COUPON_STATUS_TABS } from "../../../../dicts/status-tab";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Coupon } from "../../../../types";
+import type { AdminUser, Building, Coupon } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 const rows = ref<Coupon[]>([]),
   loading = ref(false),
@@ -159,6 +159,132 @@ async function remove(row: Coupon) {
       notify(e instanceof Error ? e.message : "删除失败", "error");
   }
 }
+/* ---------- 定向发放抽屉（自旧版 DataPage 回迁，模块化重构时丢失） ---------- */
+const issueOpen = ref(false),
+  issueCouponRow = ref<Coupon | null>(null),
+  issueCountInput = ref<number | null>(null),
+  issueUserSearch = ref(""),
+  users = ref<AdminUser[]>([]),
+  usersLoading = ref(false),
+  usersError = ref(""),
+  issueChecked = ref<Record<string, boolean>>({}),
+  // IKD6FI：定向方式——用户多选之外新增「按手机号」「按寝室」（楼栋+楼层+寝室号）
+  issueMode = ref<"users" | "phones" | "rooms">("users"),
+  issuePhones = ref(""),
+  issueBuildingId = ref(""),
+  issueFloor = ref<number | null>(null),
+  issueRoomNos = ref(""),
+  buildings = ref<Building[]>([]);
+async function openIssue(row: Coupon) {
+  issueCouponRow.value = row;
+  issueOpen.value = true;
+  usersError.value = "";
+  issueChecked.value = {};
+  issueMode.value = "users";
+  issuePhones.value = "";
+  issueUserSearch.value = "";
+  issueCountInput.value = null;
+  issueBuildingId.value = "";
+  issueFloor.value = null;
+  issueRoomNos.value = "";
+  // 寝室定向的楼栋下拉（懒加载一次，失败不阻断用户模式）
+  if (!buildings.value.length)
+    fetchAllPages(api.buildings)
+      .then((list) => (buildings.value = list))
+      .catch(() => {});
+  usersLoading.value = true;
+  try {
+    // IKKKC2：定向发券场景明文优先（plainPhone=1 下发），列表页仍走脱敏
+    users.value = await fetchAllPages((query) => api.adminUsers(query, true));
+  } catch {
+    usersError.value = "用户列表加载失败，可改用「按手机号」或「按寝室」方式发放";
+  } finally {
+    usersLoading.value = false;
+  }
+}
+const selectedUserIds = computed(() =>
+  Object.keys(issueChecked.value).filter((id) => issueChecked.value[id]),
+);
+/** 搜索框过滤已加载用户（昵称 / 手机号包含匹配，勾选状态不受过滤影响）。 */
+const issueUserFiltered = computed(() => {
+  const kw = issueUserSearch.value.trim();
+  if (!kw) return users.value;
+  return users.value.filter(
+    (u) =>
+      u.nickname.includes(kw) ||
+      (u.phone || u.phoneMasked || "").includes(kw) ||
+      u.id.includes(kw),
+  );
+});
+function userLabel(u: AdminUser) {
+  return u.nickname || u.id;
+}
+function userSub(u: AdminUser) {
+  // IKKKC2：定向发券场景明文优先（plainPhone=1 下发）
+  return u.phone || u.phoneMasked || u.id;
+}
+/* IKD6FI：手机号/寝室号均按换行、逗号（中英文）、分号切分 */
+function issueTokenList(text: string): string[] {
+  return text
+    .split(/[\s,，;；]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+const issuePhoneList = computed(() => issueTokenList(issuePhones.value));
+const issueRoomNoList = computed(() => issueTokenList(issueRoomNos.value));
+/** 提交就绪（IKD6FI）：按当前定向方式校验必填项。 */
+const issueReady = computed(() => {
+  if (issueMode.value === "users") return selectedUserIds.value.length > 0;
+  if (issueMode.value === "phones") return issuePhoneList.value.length > 0;
+  return !!issueBuildingId.value;
+});
+async function confirmIssue() {
+  if (!issueCouponRow.value) return;
+  usersError.value = "";
+  // IKD6FI：三种定向方式组装 body，后端与显式 userIds 并集去重
+  const body: {
+    userIds?: string[];
+    phones?: string[];
+    buildingId?: string;
+    floor?: number;
+    roomNos?: string[];
+    count?: number;
+  } = {};
+  if (issueMode.value === "users") {
+    const ids = selectedUserIds.value;
+    if (!ids.length) {
+      usersError.value = "请先勾选至少一名用户";
+      return;
+    }
+    body.userIds = ids;
+  } else if (issueMode.value === "phones") {
+    if (!issuePhoneList.value.length) {
+      usersError.value = "请输入至少一个手机号";
+      return;
+    }
+    body.phones = issuePhoneList.value;
+  } else {
+    if (!issueBuildingId.value) {
+      usersError.value = "请选择楼栋";
+      return;
+    }
+    body.buildingId = issueBuildingId.value;
+    // 楼层/寝室号选填，用于收窄范围
+    if (issueFloor.value != null) body.floor = Math.round(issueFloor.value);
+    if (issueRoomNoList.value.length) body.roomNos = issueRoomNoList.value;
+  }
+  // IKKEWS 修复（随迁移保留）：发放张数随 body 提交，缺省后端恒按 1 张发
+  if (issueCountInput.value != null && issueCountInput.value >= 1)
+    body.count = Math.round(issueCountInput.value);
+  try {
+    const res = await api.issueCoupon(issueCouponRow.value.id, body);
+    notify(`已定向发放 ${res.issued} 张券`);
+    issueOpen.value = false;
+    await load();
+  } catch (e) {
+    usersError.value = e instanceof Error ? e.message : "发放失败";
+  }
+}
 watch([page, pageSize, status, effectiveCampusId], load);
 onMounted(load);
 </script>
@@ -239,7 +365,7 @@ onMounted(load);
             ><template #default="{ row }">{{
               row.expiresAt?.slice(0, 10) || "长期"
             }}</template></ElTableColumn
-          ><ElTableColumn label="操作" width="220" fixed="right"
+          ><ElTableColumn label="操作" width="300" fixed="right"
             ><template #default="{ row }"
               ><ElButton
                 v-if="hasPerm('PATCH /admin/coupons/:id')"
@@ -252,6 +378,12 @@ onMounted(load);
                 link
                 @click="toggle(asCoupon(row))"
                 >{{ row.status === "active" ? "暂停" : "启用" }}</ElButton
+              ><ElButton
+                v-if="hasPerm('POST /admin/coupons/:id/issue')"
+                link
+                type="primary"
+                @click="openIssue(asCoupon(row))"
+                >定向发放</ElButton
               ><ElButton
                 v-if="!row.claimed && hasPerm('DELETE /admin/coupons/:id')"
                 link
@@ -352,6 +484,119 @@ onMounted(load);
           >保存</ElButton
         ></template
       ></ElDialog
+    ><ElDialog
+      v-model="issueOpen"
+      title="定向发放"
+      width="min(600px, calc(100vw - 32px))"
+      align-center
+      :close-on-click-modal="false"
+      ><template v-if="issueCouponRow"
+        ><p class="issue-coupon-name">{{ issueCouponRow.name }}</p
+        ><ElForm label-position="top"
+          ><ElFormItem label="① 选择发放方式"
+            ><ElSegmented
+              v-model="issueMode"
+              :options="[
+                { label: '按用户', value: 'users' },
+                { label: '按手机号', value: 'phones' },
+                { label: '按寝室', value: 'rooms' },
+              ]" /></ElFormItem
+          ><ElFormItem label="② 圈定目标"
+            ><template v-if="issueMode === 'users'"
+              ><ElInput
+                v-model="issueUserSearch"
+                clearable
+                placeholder="搜索昵称 / 手机号"
+              />
+              <p v-if="usersLoading" class="issue-empty">
+                正在加载用户列表…
+              </p>
+              <template v-else
+                ><div v-if="issueUserFiltered.length" class="issue-user-list">
+                  <ElCheckbox
+                    v-for="user in issueUserFiltered"
+                    :key="user.id"
+                    v-model="issueChecked[user.id]"
+                  >
+                    <span class="issue-user-name">{{ userLabel(user) }}</span>
+                    <span class="issue-user-sub">{{ userSub(user) }}</span>
+                  </ElCheckbox>
+                </div>
+                <p v-else class="issue-empty">
+                  {{
+                    issueUserSearch
+                      ? "没有匹配的用户，换个关键词试试。"
+                      : "暂无可选用户。"
+                  }}
+                </p>
+              </template>
+              <p class="issue-step-meta">
+                已选 {{ selectedUserIds.length }} 人
+              </p></template
+            >
+            <template v-else-if="issueMode === 'phones'"
+              ><ElInput
+                v-model="issuePhones"
+                type="textarea"
+                :rows="5"
+                placeholder="每行一个或逗号分隔&#10;13800000001&#10;13800000002"
+              />
+              <p class="issue-step-meta">
+                按用户绑定的手机号匹配，最多 500 个
+              </p></template
+            >
+            <template v-else
+              ><div class="issue-room-row">
+                <ElSelect
+                  v-model="issueBuildingId"
+                  clearable
+                  placeholder="选择楼栋"
+                  ><ElOption
+                    v-for="b in buildings"
+                    :key="b.id"
+                    :label="b.name"
+                    :value="b.id"
+                  /> </ElSelect
+                ><ElInputNumber
+                  v-model="issueFloor"
+                  :min="1"
+                  placeholder="楼层（选填，如 6）"
+                />
+              </div>
+              <ElInput
+                v-model="issueRoomNos"
+                type="textarea"
+                :rows="2"
+                placeholder="寝室号（选填，收窄范围）&#10;612, 613&#10;701"
+              />
+              <p class="issue-step-meta">
+                按收货地址匹配；未填过收货地址的用户无法按寝室触达。
+              </p></template
+            ></ElFormItem
+          ><ElFormItem label="③ 发放张数（每人）"
+            ><div class="issue-count-row">
+              <ElInputNumber
+                v-model="issueCountInput"
+                :min="1"
+                placeholder="默认 1"
+              />
+              <span class="issue-step-meta">
+                张 / 每人 · 上限受「每人限领」约束
+              </span>
+            </div></ElFormItem
+          >
+          <p v-if="usersError" class="issue-error">{{ usersError }}</p></ElForm
+        ></template
+      ><template #footer
+        ><ElButton @click="issueOpen = false">取消</ElButton
+        ><ElButton
+          v-if="hasPerm('POST /admin/coupons/:id/issue')"
+          type="primary"
+          :disabled="!issueReady"
+          @click="confirmIssue"
+          >确认发放</ElButton
+        ></template
+      ></ElDialog
     ></AdminPageShell
   >
 </template>
@@ -387,5 +632,73 @@ onMounted(load);
     min-height: 44px;
     margin: 0;
   }
+}
+/* ---------- 定向发放抽屉 ---------- */
+.issue-coupon-name {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.issue-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-height: 264px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.issue-user-list :deep(.el-checkbox) {
+  height: auto;
+  align-items: center;
+  margin-right: 0;
+}
+.issue-user-name {
+  font-weight: 600;
+}
+.issue-user-sub {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.issue-empty,
+.issue-step-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.issue-room-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.issue-room-row :deep(.el-select) {
+  flex: 1 1 auto;
+}
+.issue-room-row :deep(.el-input-number) {
+  flex: 0 0 150px;
+  width: 150px;
+}
+.issue-count-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.issue-count-row :deep(.el-input-number) {
+  flex: 0 0 150px;
+  width: 150px;
+}
+.issue-count-row .issue-step-meta {
+  margin: 0;
+}
+.issue-error {
+  margin: 4px 0 0;
+  color: var(--el-color-danger, #f56c6c);
+  font-size: 12px;
 }
 </style>
