@@ -2245,9 +2245,9 @@ aside .cl-dot {
   margin-bottom: 0;
 }
 
-/* ElMessageBox 统一卡片形态（道哥 2026-10-15）：全站确认框与 ElDialog 统一弹窗
-   同款——深绿毛玻璃遮罩、18px 圆角、标题分隔语义；一处定义全站生效，
-   各页 ElMessageBox.confirm 无需逐个改造。 */
+/* ===== ElMessageBox 全套补全（IKLUV9 收口版，道哥 2026-10-15）：
+   JS 调用不经按需注入，EP 官方样式（宽度/背景/内衬/叉号定位/动画）全套
+   缺席——此处一次补齐，形态对齐账号管理统一卡片。===== */
 body .el-overlay.is-message-box {
   background: #061d1680;
   backdrop-filter: blur(3px);
@@ -2257,8 +2257,6 @@ body .el-overlay.is-message-box {
   padding: 16px;
 }
 body .el-message-box {
-  /* IKLUV9 补丁：JS 调用的 ElMessageBox 不经按需注入，EP 自带样式
-     从未加载——宽度/背景/内衬全套缺失，此处一次性补全 */
   width: 420px;
   max-width: calc(100vw - 32px);
   background: #fff;
@@ -2267,9 +2265,22 @@ body .el-message-box {
   box-shadow: 0 24px 70px #062e2340;
   padding: 0;
   overflow: hidden;
+  animation: msgbox-pop 0.18s ease-out;
+}
+@keyframes msgbox-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 body .el-message-box__header {
-  padding: 20px 26px 12px;
+  position: relative;
+  /* 右侧 64px 给绝对定位的叉号让位，标题不与其重叠 */
+  padding: 20px 64px 14px 26px;
   border-bottom: 1px solid var(--line);
 }
 body .el-message-box__title {
@@ -2277,12 +2288,31 @@ body .el-message-box__title {
   font-size: 17px;
   font-weight: 750;
   letter-spacing: -0.3px;
+  line-height: 1.4;
+}
+body .el-message-box__headerbtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: #f0f4f1;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+body .el-message-box__headerbtn:hover {
+  background: #e3ece6;
+}
+body .el-message-box__headerbtn .el-icon,
+body .el-message-box__close {
+  color: #52645a;
+  font-size: 18px;
 }
 body .el-message-box__content {
-  padding: 16px 26px 8px;
+  padding: 18px 26px 8px;
 }
-/* IKLUV9 补丁：EP 自带样式缺席，消息文本/警告图标全部回落灰绿不可读——
-   补深墨正文 15px/1.6 行高 + 警告图标橙色，容器图标-文本横排 */
 body .el-message-box__container {
   display: flex;
   align-items: flex-start;
@@ -2294,7 +2324,7 @@ body .el-message-box__status {
   height: 20px;
   font-size: 20px;
   color: #e6a23c;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 body .el-message-box__message {
   color: #1e2520;
@@ -2306,12 +2336,23 @@ body .el-message-box__message p {
   color: inherit;
   line-height: inherit;
 }
+/* prompt 场景（楼长工号/关闭采购单原因）：输入框与校验错误文案 */
+body .el-message-box__input {
+  width: 100%;
+  margin-top: 12px;
+}
+body .el-message-box__errormsg {
+  display: block;
+  margin-top: 8px;
+  color: #c0392b;
+  font-size: 13px;
+}
 body .el-message-box__btns {
   display: flex;
   gap: 10px;
-  padding: 14px 26px 22px;
+  padding: 16px 26px 24px;
 }
-/* 等宽通栏按钮（同账号管理统一弹窗款） */
+/* 等宽通栏大按钮（同账号管理统一弹窗款） */
 body .el-message-box__btns .el-button {
   min-height: 44px;
   flex: 1;
@@ -2323,8 +2364,7 @@ body .el-message-box__btns .el-button--primary {
   --el-button-bg-color: var(--green);
   --el-button-border-color: var(--green);
 }
-/* IKLUV9 补丁：warning 型（删除/取消类危险操作）主按钮一律红——
-   绿色「确定」出现在删除框上是不伦不类的根源，对齐账号/打印机标准款 */
+/* 带警示图标（删除/取消类危险操作）主按钮一律红——对齐标准款 */
 body .el-message-box:has(.el-message-box__status) .el-message-box__btns .el-button--primary {
   --el-button-bg-color: var(--el-color-danger);
   --el-button-border-color: var(--el-color-danger);
