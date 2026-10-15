@@ -87,6 +87,10 @@
                 :src="row.image"
                 fit="cover"
                 class="thumb" /></template></ElTableColumn
+          ><ElTableColumn label="库位" width="100"
+            ><template #default="{ row }"
+              >{{ [product(row).location, product(row).locationCode].filter(Boolean).join("-") || "—" }}</template
+            ></ElTableColumn
           ><ElTableColumn prop="name" label="商品" min-width="190"
             ><template #default="{ row }"
               ><strong>{{ row.name }}</strong>
@@ -248,6 +252,16 @@
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="批发单位"
               ><ElInput v-model="form.wholesaleUnit" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="库位区域"
+              ><ElInput
+                v-model="form.location"
+                placeholder="如：A 区" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12" :lg="8"
+            ><ElFormItem label="库位编号"
+              ><ElInput
+                v-model="form.locationCode"
+                placeholder="如：01-3" /></ElFormItem></ElCol
           ><ElCol :span="24"
             ><ElFormItem label="商品介绍"
               ><ElInput
@@ -342,6 +356,8 @@ const form = reactive({
   retailUnit: "",
   wholesaleUnit: "",
   unitsPerCase: 1,
+  location: "",
+  locationCode: "",
   status: "off-sale" as "on-sale" | "off-sale",
 });
 const title = computed(() => (official.value ? "官方商品库" : "商品管理")),
@@ -402,6 +418,8 @@ function edit(row?: Product) {
     retailUnit: row?.retailUnit ?? "",
     wholesaleUnit: row?.wholesaleUnit ?? "",
     unitsPerCase: row?.unitsPerCase ?? 1,
+    location: row?.location ?? "",
+    locationCode: row?.locationCode ?? "",
     status: (row?.status as "on-sale" | "off-sale") ?? "off-sale",
   });
   open.value = true;
@@ -423,6 +441,8 @@ async function save() {
       retailUnit: form.retailUnit.trim(),
       wholesaleUnit: form.wholesaleUnit.trim(),
       unitsPerCase: Number(form.unitsPerCase),
+      location: form.location.trim(),
+      locationCode: form.locationCode.trim(),
       status: form.status,
     };
     const prices = {
