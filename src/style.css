@@ -2290,6 +2290,14 @@ body .el-message-box__btns .el-button--primary {
   --el-button-bg-color: var(--green);
   --el-button-border-color: var(--green);
 }
+/* IKLUV9 补丁：warning 型（删除/取消类危险操作）主按钮一律红——
+   绿色「确定」出现在删除框上是不伦不类的根源，对齐账号/打印机标准款 */
+body .el-message-box:has(.el-message-box__status) .el-message-box__btns .el-button--primary {
+  --el-button-bg-color: var(--el-color-danger);
+  --el-button-border-color: var(--el-color-danger);
+  --el-button-hover-bg-color: var(--el-color-danger-light-3);
+  --el-button-hover-border-color: var(--el-color-danger-light-3);
+}
 
 /* ElDialog 全局统一卡片形态（IKLUV9 方案 A，道哥 2026-10-15 拍板）：
    与 ElMessageBox/账号管理款同形——深绿毛玻璃遮罩、18px 圆角、头部

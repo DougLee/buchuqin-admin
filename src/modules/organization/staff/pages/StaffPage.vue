@@ -115,6 +115,8 @@ async function remove(row: Staff) {
   try {
     await ElMessageBox.confirm(`确认删除员工「${row.name}」？`, "删除员工", {
       type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消",
     });
     await api.deleteStaff(row.id);
     notify("员工账号已删除");
