@@ -174,7 +174,8 @@ const issueOpen = ref(false),
   issueBuildingId = ref(""),
   issueFloor = ref<number | null>(null),
   issueRoomNos = ref(""),
-  buildings = ref<Building[]>([]);
+  buildings = ref<Building[]>([]),
+  issuing = ref(false);
 async function openIssue(row: Coupon) {
   issueCouponRow.value = row;
   issueOpen.value = true;
@@ -276,6 +277,8 @@ async function confirmIssue() {
   // IKKEWS 修复（随迁移保留）：发放张数随 body 提交，缺省后端恒按 1 张发
   if (issueCountInput.value != null && issueCountInput.value >= 1)
     body.count = Math.round(issueCountInput.value);
+  if (issuing.value) return;
+  issuing.value = true;
   try {
     const res = await api.issueCoupon(issueCouponRow.value.id, body);
     notify(`已定向发放 ${res.issued} 张券`);
@@ -283,6 +286,8 @@ async function confirmIssue() {
     await load();
   } catch (e) {
     usersError.value = e instanceof Error ? e.message : "发放失败";
+  } finally {
+    issuing.value = false;
   }
 }
 watch([page, pageSize, status, effectiveCampusId], load);
@@ -487,114 +492,174 @@ onMounted(load);
     ><ElDialog
       v-model="issueOpen"
       title="定向发放"
-      width="min(600px, calc(100vw - 32px))"
+      width="min(620px, calc(100vw - 32px))"
       align-center
       :close-on-click-modal="false"
       ><template v-if="issueCouponRow"
-        ><p class="issue-coupon-name">{{ issueCouponRow.name }}</p
-        ><ElForm label-position="top"
-          ><ElFormItem label="① 选择发放方式"
-            ><ElSegmented
-              v-model="issueMode"
-              :options="[
-                { label: '按用户', value: 'users' },
-                { label: '按手机号', value: 'phones' },
-                { label: '按寝室', value: 'rooms' },
-              ]" /></ElFormItem
-          ><ElFormItem label="② 圈定目标"
-            ><template v-if="issueMode === 'users'"
-              ><ElInput
-                v-model="issueUserSearch"
-                clearable
-                placeholder="搜索昵称 / 手机号"
-              />
-              <p v-if="usersLoading" class="issue-empty">
-                正在加载用户列表…
-              </p>
-              <template v-else
-                ><div v-if="issueUserFiltered.length" class="issue-user-list">
-                  <ElCheckbox
-                    v-for="user in issueUserFiltered"
-                    :key="user.id"
-                    v-model="issueChecked[user.id]"
-                  >
-                    <span class="issue-user-name">{{ userLabel(user) }}</span>
-                    <span class="issue-user-sub">{{ userSub(user) }}</span>
-                  </ElCheckbox>
-                </div>
-                <p v-else class="issue-empty">
-                  {{
-                    issueUserSearch
-                      ? "没有匹配的用户，换个关键词试试。"
-                      : "暂无可选用户。"
-                  }}
-                </p>
-              </template>
-              <p class="issue-step-meta">
-                已选 {{ selectedUserIds.length }} 人
-              </p></template
+        ><div class="issue-head">
+          <p class="issue-coupon-name">{{ issueCouponRow.name }}</p>
+          <p class="issue-coupon-meta">
+            {{
+              issueCouponRow.kind === "platform"
+                ? `金额券 ¥${fenToYuan(issueCouponRow.amount)}`
+                : "异业券"
+            }}
+            · 剩余 {{ issueCouponRow.remain ?? "不限量" }} 张
+          </p>
+        </div>
+        <!-- ① 发放方式 -->
+        <div class="issue-step">
+          <div class="issue-step-head">
+            <span class="issue-step-no">1</span>
+            <span class="issue-step-title">选择发放方式</span>
+          </div>
+          <ElSegmented
+            v-model="issueMode"
+            class="issue-modes"
+            :options="[
+              { label: '按用户', value: 'users' },
+              { label: '按手机号', value: 'phones' },
+              { label: '按寝室', value: 'rooms' },
+            ]"
+          />
+        </div>
+        <!-- ② 圈定目标 -->
+        <div class="issue-step">
+          <div class="issue-step-head">
+            <span class="issue-step-no">2</span>
+            <span class="issue-step-title">圈定目标</span>
+            <span
+              v-if="issueMode === 'users'"
+              class="issue-chip"
+              :class="{ 'issue-chip--on': selectedUserIds.length > 0 }"
+              >已选 {{ selectedUserIds.length }} 人</span
             >
-            <template v-else-if="issueMode === 'phones'"
-              ><ElInput
-                v-model="issuePhones"
-                type="textarea"
-                :rows="5"
-                placeholder="每行一个或逗号分隔&#10;13800000001&#10;13800000002"
-              />
-              <p class="issue-step-meta">
-                按用户绑定的手机号匹配，最多 500 个
-              </p></template
+            <span
+              v-else-if="issueMode === 'phones'"
+              class="issue-chip"
+              :class="{ 'issue-chip--on': issuePhoneList.length > 0 }"
+              >已识别 {{ issuePhoneList.length }} 个号码</span
             >
+          </div>
+          <template v-if="issueMode === 'users'"
+            ><ElInput
+              v-model="issueUserSearch"
+              clearable
+              aria-label="搜索用户"
+              placeholder="搜索昵称 / 手机号"
+            />
+            <p v-if="usersLoading" class="issue-empty">
+              <span class="issue-spinner" aria-hidden="true"></span>
+              正在加载用户列表…
+            </p>
             <template v-else
-              ><div class="issue-room-row">
-                <ElSelect
-                  v-model="issueBuildingId"
-                  clearable
-                  placeholder="选择楼栋"
-                  ><ElOption
-                    v-for="b in buildings"
-                    :key="b.id"
-                    :label="b.name"
-                    :value="b.id"
-                  /> </ElSelect
-                ><ElInputNumber
-                  v-model="issueFloor"
-                  :min="1"
-                  placeholder="楼层（选填，如 6）"
-                />
+              ><div v-if="issueUserFiltered.length" class="issue-user-list">
+                <ElCheckbox
+                  v-for="user in issueUserFiltered"
+                  :key="user.id"
+                  v-model="issueChecked[user.id]"
+                >
+                  <span class="issue-user-name">{{ userLabel(user) }}</span>
+                  <span class="issue-user-sub">{{ userSub(user) }}</span>
+                </ElCheckbox>
               </div>
-              <ElInput
-                v-model="issueRoomNos"
-                type="textarea"
-                :rows="2"
-                placeholder="寝室号（选填，收窄范围）&#10;612, 613&#10;701"
-              />
-              <p class="issue-step-meta">
-                按收货地址匹配；未填过收货地址的用户无法按寝室触达。
-              </p></template
-            ></ElFormItem
-          ><ElFormItem label="③ 发放张数（每人）"
-            ><div class="issue-count-row">
-              <ElInputNumber
-                v-model="issueCountInput"
-                :min="1"
-                placeholder="默认 1"
-              />
-              <span class="issue-step-meta">
-                张 / 每人 · 上限受「每人限领」约束
-              </span>
-            </div></ElFormItem
+              <p v-else class="issue-empty">
+                {{
+                  issueUserSearch
+                    ? "没有匹配的用户，换个关键词试试。"
+                    : "暂无可选用户。"
+                }}
+              </p>
+            </template></template
           >
-          <p v-if="usersError" class="issue-error">{{ usersError }}</p></ElForm
-        ></template
+          <template v-else-if="issueMode === 'phones'"
+            ><ElInput
+              v-model="issuePhones"
+              type="textarea"
+              :rows="5"
+              aria-label="手机号列表"
+              placeholder="每行一个或逗号分隔&#10;13800000001&#10;13800000002"
+            />
+            <p class="issue-hint">按用户绑定的手机号匹配，最多 500 个</p>
+          </template>
+          <template v-else
+            ><div class="issue-room-row">
+              <ElSelect
+                v-model="issueBuildingId"
+                clearable
+                placeholder="选择楼栋"
+                ><ElOption
+                  v-for="b in buildings"
+                  :key="b.id"
+                  :label="b.name"
+                  :value="b.id"
+              /> </ElSelect
+              ><ElInputNumber
+                v-model="issueFloor"
+                :min="1"
+                :precision="0"
+                aria-label="楼层（选填）"
+                placeholder="楼层（选填，如 6）"
+              />
+            </div>
+            <ElInput
+              v-model="issueRoomNos"
+              type="textarea"
+              :rows="2"
+              aria-label="寝室号（选填）"
+              placeholder="寝室号（选填，收窄范围）&#10;612, 613&#10;701"
+            />
+            <p class="issue-hint">
+              按收货地址匹配；未填过收货地址的用户无法按寝室触达。
+            </p>
+          </template>
+        </div>
+        <!-- ③ 发放张数 -->
+        <div class="issue-step">
+          <div class="issue-step-head">
+            <span class="issue-step-no">3</span>
+            <span class="issue-step-title">发放张数（每人）</span>
+            <span class="issue-hint">上限受「每人限领」约束</span>
+          </div>
+          <div class="issue-count-row">
+            <ElInputNumber
+              v-model="issueCountInput"
+              :min="1"
+              :precision="0"
+              aria-label="发放张数（每人）"
+              placeholder="默认 1"
+            />
+            <span class="issue-unit">张 / 每人</span>
+          </div>
+        </div>
+        <p v-if="usersError" class="issue-error">{{ usersError }}</p></template
       ><template #footer
-        ><ElButton @click="issueOpen = false">取消</ElButton
-        ><ElButton
-          v-if="hasPerm('POST /admin/coupons/:id/issue')"
-          type="primary"
-          :disabled="!issueReady"
-          @click="confirmIssue"
-          >确认发放</ElButton
+        ><div class="issue-footer"
+          ><p v-if="issueReady" class="issue-summary"
+            ><template v-if="issueMode === 'users'"
+              >将向 {{ selectedUserIds.length }} 人 ×
+              {{ issueCountInput ?? 1 }} 张发放</template
+            ><template v-else-if="issueMode === 'phones'"
+              >将向 {{ issuePhoneList.length }} 个号码 ×
+              {{ issueCountInput ?? 1 }} 张发放</template
+            ><template v-else
+              >将按楼栋 / 寝室地址匹配 × {{ issueCountInput ?? 1 }} 张发放</template
+            ></p
+          ><p v-else class="issue-summary issue-summary--muted"
+            >请先完成上方「圈定目标」</p
+          >
+          <span class="issue-footer-actions"
+            ><ElButton :disabled="issuing" @click="issueOpen = false"
+              >取消</ElButton
+            ><ElButton
+              v-if="hasPerm('POST /admin/coupons/:id/issue')"
+              type="primary"
+              :loading="issuing"
+              :disabled="!issueReady"
+              @click="confirmIssue"
+              >确认发放</ElButton
+            ></span
+          ></div
         ></template
       ></ElDialog
     ></AdminPageShell
@@ -633,12 +698,85 @@ onMounted(load);
     margin: 0;
   }
 }
-/* ---------- 定向发放抽屉 ---------- */
+/* ---------- 定向发放弹框 ---------- */
+/* 券种上下文：名称突出 + 类型/剩余量辅助行 */
+.issue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
 .issue-coupon-name {
-  margin: 0 0 12px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.issue-coupon-meta {
+  margin: 0;
   color: var(--muted);
+  font-size: 12px;
+}
+/* 三步纵向分区：序号徽章 + 标题 + 右侧计数 chip */
+.issue-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+}
+.issue-step + .issue-step {
+  border-top: 1px dashed var(--line);
+}
+.issue-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.issue-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.issue-step-title {
+  font-size: 13px;
   font-weight: 600;
 }
+.issue-step-head .issue-hint {
+  margin: 0;
+}
+.issue-chip {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #f0f4f1;
+  color: var(--muted);
+  font-size: 12px;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+.issue-chip--on {
+  background: rgba(21, 156, 85, 0.12);
+  color: var(--green);
+  font-weight: 600;
+}
+/* 方式切换满宽三分 */
+.issue-modes {
+  width: 100%;
+}
+.issue-modes :deep(.el-segmented__item) {
+  flex: 1;
+}
+/* 用户列表：行卡式勾选，hover/选中只动背景色（无布局位移） */
 .issue-user-list {
   display: flex;
   flex-direction: column;
@@ -646,30 +784,82 @@ onMounted(load);
   width: 100%;
   max-height: 264px;
   margin-top: 8px;
-  padding: 8px 12px;
+  padding: 6px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
+  background: #fbfdfb;
 }
 .issue-user-list :deep(.el-checkbox) {
-  height: auto;
+  display: flex;
   align-items: center;
+  height: auto;
   margin-right: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.issue-user-list :deep(.el-checkbox:hover) {
+  background: #eef4f0;
+}
+.issue-user-list :deep(.el-checkbox.is-checked) {
+  background: rgba(21, 156, 85, 0.08);
+}
+.issue-user-list :deep(.el-checkbox__label) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
 }
 .issue-user-name {
+  overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .issue-user-sub {
-  margin-left: 8px;
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 12px;
 }
-.issue-empty,
-.issue-step-meta {
+/* 加载 spinner（transform 动画，respect reduced-motion） */
+.issue-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border: 2px solid var(--line);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: issue-spin 0.8s linear infinite;
+}
+@keyframes issue-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .issue-spinner {
+    animation: none;
+  }
+}
+.issue-hint,
+.issue-empty {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.6;
 }
+.issue-empty {
+  padding: 18px 0;
+  text-align: center;
+}
+/* 寝室行 / 张数行：主输入自适应 + 数字输入定宽 */
 .issue-room-row {
   display: flex;
   align-items: center;
@@ -679,9 +869,10 @@ onMounted(load);
 .issue-room-row :deep(.el-select) {
   flex: 1 1 auto;
 }
-.issue-room-row :deep(.el-input-number) {
-  flex: 0 0 150px;
-  width: 150px;
+.issue-room-row :deep(.el-input-number),
+.issue-count-row :deep(.el-input-number) {
+  flex: 0 0 160px;
+  width: 160px;
 }
 .issue-count-row {
   display: flex;
@@ -689,16 +880,58 @@ onMounted(load);
   gap: 10px;
   width: 100%;
 }
-.issue-count-row :deep(.el-input-number) {
-  flex: 0 0 150px;
-  width: 150px;
-}
-.issue-count-row .issue-step-meta {
-  margin: 0;
-}
-.issue-error {
-  margin: 4px 0 0;
-  color: var(--el-color-danger, #f56c6c);
+.issue-unit {
+  color: var(--muted);
   font-size: 12px;
+}
+/* 错误提示：靠近问题、带恢复路径文案，底色浅红 + 左侧强调线 */
+.issue-error {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--el-color-danger, #f56c6c);
+  background: rgba(245, 108, 108, 0.08);
+  color: #b32318;
+  font-size: 12px;
+  line-height: 1.6;
+}
+/* 底部：左侧发放预览摘要 + 右侧操作 */
+.issue-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+}
+.issue-footer-actions {
+  display: flex;
+  margin-left: auto;
+}
+.issue-summary {
+  margin: 0;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+.issue-summary--muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .issue-room-row {
+    flex-wrap: wrap;
+  }
+  .issue-room-row :deep(.el-select),
+  .issue-room-row :deep(.el-input-number) {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .issue-footer-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .issue-footer-actions :deep(.el-button) {
+    flex: 1;
+  }
 }
 </style>
