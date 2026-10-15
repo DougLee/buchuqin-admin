@@ -2258,9 +2258,10 @@ body .el-overlay.is-message-box {
 }
 body .el-message-box {
   /* IKLUV9 补丁：JS 调用的 ElMessageBox 不经按需注入，EP 自带样式
-     （含 420px 宽度）从未加载 → 曾撑满整屏。此处补全：宽度+上限+遮罩居中 */
+     从未加载——宽度/背景/内衬全套缺失，此处一次性补全 */
   width: 420px;
   max-width: calc(100vw - 32px);
+  background: #fff;
   border: none;
   border-radius: 18px;
   box-shadow: 0 24px 70px #062e2340;
