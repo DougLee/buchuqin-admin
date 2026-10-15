@@ -2279,7 +2279,31 @@ body .el-message-box__title {
 }
 body .el-message-box__content {
   padding: 16px 26px 8px;
-  color: #52645a;
+}
+/* IKLUV9 补丁：EP 自带样式缺席，消息文本/警告图标全部回落灰绿不可读——
+   补深墨正文 15px/1.6 行高 + 警告图标橙色，容器图标-文本横排 */
+body .el-message-box__container {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+body .el-message-box__status {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  color: #e6a23c;
+  margin-top: 1px;
+}
+body .el-message-box__message {
+  color: #1e2520;
+  font-size: 15px;
+  line-height: 1.6;
+}
+body .el-message-box__message p {
+  margin: 0;
+  color: inherit;
+  line-height: inherit;
 }
 body .el-message-box__btns {
   display: flex;
