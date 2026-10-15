@@ -439,6 +439,10 @@ export const api = {
       /** 进货价/批发价格（IKC1AC，分）：仅官方库行提交。 */
       costPrice?: number;
       wholesalePrice?: number;
+      /** 采购来源（IKKRMZ）：有剩余库存/待处理采购单时后端拒绝切换。 */
+      procurementMode?: "HQ" | "LOCAL";
+      /** 本地进货价（分/零售单位）：LOCAL 口径成本。 */
+      localPurchasePrice?: number;
       image?: string;
       location?: string;
       locationCode?: string;
@@ -450,6 +454,10 @@ export const api = {
       tag?: string;
       weight?: number;
       categoryId?: string;
+      /** 单位属性（IKFOPU）：校区导入行由后端剔除（只读）。 */
+      retailUnit?: string;
+      wholesaleUnit?: string;
+      unitsPerCase?: number;
       /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
       description?: string;
     },

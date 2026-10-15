@@ -98,6 +98,12 @@
                 {{ row.barcode || row.subtitle || "—" }}
               </div></template
             ></ElTableColumn
+          ><ElTableColumn label="分类" width="110"
+            ><template #default="{ row }">{{
+              categories.find((c) => c.id === row.categoryId)?.name ??
+                row.categoryId ??
+                "—"
+            }}</template></ElTableColumn
           ><ElTableColumn label="售价" width="100"
             ><template #default="{ row }"
               >¥{{ fenToYuan(row.price) }}</template
@@ -112,6 +118,17 @@
                 ? "—"
                 : `¥${fenToYuan(row.wholesalePrice)}`
             }}</template></ElTableColumn
+          ><!-- 校区可见批发价快照（IKC1AC/IKFOPQ）：订单行毛利=售价−批发价基准 -->
+          <ElTableColumn v-if="!official" label="批发价" width="110"
+            ><template #default="{ row }">{{
+              row.wholesalePrice == null
+                ? "—"
+                : `¥${fenToYuan(row.wholesalePrice)}`
+            }}</template></ElTableColumn
+          ><ElTableColumn label="建议零售价" width="110"
+            ><template #default="{ row }"
+              >¥{{ fenToYuan(row.originalPrice ?? 0) }}</template
+            ></ElTableColumn
           ><ElTableColumn v-if="!official" label="采购来源" width="110"
             ><template #default="{ row }"
               ><ElTag>{{
@@ -140,7 +157,7 @@
                 @click="edit(product(row))"
                 >编辑</ElButton
               ><ElButton
-                v-if="hasPerm('PATCH /admin/products/:id')"
+                v-if="hasPerm('POST /admin/products/batch-status')"
                 link
                 @click="toggle(product(row))"
                 >{{ row.status === "on-sale" ? "下架" : "上架" }}</ElButton
@@ -178,13 +195,23 @@
                   :value="item.id" /></ElSelect></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="条码"
-              ><ElInput v-model="form.barcode" /></ElFormItem></ElCol
+              ><ElInput
+                v-model="form.barcode"
+                :disabled="!!editing"
+                placeholder="8-14 位数字，选填；创建后不可修改" /></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="标签"
               ><ElInput v-model="form.tag" /></ElFormItem></ElCol
-          ><ElCol :xs="24" :sm="12" :lg="8"
+          ><!-- 状态仅编辑可改：官方库建档恒下架待总部放行、校区自建恒在售，
+               create 端点不收 status，新建态选了也不生效 -->
+          <ElCol v-if="editing" :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="状态"
-              ><ElSelect v-model="form.status"
+              ><!-- 校区视角改状态需批量上下架权限（与行内上下架同判权） -->
+              <ElSelect
+                v-model="form.status"
+                :disabled="
+                  !official && !hasPerm('POST /admin/products/batch-status')
+                "
                 ><ElOption label="在售" value="on-sale" /><ElOption
                   label="下架"
                   value="off-sale" /></ElSelect></ElFormItem></ElCol
@@ -192,6 +219,11 @@
             ><ElFormItem label="商品主图"
               ><ImageUploadField
                 v-model="form.image"
+                folder="app/product" /></ElFormItem></ElCol
+          ><ElCol :span="24"
+            ><ElFormItem label="详情多图（用户端详情页轮播，可排序，选填）"
+              ><ProductImagesField
+                v-model="form.images"
                 folder="app/product" /></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="售价（元）"
@@ -221,8 +253,12 @@
           ><template v-else
             ><ElCol :xs="24" :sm="12" :lg="8"
               ><ElFormItem label="采购来源"
-                ><ElSelect v-model="form.procurementMode"
-                  ><ElOption label="总部供货" value="HQ" /><ElOption
+                ><!-- 新建态禁选：后端校区建档恒落「自主采购」（总部供货必须经
+                     官方库导入/到货），仅编辑态可切换 -->
+                <ElSelect v-model="form.procurementMode" :disabled="!editing"
+                  ><ElOption label="待确认" value="UNSET" disabled /><ElOption
+                    label="总部供货"
+                    value="HQ" /><ElOption
                     label="自主采购"
                     value="LOCAL" /></ElSelect></ElFormItem></ElCol
             ><ElCol
@@ -309,6 +345,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
+import ProductImagesField from "../../../../components/ProductImagesField.vue";
 import {
   HQ_PRODUCT_STATUS_TABS,
   PRODUCT_STATUS_TABS,
@@ -345,12 +382,14 @@ const form = reactive({
   categoryId: "",
   tag: "",
   image: "",
+  // 详情多图（IK9SNS）：COS URL 数组，顺序即详情页轮播顺序，空回退头图
+  images: [] as string[],
   description: "",
   price: 0,
   originalPrice: 0,
   costPrice: 0,
   wholesalePrice: 0,
-  procurementMode: "HQ" as "HQ" | "LOCAL",
+  procurementMode: "HQ" as "HQ" | "LOCAL" | "UNSET",
   localPurchasePrice: 0,
   weight: 0,
   retailUnit: "",
@@ -407,12 +446,20 @@ function edit(row?: Product) {
     categoryId: row?.categoryId ?? "",
     tag: row?.tag ?? "",
     image: row?.image ?? "",
+    images: row && Array.isArray(row.images) ? [...row.images] : [],
     description: row?.description ?? "",
     price: Number(fenToYuan(row?.price ?? 0)),
     originalPrice: Number(fenToYuan(row?.originalPrice ?? 0)),
     costPrice: Number(fenToYuan(row?.costPrice ?? 0)),
     wholesalePrice: Number(fenToYuan(row?.wholesalePrice ?? 0)),
-    procurementMode: row?.procurementMode ?? "HQ",
+    // 采购来源回填：历史行 null = 待确认（UNSET，存盘点清零前不强行认领）；
+    // 新建默认对齐后端建档规则：官方库=总部供货、校区自建=本地采购
+    //（create 端点不接受 procurementMode，校区建库恒落 LOCAL）
+    procurementMode: row
+      ? (row.procurementMode ?? "UNSET")
+      : official.value
+        ? "HQ"
+        : "LOCAL",
     localPurchasePrice: Number(fenToYuan(row?.localPurchasePrice ?? 0)),
     weight: row?.weight ?? 0,
     retailUnit: row?.retailUnit ?? "",
@@ -432,21 +479,41 @@ async function save() {
     const main = {
       name: form.name.trim(),
       subtitle: form.subtitle.trim(),
-      barcode: form.barcode.trim() || undefined,
+      // 条码仅建档可写：后端 UpdateProductDto 无 barcode（whitelist 剥离），
+      // 编辑态携带只会被静默丢弃——编辑框禁用，请求体也不再携带
+      ...(editing.value ? {} : { barcode: form.barcode.trim() || undefined }),
       categoryId: form.categoryId,
       tag: form.tag.trim(),
-      image: form.image,
+      // 头图空串不提交：UpdateProductDto 的 image 校验 http(s) URL，空串会
+      // 400（留空 = 保持原图，与旧版同口径；CreateProductDto 空串无害）
+      ...(form.image.trim() ? { image: form.image.trim() } : {}),
+      // 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退头图
+      images: form.images.filter(Boolean),
       description: form.description.trim(),
       weight: Number(form.weight),
       retailUnit: form.retailUnit.trim(),
-      wholesaleUnit: form.wholesaleUnit.trim(),
-      unitsPerCase: Number(form.unitsPerCase),
+      // 批发单位空值兜底「件」、含量空值兜底 1（与后端建档默认同口径；
+      // ElInputNumber 清空会吐 null，裸传会被后端「含量不能小于 1」打回）
+      wholesaleUnit: form.wholesaleUnit.trim() || "件",
+      unitsPerCase: Number(form.unitsPerCase) || 1,
       location: form.location.trim(),
       locationCode: form.locationCode.trim(),
-      status: form.status,
+      // 状态仅编辑态提交：create 端点无 status（官方库建档恒下架待放行、
+      // 校区自建恒在售，弹窗里选了也不生效）；校区视角 PATCH 带 status
+      // 需要 batch-status 权限（controller 校验），无权限且未改状态时
+      // 省略该键，避免无谓 403 挡掉整次保存
+      ...(editing.value &&
+      (official.value ||
+        (hasPerm("POST /admin/products/batch-status") &&
+          form.status !== editing.value.status))
+        ? { status: form.status }
+        : {}),
       // 采购来源编辑保存（道哥 2026-10-15 反馈）：此前仅创建分支携带，
-      // 编辑改「总部供货/自主采购」保存请求体不含该字段 → 静默不生效
-      ...(!official.value ? { procurementMode: form.procurementMode } : {}),
+      // 编辑改「总部供货/自主采购」保存请求体不含该字段 → 静默不生效；
+      // 历史行「待确认」（UNSET）不提交，避免随手保存就把 null 认领成 LOCAL
+      ...(!official.value && form.procurementMode !== "UNSET"
+        ? { procurementMode: form.procurementMode }
+        : {}),
     };
     const prices = {
       price: yuanToFen(form.price),
@@ -480,12 +547,9 @@ async function save() {
         );
     } else
       await api.createProduct(
-        {
-          ...main,
-          ...prices,
-          ...(!official.value ? { procurementMode: form.procurementMode } : {}),
-          stock: 0,
-        },
+        // main 已含校区 procurementMode（后端建档校区恒落 LOCAL，携带仅为
+        // 请求体语义完整）；stock 固定 0，库存调整走库存总览入库/盘点
+        { ...main, ...prices, stock: 0 },
         props.mode,
         campus.value,
       );
@@ -498,11 +562,13 @@ async function save() {
     saving.value = false;
   }
 }
+/** 行内上下架：走批量端点单发（IKCKX4）——校区视角 PATCH /admin/products/:id
+ *  带 status 需 batch-status 权限，旧版即走此端点；官方库视角同口径免分权。 */
 async function toggle(row: Product) {
   try {
-    await api.updateProduct(
-      row.id,
-      { status: row.status === "on-sale" ? "off-sale" : "on-sale" },
+    await api.batchUpdateProductStatus(
+      [row.id],
+      row.status === "on-sale" ? "off-sale" : "on-sale",
       props.mode,
       campus.value,
     );
