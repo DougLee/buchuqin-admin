@@ -2251,8 +2251,16 @@ aside .cl-dot {
 body .el-overlay.is-message-box {
   background: #061d1680;
   backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
 body .el-message-box {
+  /* IKLUV9 补丁：JS 调用的 ElMessageBox 不经按需注入，EP 自带样式
+     （含 420px 宽度）从未加载 → 曾撑满整屏。此处补全：宽度+上限+遮罩居中 */
+  width: 420px;
+  max-width: calc(100vw - 32px);
   border: none;
   border-radius: 18px;
   box-shadow: 0 24px 70px #062e2340;
