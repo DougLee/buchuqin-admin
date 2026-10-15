@@ -510,9 +510,17 @@ async function save() {
         : {}),
       // 采购来源编辑保存（道哥 2026-10-15 反馈）：此前仅创建分支携带，
       // 编辑改「总部供货/自主采购」保存请求体不含该字段 → 静默不生效；
-      // 历史行「待确认」（UNSET）不提交，避免随手保存就把 null 认领成 LOCAL
+      // 历史行「待确认」（UNSET）不提交，避免随手保存就把 null 认领成 LOCAL。
+      // 进货价同步进主请求（同日二修）：后端切 LOCAL 时校验 lpp 需随请求携带，
+      // 只靠 price 端点补会导致「待确认→自主采购」认领场景主请求先被 400 拦截
+      //（「本地采购商品必须填写进货价」，尽管表单已填值）
       ...(!official.value && form.procurementMode !== "UNSET"
-        ? { procurementMode: form.procurementMode }
+        ? {
+            procurementMode: form.procurementMode,
+            ...(form.procurementMode === "LOCAL"
+              ? { localPurchasePrice: yuanToFen(form.localPurchasePrice) }
+              : {}),
+          }
         : {}),
     };
     const prices = {
