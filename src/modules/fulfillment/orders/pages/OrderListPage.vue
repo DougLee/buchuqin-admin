@@ -57,12 +57,6 @@ function statusText(order: Order) {
   return order.status === "delivered" ? "待用户确认" : order.statusText || order.status;
 }
 
-function canAdvance(order: Order) {
-  return ["paid", "picking", "waiting-first-mile", "first-mile", "waiting-handover"].includes(
-    order.status,
-  );
-}
-
 function tabCount(key: string) {
   const tab = ORDER_STATUS_TABS.find((item) => item.key === key);
   return tab?.statuses.length
@@ -113,6 +107,22 @@ function openDetail(row: Order) {
   detailOpen.value = true;
 }
 
+/** 道哥 2026-10-15：待出库单在订单配送页直出库（与拣货页同动作——
+ *  paid 一步转待配送 + 出库流水 + 末端路线 lastMileMode 固化）。
+ *  免去跳拣货页的往返；拣货复核流照旧可用。 */
+async function outbound(row: Order) {
+  working.value = true;
+  try {
+    await api.orderAction(row.id, "outbound");
+    notify("出库成功，订单已进入配送流程");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "出库失败", "error");
+  } finally {
+    working.value = false;
+  }
+}
+
 function openStatus(row: Order, target = "") {
   selected.value = row;
   statusForm.status = target;
@@ -138,19 +148,6 @@ async function submitStatus() {
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "更新失败", "error");
-  } finally {
-    working.value = false;
-  }
-}
-
-async function advance(row: Order) {
-  working.value = true;
-  try {
-    await api.orderAction(row.id, "advance");
-    notify("订单履约已推进");
-    await load();
-  } catch (error) {
-    notify(error instanceof Error ? error.message : "推进失败", "error");
   } finally {
     working.value = false;
   }
@@ -272,16 +269,17 @@ onMounted(load);
         <ElTableColumn label="下单时间" width="175">
           <template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="204">
+        <ElTableColumn label="操作" fixed="right" width="210">
           <template #default="{ row }">
             <div class="order-actions" @click.stop>
-              <ElButton size="small" type="primary" @click="openDetail(asOrder(row))">查看</ElButton>
+              <!-- 道哥 2026-10-15：查看/推进已删——点行即开详情；推进与改状态职责重叠且与自提路线不兼容 -->
               <ElButton
-                v-if="hasPerm('POST /admin/orders/:id/actions/advance') && canAdvance(asOrder(row))"
+                v-if="hasPerm('POST /admin/orders/:id/actions/outbound') && asOrder(row).status === 'paid'"
                 size="small"
-                @click="advance(asOrder(row))"
+                type="primary"
+                @click="outbound(asOrder(row))"
               >
-                推进
+                出库
               </ElButton>
               <ElButton
                 v-if="hasPerm('POST /admin/orders/:id/status')"

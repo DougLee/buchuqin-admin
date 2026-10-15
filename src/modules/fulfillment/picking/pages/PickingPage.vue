@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { PICKING_STATUS_TABS } from "../../../../dicts";
 import {
@@ -103,18 +103,9 @@ function open(row: Order) {
   picked.value = [];
   dialogOpen.value = true;
 }
-async function close(done?: () => void) {
-  if (picked.value.length) {
-    try {
-      await ElMessageBox.confirm(
-        "当前勾选进度尚未提交，确认关闭？",
-        "拣货进度",
-        { type: "warning" },
-      );
-    } catch {
-      return;
-    }
-  }
+/** 道哥 2026-10-15：关闭不弹确认框直接关——勾选进度本就随关丢弃
+ *  （确认出库才是唯一提交口），无需中途挽留。 */
+function close(done?: () => void) {
   dialogOpen.value = false;
   picked.value = [];
   done?.();
@@ -254,11 +245,13 @@ onMounted(load);
     </section>
     <ElDialog
       v-model="dialogOpen"
+      class="picking-dialog"
       title="拣货复核"
       width="min(760px, calc(100vw - 32px))"
       align-center
       :before-close="close"
       :close-on-click-modal="false"
+      modal-class="picking-dialog-overlay"
       ><template v-if="selected"
         ><ElDescriptions :column="2" border
           ><ElDescriptionsItem label="订单">{{
@@ -336,5 +329,59 @@ onMounted(load);
   .picking-tab {
     transition: none;
   }
+}
+
+/* 拣货复核弹窗：统一卡片形态（同账号管理/打印机解绑款，道哥 2026-10-15） */
+:global(.picking-dialog-overlay) {
+  background: #061d1680;
+  backdrop-filter: blur(3px);
+}
+:global(.picking-dialog.el-dialog) {
+  display: flex;
+  max-height: min(90vh, 900px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+}
+:global(.picking-dialog .el-dialog__header) {
+  min-height: 72px;
+  margin: 0;
+  padding: 24px 26px 16px;
+  border-bottom: 1px solid var(--line);
+}
+:global(.picking-dialog .el-dialog__title) {
+  color: #153628;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+:global(.picking-dialog .el-dialog__headerbtn) {
+  top: 18px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f0f4f1;
+}
+:global(.picking-dialog .el-dialog__headerbtn:hover) {
+  background: #e3ece6;
+}
+:global(.picking-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #52645a;
+  font-size: 20px;
+}
+:global(.picking-dialog .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 8px;
+  scrollbar-color: #c2d4c9 transparent;
+  scrollbar-width: thin;
+}
+:global(.picking-dialog .el-dialog__footer) {
+  padding: 14px 26px 26px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 -10px 24px #163f2b0a;
 }
 </style>
