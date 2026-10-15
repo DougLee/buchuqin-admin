@@ -2244,3 +2244,107 @@ aside .cl-dot {
 .proof-group:last-child {
   margin-bottom: 0;
 }
+
+/* ElMessageBox 统一卡片形态（道哥 2026-10-15）：全站确认框与 ElDialog 统一弹窗
+   同款——深绿毛玻璃遮罩、18px 圆角、标题分隔语义；一处定义全站生效，
+   各页 ElMessageBox.confirm 无需逐个改造。 */
+.el-overlay.is-message-box {
+  background: #061d1680;
+  backdrop-filter: blur(3px);
+}
+.el-message-box {
+  border: none;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+  padding: 0;
+  overflow: hidden;
+}
+.el-message-box__header {
+  padding: 20px 26px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.el-message-box__title {
+  color: #153628;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+.el-message-box__content {
+  padding: 16px 26px 8px;
+  color: #52645a;
+}
+.el-message-box__btns {
+  display: flex;
+  gap: 10px;
+  padding: 14px 26px 22px;
+}
+/* 等宽通栏按钮（同账号管理统一弹窗款） */
+.el-message-box__btns .el-button {
+  min-height: 44px;
+  flex: 1;
+  margin-left: 0;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.el-message-box__btns .el-button--primary {
+  --el-button-bg-color: var(--green);
+  --el-button-border-color: var(--green);
+}
+
+/* ElDialog 全局统一卡片形态（IKLUV9 方案 A，道哥 2026-10-15 拍板）：
+   与 ElMessageBox/账号管理款同形——深绿毛玻璃遮罩、18px 圆角、头部
+   分隔线、底部按钮区上浮阴影。一处定义全站 ~40 个弹窗统一；已按页
+   复制样式的（account-/picking-/printer-unbind-dialog 等）参数相同
+   零冲突，新页面天然继承。页内有特殊布局仍可覆盖。 */
+.el-overlay {
+  background: #061d1680;
+  backdrop-filter: blur(3px);
+}
+.el-dialog {
+  display: flex;
+  max-height: min(90vh, 900px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #062e2340;
+}
+.el-dialog__header {
+  min-height: 72px;
+  margin: 0;
+  padding: 24px 26px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.el-dialog__title {
+  color: #153628;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.3px;
+}
+.el-dialog__headerbtn {
+  top: 18px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f0f4f1;
+}
+.el-dialog__headerbtn:hover {
+  background: #e3ece6;
+}
+.el-dialog__headerbtn .el-dialog__close {
+  color: #52645a;
+  font-size: 20px;
+}
+.el-dialog__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 26px 8px;
+  scrollbar-color: #c2d4c9 transparent;
+  scrollbar-width: thin;
+}
+.el-dialog__footer {
+  padding: 14px 26px 26px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 -10px 24px #163f2b0a;
+}

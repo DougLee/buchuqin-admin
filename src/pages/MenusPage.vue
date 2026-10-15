@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElMessageBox } from "element-plus";
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadRbac } from "../session";
@@ -106,27 +107,24 @@ async function save() {
     saving.value = false;
   }
 }
-/** 删除确认弹窗目标菜单（道哥 2026-10-10：弃两击改统一弹窗） */
-const deleteTarget = ref<RbacMenuRow | null>(null);
-const deleteBusy = ref(false);
-function remove(row: RbacMenuRow) {
-  deleteTarget.value = row;
-}
-async function confirmDelete() {
-  const row = deleteTarget.value;
-  if (!row || deleteBusy.value) return;
-  deleteBusy.value = true;
+/** IKLUV9：删除确认改 ElMessageBox（统一卡片形态），弃最后一批自绘 mask */
+async function remove(row: RbacMenuRow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除「${row.name}」？将删除整个子树（含下级菜单与按钮），挂在角色上的对应授权一并失效。`,
+      "删除菜单",
+      { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
   try {
     await api.rbacDeleteMenu(row.id);
-    deleteTarget.value = null;
     notice.value = "菜单已删除";
     await load();
     await loadRbac();
   } catch (e) {
-    deleteTarget.value = null;
     error.value = e instanceof Error ? e.message : "删除失败";
-  } finally {
-    deleteBusy.value = false;
   }
 }
 </script>
@@ -308,32 +306,6 @@ async function confirmDelete() {
       >
     </ElDialog>
 
-    <!-- 删除确认弹窗（与角色/账号管理同款） -->
-    <div
-      v-if="deleteTarget"
-      class="drawer-mask confirm-mask"
-      @click.self="deleteTarget = null"
-    >
-      <div class="confirm-card">
-        <h3>删除菜单</h3>
-        <p>
-          确认删除「{{
-            deleteTarget.name
-          }}」？将删除整个子树（含下级菜单与按钮），
-          挂在角色上的对应授权一并失效。
-        </p>
-        <div class="confirm-actions">
-          <button class="btn ghost" @click="deleteTarget = null">取消</button>
-          <button
-            class="btn danger-btn"
-            :disabled="deleteBusy"
-            @click="confirmDelete"
-          >
-            {{ deleteBusy ? "删除中…" : "确认删除" }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 <style scoped>

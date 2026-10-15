@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElMessageBox } from "element-plus";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api";
@@ -17,7 +18,6 @@ const router = useRouter();
 const toast = ref("");
 const toastError = ref(false);
 /** 删除确认弹窗目标角色（IKKRNC 道哥：弃两击改统一弹窗） */
-const deleteTarget = ref<RbacRole | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function notify(msg: string, error = false) {
   toast.value = msg;
@@ -247,20 +247,25 @@ async function submitDrawer() {
   }
 }
 
-/* ---------- 删除（确认弹窗，文案带关联账号数；后端 403 人话 toast） ---------- */
-function removeRow(role: RbacRole) {
-  deleteTarget.value = role;
-}
-async function confirmDelete() {
-  const role = deleteTarget.value;
-  if (!role) return;
+/* ---------- IKLUV9：删除确认改 ElMessageBox（统一卡片形态），弃最后一批
+   自绘 mask；文案保留关联账号数提示（后端 403 人话 toast） ---------- */
+async function removeRow(role: RbacRole) {
+  const suffix =
+    role.accountCount > 0 ? `该角色已关联 ${role.accountCount} 个账号，删除后其授权一并失效。` : "";
+  try {
+    await ElMessageBox.confirm(
+      `确认删除「${role.name}」（${role.code}）？${suffix}`,
+      "删除角色",
+      { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
   try {
     await api.rbacDeleteRole(role.id);
-    deleteTarget.value = null;
     notify("角色已删除");
     await load();
   } catch (e) {
-    deleteTarget.value = null;
     notify(e instanceof Error ? e.message : "删除失败", true);
   }
 }
@@ -374,30 +379,6 @@ async function confirmDelete() {
       </div>
     </div>
 
-    <!-- 删除确认弹窗（IKKRNC：与全站弹层同源——mask+卡片+主次按钮） -->
-    <div
-      v-if="deleteTarget"
-      class="drawer-mask confirm-mask"
-      @click.self="deleteTarget = null"
-    >
-      <div class="confirm-card">
-        <h3>删除角色</h3>
-        <p>
-          确认删除「{{ deleteTarget.name }}」（{{ deleteTarget.code }}）？
-          <template v-if="deleteTarget.accountCount > 0"
-            >该角色已关联
-            <strong>{{ deleteTarget.accountCount }}</strong>
-            个账号，删除后其授权一并失效。</template
-          >
-        </p>
-        <div class="confirm-actions">
-          <button class="btn ghost" @click="deleteTarget = null">取消</button>
-          <button class="btn danger-btn" @click="confirmDelete">
-            确认删除
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- 编辑/新建/复制抽屉：基本信息 + 一棵三级勾选树（目录→菜单→按钮） -->
     <div v-if="drawerOpen" class="drawer-mask" @click.self="drawerOpen = false">
