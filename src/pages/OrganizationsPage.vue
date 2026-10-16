@@ -263,43 +263,56 @@ function organizationRow(row: unknown): AdminOrganization {
           <ElCol :xs="24" :sm="12"><ElFormItem label="回调域名"><ElInput v-model="form.notifyDomain" placeholder="如 https://api-b.example.com" /></ElFormItem></ElCol>
         </ElRow>
         <p class="drawer-sec">敏感凭据（只写不回读）</p>
-        <ElRow :gutter="16">
-          <ElCol :span="24"><ElFormItem label="小程序 Secret"><div class="sens-row">
+        <div class="sens-panel">
+          <ElFormItem>
+            <template #label
+              ><div class="sens-label"
+                ><span>小程序 Secret</span
+                ><ElTag size="small" round effect="light" :type="editing && editing.hasWxSecret ? 'success' : 'warning'">{{ editing && editing.hasWxSecret ? "已配置" : "未配置" }}</ElTag
+                ><ElCheckbox class="sens-clear" v-model="clearFlags.wxSecret">清除</ElCheckbox></div
+            ></template>
             <ElInput
               v-model="form.wxSecret"
               type="password"
               show-password
               :disabled="clearFlags.wxSecret"
-              placeholder="小程序 Secret"
+              :placeholder="clearFlags.wxSecret ? '已勾选清除——保存后将清空该凭据' : '粘贴小程序 Secret，留空保留现状'"
               autocomplete="new-password"
             />
-            <ElTag :type="editing && editing.hasWxSecret ? 'success' : 'warning'">{{ editing && editing.hasWxSecret ? "已配置" : "未配置" }}</ElTag>
-            <ElCheckbox v-model="clearFlags.wxSecret">清除</ElCheckbox>
-          </div></ElFormItem></ElCol>
-          <ElCol :span="24"><ElFormItem label="商户 APIv3 密钥"><div class="sens-row">
+          </ElFormItem>
+          <ElFormItem>
+            <template #label
+              ><div class="sens-label"
+                ><span>商户 APIv3 密钥</span
+                ><ElTag size="small" round effect="light" :type="editing && editing.hasMchApiV3Key ? 'success' : 'warning'">{{ editing && editing.hasMchApiV3Key ? "已配置" : "未配置" }}</ElTag
+                ><ElCheckbox class="sens-clear" v-model="clearFlags.mchApiV3Key">清除</ElCheckbox></div
+            ></template>
             <ElInput
               v-model="form.mchApiV3Key"
               type="password"
               show-password
               :disabled="clearFlags.mchApiV3Key"
-              placeholder="商户 APIv3 密钥"
+              :placeholder="clearFlags.mchApiV3Key ? '已勾选清除——保存后将清空该凭据' : '32 位 APIv3 密钥，留空保留现状'"
               autocomplete="new-password"
             />
-            <ElTag :type="editing && editing.hasMchApiV3Key ? 'success' : 'warning'">{{ editing && editing.hasMchApiV3Key ? "已配置" : "未配置" }}</ElTag>
-            <ElCheckbox v-model="clearFlags.mchApiV3Key">清除</ElCheckbox>
-          </div></ElFormItem></ElCol>
-          <ElCol :span="24"><ElFormItem label="商户私钥 PEM"><div class="sens-row sens-tall">
+          </ElFormItem>
+          <ElFormItem class="sens-last">
+            <template #label
+              ><div class="sens-label"
+                ><span>商户私钥 PEM</span
+                ><ElTag size="small" round effect="light" :type="editing && editing.hasPrivateKey ? 'success' : 'warning'">{{ editing && editing.hasPrivateKey ? "已配置" : "未配置" }}</ElTag
+                ><ElCheckbox class="sens-clear" v-model="clearFlags.privateKey">清除</ElCheckbox></div
+            ></template>
             <ElInput
               v-model="form.privateKey"
               type="textarea"
               :disabled="clearFlags.privateKey"
-              :rows="3"
-              placeholder="商户私钥 PEM（-----BEGIN PRIVATE KEY-----）"
+              :rows="4"
+              :placeholder="clearFlags.privateKey ? '已勾选清除——保存后将清空该凭据' : '粘贴 PEM 全文（-----BEGIN PRIVATE KEY----- 开头），留空保留现状'"
             />
-            <ElTag :type="editing && editing.hasPrivateKey ? 'success' : 'warning'">{{ editing && editing.hasPrivateKey ? "已配置" : "未配置" }}</ElTag>
-            <ElCheckbox v-model="clearFlags.privateKey">清除</ElCheckbox>
-          </div></ElFormItem></ElCol>
-        </ElRow></ElForm>
+          </ElFormItem>
+        </div>
+      </ElForm>
         <ElAlert v-if="drawerError" class="dialog-error" type="error" show-icon :closable="false" :title="drawerError" />
         <template #footer><div class="dialog-actions"><ElButton :disabled="drawerSaving" @click="drawerOpen = false">取消</ElButton><ElButton type="primary" :loading="drawerSaving" @click="submitDrawer">{{ editing ? "保存修改" : "创建组织" }}</ElButton></div></template>
     </ElDialog>
@@ -347,18 +360,34 @@ td small.muted {
   flex-direction: column;
   gap: 8px;
 }
-.sens-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
+/* 敏感凭据卡片（2026-10-16 道哥截图优化）：浅底容器隔离敏感区；
+   状态徽章+清除上提到标签行，输入框满宽——扫读路径「字段→状态→输入」一条线 */
+.sens-panel {
+  padding: 4px 16px 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbfa;
+}
+.sens-panel :deep(.el-form-item) { margin-bottom: 14px; }
+.sens-panel :deep(.el-form-item.sens-last) { margin-bottom: 8px; }
+.sens-label {
+  display: flex;
   align-items: center;
+  gap: 8px;
+  width: 100%;
 }
-.sens-row.sens-tall {
-  align-items: start;
+.sens-label .sens-clear {
+  margin-left: auto;
+  height: auto;
 }
-.sens-row :deep(.el-input),
-.sens-row :deep(.el-textarea) { min-width: 0; }
-.sens-row.sens-tall :deep(textarea) { font-family: monospace; }
+.sens-label .sens-clear :deep(.el-checkbox__label) {
+  font-size: 12px;
+  color: var(--muted);
+}
+.sens-panel :deep(textarea),
+.sens-panel :deep(input[type="password"]) {
+  font-family: monospace;
+}
 .dialog-error { margin-top: 14px; }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions :deep(.el-button) { min-height: 44px; flex: 1; border-radius: 10px; font-weight: 700; }
