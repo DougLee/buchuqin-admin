@@ -977,6 +977,9 @@ export const api = {
       serviceQrcode?: string;
       /** IKHMKR：无楼长提示（校区自定义，空=回落默认） */
       noManagerTip?: string;
+      /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
+      autoOutboundEnabled?: boolean;
+      autoOutboundDelaySeconds?: number;
     }>,
   ) =>
     request<Campus>(`/admin/campuses/${id}`, {
@@ -1276,6 +1279,9 @@ export const api = {
     manualClosed?: boolean;
     /** IKHMKR：无楼长提示（校区自定义，空=回落默认） */
     noManagerTip?: string;
+    /** IKM55A：订单自动出库（校区级，开启后 paid 单 N 秒 Cron 出库） */
+    autoOutboundEnabled?: boolean;
+    autoOutboundDelaySeconds?: number;
   }) =>
     request<{
       deliveryFeeInstant: number;
@@ -1284,6 +1290,8 @@ export const api = {
       closeStart?: string;
       closeEnd?: string;
       manualClosed?: boolean;
+      autoOutboundEnabled?: boolean;
+      autoOutboundDelaySeconds?: number;
     }>("/admin/delivery-config", {
       method: "PATCH",
       body: JSON.stringify(data),

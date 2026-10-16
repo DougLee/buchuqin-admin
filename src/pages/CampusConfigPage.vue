@@ -195,6 +195,9 @@ const deliveryForm = ref({
   closeEnd: "00:00",
   manualClosed: false,
   noManagerTip: "",
+  // IKM55A 订单自动出库：开启后 paid 单 N 秒 Cron 自动出库（30s 扫描精度）
+  autoOutbound: false,
+  autoOutboundDelay: 60,
 });
 watch(bundle, (b) => {
   if (!b) return;
@@ -206,6 +209,12 @@ watch(bundle, (b) => {
     closeEnd: b.campus.closeEnd,
     manualClosed: b.campus.manualClosed,
     noManagerTip: (b.campus as { noManagerTip?: string }).noManagerTip ?? "",
+    autoOutbound:
+      (b.campus as { autoOutboundEnabled?: boolean }).autoOutboundEnabled ??
+      false,
+    autoOutboundDelay:
+      (b.campus as { autoOutboundDelaySeconds?: number })
+        .autoOutboundDelaySeconds ?? 60,
   };
   closeMode.value = b.campus.manualClosed
     ? "now"
@@ -224,6 +233,9 @@ async function saveDelivery() {
       closeStart: deliveryForm.value.closeStart,
       closeEnd: deliveryForm.value.closeEnd,
       manualClosed: deliveryForm.value.manualClosed,
+      // IKM55A 订单自动出库：双链路 DTO 均收
+      autoOutboundEnabled: deliveryForm.value.autoOutbound,
+      autoOutboundDelaySeconds: deliveryForm.value.autoOutboundDelay,
     };
     if (canManageCampus.value) {
       // 平台角色可保存任意选中校区（含打烊窗/手动闭店/无楼长提示 IKHMKR）
@@ -573,6 +585,24 @@ async function removeNotice(n: NoticeRow) {
                   maxlength="60"
                   show-word-limit
                   placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～" /></ElFormItem
+            ></ElCol>
+            <!-- IKM55A 订单自动出库：开关+延迟秒数，仅即时达/预约达已支付单，
+                 拣货中（人工介入）不抢跑；退款单天然跳过 -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="订单自动出库"
+                ><ElSwitch
+                  v-model="deliveryForm.autoOutbound"
+                  active-text="开启"
+                  inactive-text="关闭" /></ElFormItem
+            ></ElCol>
+            <ElCol v-if="deliveryForm.autoOutbound" :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="支付后自动出库（秒）"
+                ><ElInputNumber
+                  v-model="deliveryForm.autoOutboundDelay"
+                  :min="10"
+                  :max="600"
+                  :step="10"
+                  :precision="0" /></ElFormItem
             ></ElCol> </ElRow
         ></ElForm>
         <p class="form-hint">
