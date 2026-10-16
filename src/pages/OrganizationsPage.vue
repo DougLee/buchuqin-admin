@@ -79,6 +79,7 @@ const form = ref({
   mchId: "",
   serialNo: "",
   notifyDomain: "",
+  wxPayPublicKey: "",
   wxSecret: "",
   mchApiV3Key: "",
   privateKey: "",
@@ -95,6 +96,7 @@ function openCreate() {
     mchId: "",
     serialNo: "",
     notifyDomain: "",
+    wxPayPublicKey: "",
     wxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
@@ -112,6 +114,7 @@ function openEdit(row: AdminOrganization) {
     mchId: row.mchId ?? "",
     serialNo: row.serialNo ?? "",
     notifyDomain: row.notifyDomain ?? "",
+    wxPayPublicKey: row.wxPayPublicKey ?? "",
     wxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
@@ -142,6 +145,8 @@ async function submitDrawer() {
     mchId: form.value.mchId.trim() || null,
     serialNo: form.value.serialNo.trim() || null,
     notifyDomain: form.value.notifyDomain.trim() || null,
+    // 微信支付公钥非敏感可回读：编辑态总是传（空串=清除），新建态有值才传
+    wxPayPublicKey: form.value.wxPayPublicKey.trim(),
   };
   const secrets = {
     wxSecret: sensValue("wxSecret"),
@@ -161,6 +166,9 @@ async function submitDrawer() {
         ...(base.mchId ? { mchId: base.mchId } : {}),
         ...(base.serialNo ? { serialNo: base.serialNo } : {}),
         ...(base.notifyDomain ? { notifyDomain: base.notifyDomain } : {}),
+        ...(base.wxPayPublicKey
+          ? { wxPayPublicKey: base.wxPayPublicKey }
+          : {}),
         ...(secrets.wxSecret ? { wxSecret: secrets.wxSecret } : {}),
         ...(secrets.mchApiV3Key ? { mchApiV3Key: secrets.mchApiV3Key } : {}),
         ...(secrets.privateKey ? { privateKey: secrets.privateKey } : {}),
@@ -261,6 +269,8 @@ function organizationRow(row: unknown): AdminOrganization {
           <ElCol :xs="24" :sm="12"><ElFormItem label="商户号 mchId（组织 B 独立商户号）"><ElInput v-model="form.mchId" placeholder="未配可留空" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="证书序列号"><ElInput v-model="form.serialNo" placeholder="未配可留空" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="回调域名"><ElInput v-model="form.notifyDomain" placeholder="如 https://api-b.example.com" /></ElFormItem></ElCol>
+          <!-- 微信支付公钥（2024+ 新商户回调验签，非敏感可回读；清空=清除） -->
+          <ElCol :span="24"><ElFormItem label="微信支付公钥 PEM（新商户平台「API 安全 → 微信支付公钥」下载，pub_key.pem）"><ElInput v-model="form.wxPayPublicKey" type="textarea" :rows="4" placeholder="-----BEGIN PUBLIC KEY----- 开头整段粘贴；留空保留现状，清空后保存=清除" /></ElFormItem></ElCol>
         </ElRow>
         <p class="drawer-sec">敏感凭据（只写不回读）</p>
         <div class="sens-panel">

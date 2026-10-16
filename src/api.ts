@@ -895,6 +895,8 @@ export const api = {
     serialNo?: string;
     privateKey?: string;
     notifyDomain?: string;
+    /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读） */
+    wxPayPublicKey?: string;
   }) =>
     request<AdminOrganization>("/admin/organizations", {
       method: "POST",
@@ -913,6 +915,8 @@ export const api = {
       serialNo: string | null;
       privateKey: string | null;
       notifyDomain: string | null;
+      /** 微信支付公钥 PEM（非敏感，空串=清除） */
+      wxPayPublicKey: string | null;
     }>,
   ) =>
     request<AdminOrganization>(`/admin/organizations/${id}`, {

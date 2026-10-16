@@ -74,6 +74,8 @@ export interface AdminOrganization {
   mchId: string | null;
   serialNo: string | null;
   notifyDomain: string | null;
+  /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读，空串=清除） */
+  wxPayPublicKey: string | null;
   hasWxSecret: boolean;
   hasMchApiV3Key: boolean;
   hasPrivateKey: boolean;
