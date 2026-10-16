@@ -374,6 +374,10 @@ onMounted(load);
                 <ElOption label="待出库" value="paid" />
                 <ElOption label="拣货中" value="picking" />
                 <ElOption label="配送中" value="last-mile" />
+                <!-- 2026-10-16 道哥拍板：补录通道（线下送达兜底）——原因必填，
+                     后端同事务补提成快照+推用户收货通知 -->
+                <ElOption label="已送达（待用户确认）" value="delivered" />
+                <ElOption label="已完成" value="completed" />
                 <ElOption label="异常" value="exception" />
                 <ElOption label="已取消" value="cancelled" />
               </ElSelect>
