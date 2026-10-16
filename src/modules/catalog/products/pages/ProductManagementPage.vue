@@ -298,6 +298,13 @@
               ><ElInput
                 v-model="form.locationCode"
                 placeholder="如：01-3" /></ElFormItem></ElCol
+          ><ElCol v-if="!official" :xs="24" :sm="12" :lg="8"
+            ><ElFormItem :label="editing ? '可售库存' : '初始库存'"
+              ><ElInputNumber
+                v-model="form.stock"
+                :min="0"
+                :precision="0"
+                :disabled="!canEditStock" /></ElFormItem></ElCol
           ><ElCol :span="24"
             ><ElFormItem label="商品介绍"
               ><ElInput
@@ -360,6 +367,11 @@ const props = defineProps<{ mode: "official" | "campus" }>(),
   campus = computed(() =>
     official.value ? undefined : effectiveCampusId.value || undefined,
   );
+/** 库存直改门控（旧版口径）：盘点权限者才可在商品表单改库存
+ *  （c68a210 重构丢失字段回迁，道哥 2026-10-15 确认补回） */
+const canEditStock = computed(
+  () => !official.value && hasPerm("POST /admin/inventory/stocktake"),
+);
 const rows = ref<Product[]>([]),
   categories = ref<Category[]>([]),
   library = ref<Product[]>([]),
@@ -397,6 +409,7 @@ const form = reactive({
   unitsPerCase: 1,
   location: "",
   locationCode: "",
+  stock: 0,
   status: "off-sale" as "on-sale" | "off-sale",
 });
 const title = computed(() => (official.value ? "官方商品库" : "商品管理")),
@@ -467,6 +480,7 @@ function edit(row?: Product) {
     unitsPerCase: row?.unitsPerCase ?? 1,
     location: row?.location ?? "",
     locationCode: row?.locationCode ?? "",
+    stock: row?.stock ?? 0,
     status: (row?.status as "on-sale" | "off-sale") ?? "off-sale",
   });
   open.value = true;
@@ -522,6 +536,12 @@ async function save() {
               : {}),
           }
         : {}),
+      // 库存直改（旧版口径回迁）：编辑态+有权+值变化才提交，无权限用户保存不被 403
+      ...(editing.value &&
+      canEditStock.value &&
+      form.stock !== editing.value.stock
+        ? { stock: form.stock }
+        : {}),
     };
     const prices = {
       price: yuanToFen(form.price),
@@ -557,7 +577,7 @@ async function save() {
       await api.createProduct(
         // main 已含校区 procurementMode（后端建档校区恒落 LOCAL，携带仅为
         // 请求体语义完整）；stock 固定 0，库存调整走库存总览入库/盘点
-        { ...main, ...prices, stock: 0 },
+        { ...main, ...prices, stock: form.stock },
         props.mode,
         campus.value,
       );
