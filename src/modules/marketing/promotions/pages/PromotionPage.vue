@@ -4,12 +4,14 @@ import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { PROMOTION_STATE_TABS } from "../../../../dicts/status-tab";
 import { effectiveCampusId, hasPerm } from "../../../../session";
+import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Product, Promotion } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 const rows = ref<Promotion[]>([]),
   products = ref<Product[]>([]),
+  productsLoading = ref(false),
   loading = ref(false),
   saving = ref(false),
   open = ref(false),
@@ -67,24 +69,28 @@ async function load() {
 async function edit(row?: Promotion) {
   editing.value = row ?? null;
   if (!row) {
-    try {
-      products.value = (
-        await api.products(
-          {
-            page: 1,
-            pageSize: 1000,
-            status: "on-sale",
-            campusId: effectiveCampusId.value,
-          },
-          "campus",
-        )
-      ).items;
-    } catch (e) {
-      return notify(
-        e instanceof Error ? e.message : "在售商品加载失败",
-        "error",
-      );
-    }
+    // 商品候选集弹窗打开后异步拉取，选择器内置骨架占位（IKGNQ 仅本校区在售）
+    products.value = [];
+    productsLoading.value = true;
+    void api
+      .products(
+        {
+          page: 1,
+          pageSize: 1000,
+          status: "on-sale",
+          campusId: effectiveCampusId.value,
+        },
+        "campus",
+      )
+      .then((r) => {
+        products.value = r.items;
+      })
+      .catch((e) =>
+        notify(e instanceof Error ? e.message : "在售商品加载失败", "error"),
+      )
+      .finally(() => {
+        productsLoading.value = false;
+      });
   }
   Object.assign(form, {
     productId: row?.productId ?? "",
@@ -94,6 +100,10 @@ async function edit(row?: Promotion) {
     endsAt: row?.endsAt?.slice(0, 16) ?? "",
   });
   open.value = true;
+}
+/** ProductPickerField 单选回填（组件 v-model 为联合类型，收窄为 string）。 */
+function pickProduct(value: string | Record<string, number>) {
+  form.productId = typeof value === "string" ? value : "";
 }
 async function save() {
   if (!editing.value && !form.productId) return notify("请选择商品", "error");
@@ -244,14 +254,17 @@ onMounted(load);
       :close-on-click-modal="false"
       ><ElForm label-position="top"
         ><ElRow :gutter="16"
-          ><ElCol v-if="!editing" :xs="24" :sm="12"
-            ><ElFormItem label="商品（在售）"
-              ><ElSelect v-model="form.productId" filterable
-                ><ElOption
-                  v-for="item in products"
-                  :key="item.id"
-                  :label="`${item.name} · ¥${fenToYuan(item.price)}`"
-                  :value="item.id" /></ElSelect></ElFormItem></ElCol
+          ><ElCol v-if="!editing" :xs="24"
+            ><ElFormItem label="商品（在售，点击行选中）"
+              ><!-- IKGQ6Q 组件化选品（c68a210 重构降级为下拉，2026-10-16 回迁）：
+                  类别筛选+搜索+行式卡片，showCost 补显成本价（IKH15V 口径：
+                  LOCAL=localPurchasePrice 回落批发价，其余=批发价）防亏本定价 -->
+              <ProductPickerField
+                :items="products"
+                :loading="productsLoading"
+                show-cost
+                :model-value="form.productId"
+                @update:model-value="pickProduct" /></ElFormItem></ElCol
           ><ElCol v-if="!editing" :xs="24" :sm="12"
             ><ElFormItem label="类型"
               ><ElSelect v-model="form.type"
@@ -306,6 +319,10 @@ onMounted(load);
 :deep(.el-dialog .el-select),
 :deep(.el-dialog .el-input-number),
 :deep(.el-dialog .el-date-editor) {
+  width: 100%;
+}
+/* 选品器在表单项内容区（flex）内占满宽 */
+:deep(.el-dialog .el-form-item__content .product-picker) {
   width: 100%;
 }
 @media (max-width: 760px) {

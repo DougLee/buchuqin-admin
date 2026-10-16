@@ -21,7 +21,8 @@ const props = defineProps<{
   disabled?: boolean;
   /** IKH0EK 推荐位模式：隐藏多选行件数输入（纯勾选，无件数语义） */
   simple?: boolean;
-  /** IKH15V 单选行补显进货价（costPrice，未录不显示）：定促销价对照毛利用 */
+  /** IKH15V 单选行补显成本价（口径见 costOf，未录/无成本权限不显示）：
+   *  定促销价对照毛利用（道哥 2026-09-19 拍板，2026-10-16 升级 LOCAL 口径） */
   showCost?: boolean;
   /** 服务端过滤模式：本地 filtered 不再裁剪，搜索词上抛 filter-change */
   remote?: boolean;
@@ -109,6 +110,19 @@ function setQty(id: string, q: number) {
 function togglePick(id: string) {
   setQty(id, qtyOf(id) > 0 ? 0 : 1);
 }
+/** IKH15V 成本口径（与后端支付快照一致，2026-10-16 秒杀定价补显升级）：
+ *  LOCAL=自主采购取 localPurchasePrice（未录回落批发价快照），其余一律取
+ *  wholesalePrice。无成本读权限（RBAC 输出层已裁剪）或未录时返回 null 不显示。 */
+function costOf(p: Product): number | null {
+  if (p.procurementMode === "LOCAL")
+    return p.localPurchasePrice ?? p.wholesalePrice ?? null;
+  return p.wholesalePrice ?? null;
+}
+/** 行内成本片段（含前导「 · 」分隔），无成本返回空串。 */
+function costText(p: Product): string {
+  const c = costOf(p);
+  return c == null ? "" : ` · 成本¥${fenToYuan(c)}`;
+}
 function unitText(p: Product): string {
   // 快照行 unitsPerCase 可能缺省（订货单旧快照），缺省视为无件概念
   const per = p.unitsPerCase ?? 1;
@@ -147,8 +161,7 @@ function unitText(p: Product): string {
           <span class="pp-item__name">{{ p.name }}</span>
           <span class="pp-item__meta"
             >现价 ¥{{ fenToYuan(p.price)
-            }}<template v-if="showCost && p.wholesalePrice"
-              > · 进货¥{{ fenToYuan(p.wholesalePrice) }}</template
+            }}<template v-if="showCost">{{ costText(p) }}</template
             > · 可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
           >
         </button>
