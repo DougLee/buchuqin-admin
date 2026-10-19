@@ -76,16 +76,24 @@ const form = ref({
   name: "",
   shortName: "",
   wxAppId: "",
+  deliveryWxAppId: "",
+  deliveryNotifyTemplateId: "",
   mchId: "",
   serialNo: "",
   notifyDomain: "",
   wxPayPublicKey: "",
   wxSecret: "",
+  deliveryWxSecret: "",
   mchApiV3Key: "",
   privateKey: "",
 });
 /** 敏感字段只写不回读：勾选=显式传 null 清除（勾选时输入框禁用） */
-const clearFlags = ref({ wxSecret: false, mchApiV3Key: false, privateKey: false });
+const clearFlags = ref({
+  wxSecret: false,
+  deliveryWxSecret: false,
+  mchApiV3Key: false,
+  privateKey: false,
+});
 
 function openCreate() {
   editing.value = null;
@@ -93,15 +101,23 @@ function openCreate() {
     name: "",
     shortName: "",
     wxAppId: "",
+    deliveryWxAppId: "",
+    deliveryNotifyTemplateId: "",
     mchId: "",
     serialNo: "",
     notifyDomain: "",
     wxPayPublicKey: "",
     wxSecret: "",
+    deliveryWxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
   };
-  clearFlags.value = { wxSecret: false, mchApiV3Key: false, privateKey: false };
+  clearFlags.value = {
+    wxSecret: false,
+    deliveryWxSecret: false,
+    mchApiV3Key: false,
+    privateKey: false,
+  };
   drawerError.value = "";
   drawerOpen.value = true;
 }
@@ -111,20 +127,30 @@ function openEdit(row: AdminOrganization) {
     name: row.name,
     shortName: row.shortName,
     wxAppId: row.wxAppId ?? "",
+    deliveryWxAppId: row.deliveryWxAppId ?? "",
+    deliveryNotifyTemplateId: row.deliveryNotifyTemplateId ?? "",
     mchId: row.mchId ?? "",
     serialNo: row.serialNo ?? "",
     notifyDomain: row.notifyDomain ?? "",
     wxPayPublicKey: row.wxPayPublicKey ?? "",
     wxSecret: "",
+    deliveryWxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
   };
-  clearFlags.value = { wxSecret: false, mchApiV3Key: false, privateKey: false };
+  clearFlags.value = {
+    wxSecret: false,
+    deliveryWxSecret: false,
+    mchApiV3Key: false,
+    privateKey: false,
+  };
   drawerError.value = "";
   drawerOpen.value = true;
 }
 /** 敏感行状态：编辑态空输入=保留不传，传值=覆盖，勾清除=null */
-function sensValue(key: "wxSecret" | "mchApiV3Key" | "privateKey"): string | null | undefined {
+function sensValue(
+  key: "wxSecret" | "deliveryWxSecret" | "mchApiV3Key" | "privateKey",
+): string | null | undefined {
   if (clearFlags.value[key]) return null;
   const v = form.value[key];
   return v ? v : undefined;
@@ -138,10 +164,17 @@ async function submitDrawer() {
     if (!WX_APPID_RE.test(appid))
       return (drawerError.value = "AppID 须为 wx 开头 18 位（wx+16 位十六进制）");
   }
+  const deliveryAppId = form.value.deliveryWxAppId.trim();
+  if (deliveryAppId && !WX_APPID_RE.test(deliveryAppId))
+    return (drawerError.value = "履约端 AppID 须为 wx 开头 18 位（wx+16 位十六进制）");
+  if (deliveryAppId && deliveryAppId === appid)
+    return (drawerError.value = "用户端与履约端不能使用相同 AppID");
   const base = {
     name: form.value.name.trim(),
     shortName: form.value.shortName.trim(),
     wxAppId: appid || null,
+    deliveryWxAppId: deliveryAppId || null,
+    deliveryNotifyTemplateId: form.value.deliveryNotifyTemplateId.trim() || null,
     mchId: form.value.mchId.trim() || null,
     serialNo: form.value.serialNo.trim() || null,
     notifyDomain: form.value.notifyDomain.trim() || null,
@@ -150,6 +183,7 @@ async function submitDrawer() {
   };
   const secrets = {
     wxSecret: sensValue("wxSecret"),
+    deliveryWxSecret: sensValue("deliveryWxSecret"),
     mchApiV3Key: sensValue("mchApiV3Key"),
     privateKey: sensValue("privateKey"),
   };
@@ -163,6 +197,12 @@ async function submitDrawer() {
         name: base.name,
         shortName: base.shortName,
         wxAppId: appid,
+        ...(base.deliveryWxAppId
+          ? { deliveryWxAppId: base.deliveryWxAppId }
+          : {}),
+        ...(base.deliveryNotifyTemplateId
+          ? { deliveryNotifyTemplateId: base.deliveryNotifyTemplateId }
+          : {}),
         ...(base.mchId ? { mchId: base.mchId } : {}),
         ...(base.serialNo ? { serialNo: base.serialNo } : {}),
         ...(base.notifyDomain ? { notifyDomain: base.notifyDomain } : {}),
@@ -170,6 +210,9 @@ async function submitDrawer() {
           ? { wxPayPublicKey: base.wxPayPublicKey }
           : {}),
         ...(secrets.wxSecret ? { wxSecret: secrets.wxSecret } : {}),
+        ...(secrets.deliveryWxSecret
+          ? { deliveryWxSecret: secrets.deliveryWxSecret }
+          : {}),
         ...(secrets.mchApiV3Key ? { mchApiV3Key: secrets.mchApiV3Key } : {}),
         ...(secrets.privateKey ? { privateKey: secrets.privateKey } : {}),
       });
@@ -238,8 +281,9 @@ function organizationRow(row: unknown): AdminOrganization {
       <ElTable v-else v-loading="loading" :data="pagedRows" row-key="id" :empty-text="keyword.trim() ? '未找到匹配的组织' : '暂无组织'" class="organization-table">
         <ElTableColumn label="组织" min-width="170"><template #default="{ row }"><strong>{{ row.name }}</strong><small class="muted organization-short-name">{{ row.shortName || "—" }}</small></template></ElTableColumn>
         <ElTableColumn label="状态" width="90"><template #default="{ row }"><ElTag :type="row.status === 'active' ? 'success' : 'warning'">{{ row.status === "active" ? "启用" : "停用" }}</ElTag></template></ElTableColumn>
-        <ElTableColumn label="小程序 AppID" min-width="190"><template #default="{ row }"><code v-if="row.wxAppId">{{ row.wxAppId }}</code><span v-else class="muted">未登记（env 兜底）</span></template></ElTableColumn>
-        <ElTableColumn label="微信配置" min-width="280"><template #default="{ row }"><div class="wx-badges"><ElTag :type="row.hasWxSecret ? 'success' : 'warning'">Secret</ElTag><ElTag :type="row.hasMchApiV3Key ? 'success' : 'warning'">APIv3密钥</ElTag><ElTag :type="row.hasPrivateKey ? 'success' : 'warning'">商户私钥</ElTag><ElTag :type="row.mchId ? 'info' : 'warning'">{{ row.mchId ? `商户号 ${row.mchId}` : "商户号未配" }}</ElTag></div></template></ElTableColumn>
+        <ElTableColumn label="用户端 AppID" min-width="190"><template #default="{ row }"><code v-if="row.wxAppId">{{ row.wxAppId }}</code><span v-else class="muted">未登记（env 兜底）</span></template></ElTableColumn>
+        <ElTableColumn label="履约端 AppID" min-width="190"><template #default="{ row }"><code v-if="row.deliveryWxAppId">{{ row.deliveryWxAppId }}</code><span v-else class="muted">未登记</span></template></ElTableColumn>
+        <ElTableColumn label="微信配置" min-width="320"><template #default="{ row }"><div class="wx-badges"><ElTag :type="row.hasWxSecret ? 'success' : 'warning'">用户 Secret</ElTag><ElTag :type="row.hasDeliveryWxSecret && row.deliveryNotifyTemplateId ? 'success' : 'warning'">履约消息</ElTag><ElTag :type="row.hasMchApiV3Key ? 'success' : 'warning'">APIv3密钥</ElTag><ElTag :type="row.hasPrivateKey ? 'success' : 'warning'">商户私钥</ElTag><ElTag :type="row.mchId ? 'info' : 'warning'">{{ row.mchId ? `商户号 ${row.mchId}` : "商户号未配" }}</ElTag></div></template></ElTableColumn>
         <ElTableColumn prop="campusCount" label="校区" width="100"><template #default="{ row }">{{ row.campusCount }}<small v-if="row.campusCount === 0" class="muted">（未开通）</small></template></ElTableColumn>
         <ElTableColumn prop="userCount" label="用户" width="80" />
         <ElTableColumn label="创建时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
@@ -256,13 +300,15 @@ function organizationRow(row: unknown): AdminOrganization {
     <!-- 新建/编辑：基本信息 + 微信配置（敏感凭据只写不回读） -->
     <ElDialog v-model="drawerOpen" class="organization-dialog" :title="editing ? `编辑组织 ${editing.name}` : '新建组织'" width="min(760px, calc(100vw - 32px))" align-center destroy-on-close modal-class="organization-dialog-overlay" :show-close="!drawerSaving" :close-on-click-modal="!drawerSaving" :close-on-press-escape="!drawerSaving">
         <p class="drawer-note">
-          AppID 一经登记即生效（该小程序登录直接进本组织）；名称/简称/AppID
+          用户端和履约端 AppID 一经登记即生效（该小程序登录直接进本组织）；名称/简称/AppID
           全局唯一。敏感凭据只写不回读——留空=保留现状，填写=覆盖，勾选清除=置空。
         </p>
         <ElForm label-position="top"><ElRow :gutter="16">
           <ElCol :xs="24" :sm="12"><ElFormItem label="组织名称"><ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="组织简称"><ElInput v-model="form.shortName" placeholder="1-20 字，如：某食社" /></ElFormItem></ElCol>
-          <ElCol :xs="24" :sm="12"><ElFormItem :label="`小程序 AppID${editing ? '（清空=回落平台 env 兜底）' : ''}`"><ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem :label="`用户端小程序 AppID${editing ? '（清空=回落平台 env 兜底）' : ''}`"><ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="履约端小程序 AppID"><ElInput v-model="form.deliveryWxAppId" placeholder="骑手小程序 wx 开头 18 位" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="履约端派单订阅模板 ID"><ElInput v-model="form.deliveryNotifyTemplateId" placeholder="微信公众平台订阅消息模板 ID" /></ElFormItem></ElCol>
         </ElRow>
         <p class="drawer-sec">微信支付与回调</p>
         <ElRow :gutter="16">
@@ -277,7 +323,7 @@ function organizationRow(row: unknown): AdminOrganization {
           <ElFormItem>
             <template #label
               ><div class="sens-label"
-                ><span>小程序 Secret</span
+                ><span>用户端小程序 Secret</span
                 ><ElTag size="small" round effect="light" :type="editing && editing.hasWxSecret ? 'success' : 'warning'">{{ editing && editing.hasWxSecret ? "已配置" : "未配置" }}</ElTag
                 ><ElCheckbox class="sens-clear" v-model="clearFlags.wxSecret">清除</ElCheckbox></div
             ></template>
@@ -287,6 +333,22 @@ function organizationRow(row: unknown): AdminOrganization {
               show-password
               :disabled="clearFlags.wxSecret"
               :placeholder="clearFlags.wxSecret ? '已勾选清除——保存后将清空该凭据' : '粘贴小程序 Secret，留空保留现状'"
+              autocomplete="new-password"
+            />
+          </ElFormItem>
+          <ElFormItem>
+            <template #label
+              ><div class="sens-label"
+                ><span>履约端小程序 Secret</span
+                ><ElTag size="small" round effect="light" :type="editing && editing.hasDeliveryWxSecret ? 'success' : 'warning'">{{ editing && editing.hasDeliveryWxSecret ? "已配置" : "未配置" }}</ElTag
+                ><ElCheckbox class="sens-clear" v-model="clearFlags.deliveryWxSecret">清除</ElCheckbox></div
+            ></template>
+            <ElInput
+              v-model="form.deliveryWxSecret"
+              type="password"
+              show-password
+              :disabled="clearFlags.deliveryWxSecret"
+              :placeholder="clearFlags.deliveryWxSecret ? '已勾选清除——保存后将清空该凭据' : '粘贴履约端 Secret，留空保留现状'"
               autocomplete="new-password"
             />
           </ElFormItem>

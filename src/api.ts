@@ -890,6 +890,9 @@ export const api = {
     shortName: string;
     wxAppId: string;
     wxSecret?: string;
+    deliveryWxAppId?: string;
+    deliveryWxSecret?: string;
+    deliveryNotifyTemplateId?: string;
     mchId?: string;
     mchApiV3Key?: string;
     serialNo?: string;
@@ -910,6 +913,9 @@ export const api = {
       shortName: string;
       wxAppId: string | null;
       wxSecret: string | null;
+      deliveryWxAppId: string | null;
+      deliveryWxSecret: string | null;
+      deliveryNotifyTemplateId: string | null;
       mchId: string | null;
       mchApiV3Key: string | null;
       serialNo: string | null;

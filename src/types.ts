@@ -71,12 +71,15 @@ export interface AdminOrganization {
   /** IKKRMS：微信配置位（敏感凭据 wxSecret/mchApiV3Key/privateKey 只回
    *  「已配置」布尔，明文永不回读——编辑传值=覆盖、显式 null=清除） */
   wxAppId: string | null;
+  deliveryWxAppId: string | null;
+  deliveryNotifyTemplateId: string | null;
   mchId: string | null;
   serialNo: string | null;
   notifyDomain: string | null;
   /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读，空串=清除） */
   wxPayPublicKey: string | null;
   hasWxSecret: boolean;
+  hasDeliveryWxSecret: boolean;
   hasMchApiV3Key: boolean;
   hasPrivateKey: boolean;
 }
