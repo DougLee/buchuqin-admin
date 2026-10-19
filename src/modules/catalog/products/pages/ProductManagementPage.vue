@@ -135,6 +135,20 @@
                 row.procurementMode === "LOCAL" ? "自主采购" : "总部供货"
               }}</ElTag></template
             ></ElTableColumn
+          ><!-- 本地进货价（道哥 2026-10-19）：LOCAL 显示自报价，总部直供一律
+              ¥0.00；无成本权限（RBAC 裁剪）显示 — -->
+          <ElTableColumn v-if="!official" label="本地进货价" width="110"
+            ><template #default="{ row }"
+              >{{
+                row.localPurchasePrice == null
+                  ? "—"
+                  : `¥${fenToYuan(
+                      row.procurementMode === "LOCAL"
+                        ? row.localPurchasePrice
+                        : 0,
+                    )}`
+              }}</template
+            ></ElTableColumn
           ><ElTableColumn
             v-if="!official"
             prop="availableStock"
