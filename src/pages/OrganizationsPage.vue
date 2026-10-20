@@ -12,6 +12,8 @@ import { fmtDateTime } from "../utils/datetime";
  * - 列表：每组织聚合校区数/用户数 + 微信配置 hasXxx 状态位（敏感凭据永不回读）；
  * - 新建/编辑弹窗：name/shortName/wxAppId 必填唯一（wxAppId 一经登记，
  *   AppID→组织映射即生效——错登记=组织 B 小程序登录串组织）；
+ * - 服务号（派单推送，IKP34J）：四件套（AppID/Token/模板ID/二维码）非敏感
+ *   可回读，AppSecret 敏感只写不回读——留空回落平台服务号或关闭通道；
  * - 启停：两击确认。
  * 写操作全部后端超管专属（isSuperOnlyOperation），页内 isSuper 双保险；
  * 组织管理员（org-admin 预设）经菜单授权只读可见本页。
@@ -86,6 +88,11 @@ const form = ref({
   deliveryWxSecret: "",
   mchApiV3Key: "",
   privateKey: "",
+  gzhAppId: "",
+  gzhToken: "",
+  gzhTemplateId: "",
+  gzhQrcodeUrl: "",
+  gzhSecret: "",
 });
 /** 敏感字段只写不回读：勾选=显式传 null 清除（勾选时输入框禁用） */
 const clearFlags = ref({
@@ -93,6 +100,7 @@ const clearFlags = ref({
   deliveryWxSecret: false,
   mchApiV3Key: false,
   privateKey: false,
+  gzhSecret: false,
 });
 
 function openCreate() {
@@ -111,12 +119,18 @@ function openCreate() {
     deliveryWxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
+    gzhAppId: "",
+    gzhToken: "",
+    gzhTemplateId: "",
+    gzhQrcodeUrl: "",
+    gzhSecret: "",
   };
   clearFlags.value = {
     wxSecret: false,
     deliveryWxSecret: false,
     mchApiV3Key: false,
     privateKey: false,
+    gzhSecret: false,
   };
   drawerError.value = "";
   drawerOpen.value = true;
@@ -137,19 +151,30 @@ function openEdit(row: AdminOrganization) {
     deliveryWxSecret: "",
     mchApiV3Key: "",
     privateKey: "",
+    gzhAppId: row.gzhAppId ?? "",
+    gzhToken: row.gzhToken ?? "",
+    gzhTemplateId: row.gzhTemplateId ?? "",
+    gzhQrcodeUrl: row.gzhQrcodeUrl ?? "",
+    gzhSecret: "",
   };
   clearFlags.value = {
     wxSecret: false,
     deliveryWxSecret: false,
     mchApiV3Key: false,
     privateKey: false,
+    gzhSecret: false,
   };
   drawerError.value = "";
   drawerOpen.value = true;
 }
 /** 敏感行状态：编辑态空输入=保留不传，传值=覆盖，勾清除=null */
 function sensValue(
-  key: "wxSecret" | "deliveryWxSecret" | "mchApiV3Key" | "privateKey",
+  key:
+    | "wxSecret"
+    | "deliveryWxSecret"
+    | "mchApiV3Key"
+    | "privateKey"
+    | "gzhSecret",
 ): string | null | undefined {
   if (clearFlags.value[key]) return null;
   const v = form.value[key];
@@ -169,6 +194,10 @@ async function submitDrawer() {
     return (drawerError.value = "履约端 AppID 须为 wx 开头 18 位（wx+16 位十六进制）");
   if (deliveryAppId && deliveryAppId === appid)
     return (drawerError.value = "用户端与履约端不能使用相同 AppID");
+  // IKP34J 服务号 AppID：宽松校验——填了才验 wx 开头 18 位
+  const gzhAppId = form.value.gzhAppId.trim();
+  if (gzhAppId && !WX_APPID_RE.test(gzhAppId))
+    return (drawerError.value = "服务号 AppID 须为 wx 开头 18 位（wx+16 位十六进制）");
   const base = {
     name: form.value.name.trim(),
     shortName: form.value.shortName.trim(),
@@ -180,12 +209,17 @@ async function submitDrawer() {
     notifyDomain: form.value.notifyDomain.trim() || null,
     // 微信支付公钥非敏感可回读：编辑态总是传（空串=清除），新建态有值才传
     wxPayPublicKey: form.value.wxPayPublicKey.trim(),
+    gzhAppId: gzhAppId || null,
+    gzhToken: form.value.gzhToken.trim() || null,
+    gzhTemplateId: form.value.gzhTemplateId.trim() || null,
+    gzhQrcodeUrl: form.value.gzhQrcodeUrl.trim() || null,
   };
   const secrets = {
     wxSecret: sensValue("wxSecret"),
     deliveryWxSecret: sensValue("deliveryWxSecret"),
     mchApiV3Key: sensValue("mchApiV3Key"),
     privateKey: sensValue("privateKey"),
+    gzhSecret: sensValue("gzhSecret"),
   };
   drawerSaving.value = true;
   try {
@@ -209,12 +243,17 @@ async function submitDrawer() {
         ...(base.wxPayPublicKey
           ? { wxPayPublicKey: base.wxPayPublicKey }
           : {}),
+        ...(base.gzhAppId ? { gzhAppId: base.gzhAppId } : {}),
+        ...(base.gzhToken ? { gzhToken: base.gzhToken } : {}),
+        ...(base.gzhTemplateId ? { gzhTemplateId: base.gzhTemplateId } : {}),
+        ...(base.gzhQrcodeUrl ? { gzhQrcodeUrl: base.gzhQrcodeUrl } : {}),
         ...(secrets.wxSecret ? { wxSecret: secrets.wxSecret } : {}),
         ...(secrets.deliveryWxSecret
           ? { deliveryWxSecret: secrets.deliveryWxSecret }
           : {}),
         ...(secrets.mchApiV3Key ? { mchApiV3Key: secrets.mchApiV3Key } : {}),
         ...(secrets.privateKey ? { privateKey: secrets.privateKey } : {}),
+        ...(secrets.gzhSecret ? { gzhSecret: secrets.gzhSecret } : {}),
       });
       notify("组织已创建");
     }
@@ -318,6 +357,35 @@ function organizationRow(row: unknown): AdminOrganization {
           <!-- 微信支付公钥（2024+ 新商户回调验签，非敏感可回读；清空=清除） -->
           <ElCol :span="24"><ElFormItem label="微信支付公钥 PEM（新商户平台「API 安全 → 微信支付公钥」下载，pub_key.pem）"><ElInput v-model="form.wxPayPublicKey" type="textarea" :rows="4" placeholder="-----BEGIN PUBLIC KEY----- 开头整段粘贴；留空保留现状，清空后保存=清除" /></ElFormItem></ElCol>
         </ElRow>
+        <!-- IKP34J 派单服务号：四件套非敏感可回读；AppSecret 照敏感凭据卡片只写不回读 -->
+        <p class="drawer-sec">服务号（派单推送）</p>
+        <p class="drawer-note">
+          按组织路由派单服务号——配齐四件套后骑手派单从本组织服务号推送；留空回落平台服务号（仅平台组织）或关闭通道。
+        </p>
+        <ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12"><ElFormItem label="服务号 AppID"><ElInput v-model="form.gzhAppId" placeholder="微信公众号 AppID（wx 开头 18 位），未配可留空" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="回调 Token"><ElInput v-model="form.gzhToken" placeholder="服务号后台「服务器配置」里的 Token" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="派单模板 ID"><ElInput v-model="form.gzhTemplateId" placeholder="服务号模板消息模板 ID" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="关注二维码 URL"><ElInput v-model="form.gzhQrcodeUrl" placeholder="服务号二维码图片 URL，配送端引导关注展示" /></ElFormItem></ElCol>
+        </ElRow>
+        <div class="sens-panel gzh-sens">
+          <ElFormItem class="sens-last">
+            <template #label
+              ><div class="sens-label"
+                ><span>服务号 AppSecret</span
+                ><ElTag size="small" round effect="light" :type="editing && editing.hasGzhSecret ? 'success' : 'warning'">{{ editing && editing.hasGzhSecret ? "已配置" : "未配置" }}</ElTag
+                ><ElCheckbox class="sens-clear" v-model="clearFlags.gzhSecret">清除</ElCheckbox></div
+            ></template>
+            <ElInput
+              v-model="form.gzhSecret"
+              type="password"
+              show-password
+              :disabled="clearFlags.gzhSecret"
+              :placeholder="clearFlags.gzhSecret ? '已勾选清除——保存后将清空该凭据' : '粘贴服务号 AppSecret，留空保留现状'"
+              autocomplete="new-password"
+            />
+          </ElFormItem>
+        </div>
         <p class="drawer-sec">敏感凭据（只写不回读）</p>
         <div class="sens-panel">
           <ElFormItem>
@@ -442,6 +510,8 @@ td small.muted {
 }
 .sens-panel :deep(.el-form-item) { margin-bottom: 14px; }
 .sens-panel :deep(.el-form-item.sens-last) { margin-bottom: 8px; }
+/* 服务号 Secret 独立小卡片：与敏感凭据区同款视觉，贴合所属分区 */
+.gzh-sens { margin: 2px 0 6px; }
 .sens-label {
   display: flex;
   align-items: center;

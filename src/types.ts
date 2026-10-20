@@ -82,6 +82,12 @@ export interface AdminOrganization {
   hasDeliveryWxSecret: boolean;
   hasMchApiV3Key: boolean;
   hasPrivateKey: boolean;
+  /** IKP34J：派单服务号四件套+二维码（非敏感可回读）；AppSecret 敏感只回 hasGzhSecret */
+  gzhAppId: string | null;
+  gzhToken: string | null;
+  gzhTemplateId: string | null;
+  gzhQrcodeUrl: string | null;
+  hasGzhSecret: boolean;
 }
 
 /** 开通组织一条龙结果（IKKRMS）：幂等——created=false 表示已有、返回现状。 */

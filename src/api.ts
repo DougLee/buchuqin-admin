@@ -904,6 +904,13 @@ export const api = {
     notifyDomain?: string;
     /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读） */
     wxPayPublicKey?: string;
+    /** IKP34J 派单服务号：四件套+二维码（非敏感可回读） */
+    gzhAppId?: string;
+    gzhToken?: string;
+    gzhTemplateId?: string;
+    gzhQrcodeUrl?: string;
+    /** 服务号 AppSecret（敏感只写） */
+    gzhSecret?: string;
   }) =>
     request<AdminOrganization>("/admin/organizations", {
       method: "POST",
@@ -927,6 +934,13 @@ export const api = {
       notifyDomain: string | null;
       /** 微信支付公钥 PEM（非敏感，空串=清除） */
       wxPayPublicKey: string | null;
+      /** IKP34J 派单服务号：四件套+二维码（非敏感，null=清除） */
+      gzhAppId: string | null;
+      gzhToken: string | null;
+      gzhTemplateId: string | null;
+      gzhQrcodeUrl: string | null;
+      /** 服务号 AppSecret（敏感：传值=覆盖、null=清除、不传=不动） */
+      gzhSecret: string | null;
     }>,
   ) =>
     request<AdminOrganization>(`/admin/organizations/${id}`, {
