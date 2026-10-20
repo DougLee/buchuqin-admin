@@ -91,8 +91,11 @@ async function showForm(row?: Staff) {
 async function save() {
   if (!form.campusId || !form.name.trim() || !form.staffNo.trim())
     return notify("请完整填写所属校区、姓名和工号", "error");
-  // IKP0AP：联系电话选填，填了才校验格式（11 位手机号或座机）；清空=未录入（提交 null）
+  // IKP0AP：联系电话新建必填（道哥共识：保证新员工可被联系），编辑补录可选；
+  // 格式 11 位手机号或座机；清空=未录入（提交 null）
   const phone = form.phone.trim();
+  if (!editing.value && !phone)
+    return notify("请填写联系电话（用于订单异常时联系配送员）", "error");
   if (phone && !/^[0-9-]{3,20}$/.test(phone)) return notify("联系电话格式不正确", "error");
   saving.value = true;
   try {

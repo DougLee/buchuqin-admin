@@ -109,9 +109,17 @@ async function load() {
   }
 }
 
-function openDetail(row: Order) {
+/** IKP0AP：列表行无配送链（deliveryChain 只在单查端点开启）——先以列表行
+ *  秒开弹窗，异步拉详情替换补齐骑手/楼长；拉取失败静默保留列表行展示。 */
+async function openDetail(row: Order) {
   selected.value = row;
   detailOpen.value = true;
+  try {
+    const detail = await api.orderDetail(row.id);
+    if (selected.value?.id === row.id) selected.value = detail;
+  } catch {
+    /* 详情拉取失败不打断弹窗，链路人员显示列表行口径（—） */
+  }
 }
 
 /** 道哥 2026-10-15：待出库单在订单配送页直出库（与拣货页同动作——
