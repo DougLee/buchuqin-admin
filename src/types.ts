@@ -203,6 +203,8 @@ export interface Order {
   createdAt: string;
   paidAt: string | null;
   deliveryMode: string;
+  /** 预约达送达时段（如「明天 12:00-13:00」）；即时达为空 */
+  deliverySlot?: string | null;
   remark: string;
   totalQuantity: number;
   /** 实付金额（分）。 */

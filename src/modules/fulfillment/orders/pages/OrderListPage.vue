@@ -53,6 +53,13 @@ function addressText(order: Order) {
   return [order.address?.buildingName, order.address?.room].filter(Boolean).join("") || "—";
 }
 
+/** 配送方式（IKP0AP 顺带，道哥 2026-10-20）：即时达/预约达，预约带送达时段 */
+function modeText(order: Order) {
+  if (order.deliveryMode === "scheduled")
+    return order.deliverySlot ? `预约达 · ${order.deliverySlot}` : "预约达";
+  return "即时达";
+}
+
 function statusText(order: Order) {
   return order.status === "delivered" ? "待用户确认" : order.statusText || order.status;
 }
@@ -331,6 +338,8 @@ onMounted(load);
           <ElDescriptionsItem label="收货人">{{ selected.address?.contactName || "—" }}</ElDescriptionsItem>
           <ElDescriptionsItem label="电话">{{ selected.address?.phone || selected.userPhone || "—" }}</ElDescriptionsItem>
           <ElDescriptionsItem label="寝室">{{ addressText(selected) }}</ElDescriptionsItem>
+          <!-- 配送方式（道哥 2026-10-20）：即时达/预约达，预约单带送达时段 -->
+          <ElDescriptionsItem label="配送方式">{{ modeText(selected) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="备注" :span="3">{{ selected.remark || "—" }}</ElDescriptionsItem>
         </ElDescriptions>
         <!-- IKP0AP：配送链路（接单骑手/楼长），无数据显示 — -->
