@@ -7,7 +7,7 @@ import { STAFF_STATUS_TABS } from "../../../../dicts/status-tab";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Building, Campus, Staff } from "../../../../types";
+import type { Building, Campus, Staff, StaffWriteBody } from "../../../../types";
 
 const rows = ref<Staff[]>([]),
   campuses = ref<Campus[]>([]),
@@ -26,6 +26,7 @@ const form = reactive({
   campusId: "",
   name: "",
   staffNo: "",
+  phone: "",
   role: "building-manager",
   status: "online",
   buildingId: "",
@@ -79,6 +80,7 @@ async function showForm(row?: Staff) {
     campusId: row?.campusId ?? effectiveCampusId.value,
     name: row?.name ?? "",
     staffNo: row?.staffNo ?? "",
+    phone: row?.phone ?? "",
     role: row?.role ?? "building-manager",
     status: row?.status ?? "online",
     buildingId: row?.buildingId ?? "",
@@ -89,12 +91,16 @@ async function showForm(row?: Staff) {
 async function save() {
   if (!form.campusId || !form.name.trim() || !form.staffNo.trim())
     return notify("请完整填写所属校区、姓名和工号", "error");
+  // IKP0AP：联系电话选填，填了才校验格式（11 位手机号或座机）；清空=未录入（提交 null）
+  const phone = form.phone.trim();
+  if (phone && !/^[0-9-]{3,20}$/.test(phone)) return notify("联系电话格式不正确", "error");
   saving.value = true;
   try {
-    const body: Record<string, unknown> = {
+    const body: StaffWriteBody = {
       campusId: form.campusId,
       name: form.name.trim(),
       staffNo: form.staffNo.trim(),
+      phone: phone || null,
       role: form.role,
       status: form.status,
     };
@@ -200,6 +206,12 @@ onMounted(async () => {
           label="姓名"
           min-width="120"
         /><ElTableColumn
+          label="电话"
+          width="130"
+          ><template #default="{ row }">{{
+            asStaff(row).phone || "—"
+          }}</template></ElTableColumn
+        ><ElTableColumn
           prop="roleText"
           label="角色"
           min-width="130"
@@ -267,6 +279,12 @@ onMounted(async () => {
           ><ElCol :xs="24" :sm="12"
             ><ElFormItem label="工号"
               ><ElInput v-model="form.staffNo" /></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="联系电话"
+              ><ElInput
+                v-model="form.phone"
+                maxlength="20"
+                placeholder="手机号或座机，可留空" /></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12"
             ><ElFormItem label="角色"
               ><ElSelect v-model="form.role"

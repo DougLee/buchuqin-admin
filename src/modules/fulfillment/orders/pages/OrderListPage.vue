@@ -6,7 +6,7 @@ import { ORDER_STATUS_TABS } from "../../../../dicts";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Order } from "../../../../types";
+import type { Order, OrderDeliveryMember } from "../../../../types";
 import { fmtDateTime } from "../../../../utils/datetime";
 import { resolveImageUrl } from "../../../../utils/image";
 import { fenToYuan } from "../../../../utils/money";
@@ -55,6 +55,13 @@ function addressText(order: Order) {
 
 function statusText(order: Order) {
   return order.status === "delivered" ? "待用户确认" : order.statusText || order.status;
+}
+
+/** IKP0AP：配送链路人员展示（姓名 · 电话），未接单/自提等场景为空显示 —。
+ *  PC 端不挂 tel 链接，号码文本可直接选中复制。 */
+function chainText(member: OrderDeliveryMember | null | undefined) {
+  if (!member?.name) return "—";
+  return member.phone ? `${member.name} · ${member.phone}` : member.name;
 }
 
 function tabCount(key: string) {
@@ -318,6 +325,18 @@ onMounted(load);
           <ElDescriptionsItem label="寝室">{{ addressText(selected) }}</ElDescriptionsItem>
           <ElDescriptionsItem label="备注" :span="3">{{ selected.remark || "—" }}</ElDescriptionsItem>
         </ElDescriptions>
+        <!-- IKP0AP：配送链路（接单骑手/楼长），无数据显示 — -->
+        <section class="delivery-chain" aria-label="配送信息">
+          <strong>配送信息</strong>
+          <ElDescriptions :column="2" border>
+            <ElDescriptionsItem label="骑手">
+              {{ chainText(selected.deliveryChain?.rider) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="楼长">
+              {{ chainText(selected.deliveryChain?.manager) }}
+            </ElDescriptionsItem>
+          </ElDescriptions>
+        </section>
         <ElTable :data="selected.items || []" class="items-table">
           <ElTableColumn label="商品">
             <template #default="{ row }">{{ row.product?.name || "未知商品" }}</template>
@@ -512,6 +531,15 @@ onMounted(load);
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.delivery-chain {
+  margin-top: 16px;
+}
+
+.delivery-chain > strong {
+  display: block;
+  margin-bottom: 10px;
 }
 
 .items-table {

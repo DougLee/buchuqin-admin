@@ -53,6 +53,7 @@ import type {
   RoomImportResult,
   Settlement,
   Staff,
+  StaffWriteBody,
   StocktakeResult,
   WheelConfig,
   WheelPrizeInput,
@@ -742,12 +743,13 @@ export const api = {
         listQuery(query),
       )}`,
     ),
-  createStaff: (data: Record<string, unknown>) =>
+  /** IKP0AP：phone 可选（11 位手机号或座机），null=清空未录入。 */
+  createStaff: (data: StaffWriteBody) =>
     request<Staff>("/admin/staff", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateStaff: (id: string, data: Record<string, unknown>) =>
+  updateStaff: (id: string, data: StaffWriteBody) =>
     request<Staff>(`/admin/staff/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

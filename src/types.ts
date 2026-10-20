@@ -179,6 +179,18 @@ export interface OrderItem {
   quantity: number;
 }
 
+/** IKP0AP：配送链路人员（接单骑手 / 楼长）。 */
+export interface OrderDeliveryMember {
+  name: string;
+  phone: string;
+  staffNo: string;
+}
+
+export interface OrderDeliveryChain {
+  rider: OrderDeliveryMember | null;
+  manager: OrderDeliveryMember | null;
+}
+
 export interface Order {
   id: string;
   orderNo: string;
@@ -215,6 +227,8 @@ export interface Order {
     /** 历史前端字段，仅用于兼容旧数据。新送达凭证由 API 写入 proof。 */
     deliveredProof?: { images?: string[]; remark?: string; time?: string };
   } | null;
+  /** IKP0AP：配送链路（骑手/楼长姓名+电话），未接单或自提场景对应角色为 null。 */
+  deliveryChain?: OrderDeliveryChain | null;
 }
 
 export interface Staff {
@@ -233,6 +247,19 @@ export interface Staff {
   income?: number;
   online: boolean;
   buildingRef?: Building;
+  /** IKP0AP：联系电话（11 位手机号或座机），空=未录入。 */
+  phone?: string | null;
+}
+
+/** IKP0AP：员工创建/编辑入参（phone 可选，null=清空未录入）。 */
+export interface StaffWriteBody {
+  campusId: string;
+  name: string;
+  staffNo: string;
+  role: string;
+  status: string;
+  phone?: string | null;
+  buildingId?: string | null;
 }
 
 /** 首页 Banner（IK9RX2）：后台管理视图，color 为预置主题键或自定义 hex。 */
