@@ -66,31 +66,66 @@ async function load() {
     loading.value = false;
   }
 }
+/** 商品候选集（道哥 2026-10-20 秒杀选不到新商品）：后端 pageSize 封顶 100，
+ *  一次性拉 1000 只拿到首页——新商品若排序靠后即「找不到」。改 remote 模式
+ *  （照 FeaturedPage 先例）：搜索/类别上抛服务端 + 加载更多翻页搜全。 */
+let lastFilter: { categoryId: string; keyword: string } = {
+  categoryId: "all",
+  keyword: "",
+};
+const candPage = ref(1);
+const candTotal = ref(0);
+const loadingMore = ref(false);
+const hasMore = computed(() => products.value.length < candTotal.value);
+async function loadCandidates(append = false) {
+  if (!effectiveCampusId.value) {
+    products.value = [];
+    candTotal.value = 0;
+    productsLoading.value = false;
+    return;
+  }
+  if (!append) productsLoading.value = true;
+  else loadingMore.value = true;
+  try {
+    const f = lastFilter;
+    const r = await api.products(
+      {
+        page: candPage.value,
+        pageSize: 100,
+        status: "on-sale",
+        categoryId: f.categoryId !== "all" ? f.categoryId : undefined,
+        keyword: f.keyword || undefined,
+        campusId: effectiveCampusId.value,
+      },
+      "campus",
+    );
+    products.value = append ? [...products.value, ...r.items] : r.items;
+    candTotal.value = r.total;
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "在售商品加载失败", "error");
+  } finally {
+    productsLoading.value = false;
+    loadingMore.value = false;
+  }
+}
+function onFilterChange(f: { categoryId: string; keyword: string }) {
+  lastFilter = f;
+  candPage.value = 1;
+  void loadCandidates();
+}
+function loadMoreCandidates() {
+  if (loadingMore.value || !hasMore.value) return;
+  candPage.value += 1;
+  void loadCandidates(true);
+}
 async function edit(row?: Promotion) {
   editing.value = row ?? null;
   if (!row) {
     // 商品候选集弹窗打开后异步拉取，选择器内置骨架占位（IKGNQ 仅本校区在售）
     products.value = [];
-    productsLoading.value = true;
-    void api
-      .products(
-        {
-          page: 1,
-          pageSize: 1000,
-          status: "on-sale",
-          campusId: effectiveCampusId.value,
-        },
-        "campus",
-      )
-      .then((r) => {
-        products.value = r.items;
-      })
-      .catch((e) =>
-        notify(e instanceof Error ? e.message : "在售商品加载失败", "error"),
-      )
-      .finally(() => {
-        productsLoading.value = false;
-      });
+    lastFilter = { categoryId: "all", keyword: "" };
+    candPage.value = 1;
+    void loadCandidates();
   }
   Object.assign(form, {
     productId: row?.productId ?? "",
@@ -260,11 +295,16 @@ onMounted(load);
                   类别筛选+搜索+行式卡片，showCost 补显成本价（IKH15V 口径：
                   LOCAL=localPurchasePrice 回落批发价，其余=批发价）防亏本定价 -->
               <ProductPickerField
+                remote
                 :items="products"
                 :loading="productsLoading"
+                :has-more="hasMore"
+                :loading-more="loadingMore"
                 show-cost
                 :model-value="form.productId"
-                @update:model-value="pickProduct" /></ElFormItem></ElCol
+                @update:model-value="pickProduct"
+                @filter-change="onFilterChange"
+                @load-more="loadMoreCandidates" /></ElFormItem></ElCol
           ><ElCol v-if="!editing" :xs="24" :sm="12"
             ><ElFormItem label="类型"
               ><ElSelect v-model="form.type"
