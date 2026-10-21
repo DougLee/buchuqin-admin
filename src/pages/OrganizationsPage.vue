@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
-import { api } from "../api";
+import { ElMessage, type UploadFile } from "element-plus";
+import { api, uploadImage } from "../api";
 import AdminPagination from "../shared/ui/AdminPagination.vue";
 import { isSuper } from "../session";
 import type { AdminOrganization } from "../types";
@@ -103,6 +103,22 @@ const clearFlags = ref({
   gzhSecret: false,
 });
 
+/** 服务号关注二维码上传（道哥 2026-10-20：URL 手贴改图片上传）——
+ *  COS webp 压缩走 uploads/ 目录，成功回填 URL 表单即预览 */
+const gzhQrcodeUploading = ref(false);
+async function onGzhQrcodeChange(upload: UploadFile) {
+  const file = upload.raw;
+  if (!file) return;
+  gzhQrcodeUploading.value = true;
+  try {
+    form.value.gzhQrcodeUrl = await uploadImage(file, "uploads");
+    ElMessage.success("二维码已上传");
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : "上传失败");
+  } finally {
+    gzhQrcodeUploading.value = false;
+  }
+}
 function openCreate() {
   editing.value = null;
   form.value = {
@@ -366,7 +382,35 @@ function organizationRow(row: unknown): AdminOrganization {
           <ElCol :xs="24" :sm="12"><ElFormItem label="服务号 AppID"><ElInput v-model="form.gzhAppId" placeholder="微信公众号 AppID（wx 开头 18 位），未配可留空" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="回调 Token"><ElInput v-model="form.gzhToken" placeholder="服务号后台「服务器配置」里的 Token" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="派单模板 ID"><ElInput v-model="form.gzhTemplateId" placeholder="服务号模板消息模板 ID" /></ElFormItem></ElCol>
-          <ElCol :xs="24" :sm="12"><ElFormItem label="关注二维码 URL"><ElInput v-model="form.gzhQrcodeUrl" placeholder="服务号二维码图片 URL，配送端引导关注展示" /></ElFormItem></ElCol>
+          <ElCol :span="24"><ElFormItem label="关注二维码（配送端引导关注展示）">
+            <div class="qrcode-row">
+              <img
+                v-if="form.gzhQrcodeUrl"
+                :src="form.gzhQrcodeUrl"
+                class="qrcode-preview"
+                alt="服务号二维码"
+              />
+              <div v-else class="qrcode-empty">未上传</div>
+              <div class="qrcode-ops">
+                <ElUpload
+                  :auto-upload="false"
+                  :show-file-list="false"
+                  accept="image/*"
+                  :on-change="onGzhQrcodeChange"
+                  ><ElButton :loading="gzhQrcodeUploading"
+                    >上传图片</ElButton
+                  ></ElUpload
+                >
+                <ElButton
+                  v-if="form.gzhQrcodeUrl"
+                  text
+                  type="danger"
+                  @click="form.gzhQrcodeUrl = ''"
+                  >移除</ElButton
+                >
+              </div>
+            </div>
+          </ElFormItem></ElCol>
         </ElRow>
         <div class="sens-panel gzh-sens">
           <ElFormItem class="sens-last">
@@ -460,6 +504,34 @@ function organizationRow(row: unknown): AdminOrganization {
   </div>
 </template>
 <style scoped>
+/* 服务号关注二维码上传行（照校区配置客服二维码同款视觉） */
+.qrcode-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.qrcode-preview {
+  width: 88px;
+  height: 88px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+.qrcode-empty {
+  width: 88px;
+  height: 88px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.qrcode-ops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .load-alert { margin: 14px; width: auto; }
 .organization-toolbar {
   display: flex;
