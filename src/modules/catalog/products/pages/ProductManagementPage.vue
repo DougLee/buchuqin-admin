@@ -8,6 +8,7 @@
         : '维护顶部当前校区的售价、采购来源和商品资料。'
     "
     ><template #actions
+      ><ElButton :loading="exporting" @click="exportProducts">导出</ElButton
       ><ElButton
         v-if="!official && campus && hasPerm('POST /admin/products/import')"
         @click="showImport"
@@ -73,12 +74,6 @@
                     load();
                   "
                   >查询</ElButton
-                ></ElFormItem
-              ></ElCol
-            ><ElCol :xs="24" :sm="12"
-              ><ElFormItem label=" "
-                ><ElButton :loading="exporting" @click="exportProducts"
-                  >导出</ElButton
                 ></ElFormItem
               ></ElCol
             ></ElRow
