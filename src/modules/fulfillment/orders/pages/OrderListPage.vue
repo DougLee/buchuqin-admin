@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import * as XLSX from "xlsx";
 import { api } from "../../../../api";
 import { ORDER_STATUS_TABS } from "../../../../dicts";
 import { effectiveCampusId, hasPerm } from "../../../../session";
@@ -116,6 +117,109 @@ async function load() {
   }
 }
 
+/** 订单导出 Excel（道哥 2026-10-23，A 方案全量列）：按当前筛选（页签/
+ *  关键字/配送方式/日期）分页拉全（后端 pageSize 封顶 100，循环翻页）。
+ *  配送链（骑手/楼长）只在单查端点开启——逐单拉详情补齐，并发 5 控制节奏；
+ *  成本/毛利走行内成本快照（服务端 RBAC 裁剪后无权限自然为空）。 */
+const exporting = ref(false);
+async function exportOrders() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const all: Order[] = [];
+    const pageSize = 100;
+    const statuses = currentTab.value.statuses.length
+      ? currentTab.value.statuses.join(",")
+      : "all";
+    for (let p = 1; ; p++) {
+      const r = await api.orders(statuses, {
+        page: p,
+        pageSize,
+        keyword: keyword.value.trim() || undefined,
+        campusId: campusId.value,
+        deliveryMode: deliveryMode.value || undefined,
+        start: dateRange.value?.[0],
+        end: dateRange.value?.[1],
+      });
+      all.push(...r.items);
+      if (all.length >= r.total || !r.items.length) break;
+    }
+    // 逐单补配送链：并发 5（详情请求含骑手/楼长反查，量大全跑会打爆）
+    const details = new Map<string, Order>();
+    const queue = [...all];
+    async function worker() {
+      for (;;) {
+        const row = queue.shift();
+        if (!row) return;
+        try {
+          details.set(row.id, await api.orderDetail(row.id));
+        } catch {
+          /* 单单失败不影响整体，导出该单配送链列显示 — */
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: 5 }, worker));
+    const money = (v?: number | null) => (v == null ? "" : `¥${fenToYuan(v)}`);
+    const costOf = (o: Order): number | null => {
+      const lines = (o.items ?? []) as Array<{
+        product?: { unitGrossCost?: number };
+        quantity: number;
+      }>;
+      let total = 0;
+      for (const line of lines) {
+        const unit = line.product?.unitGrossCost;
+        if (unit == null) return null; // 任一行成本缺失（无权限/老快照）→ 整单不算
+        total += unit * line.quantity;
+      }
+      return lines.length ? total : null;
+    };
+    const chain = (m?: OrderDeliveryMember | null) =>
+      m?.name ? (m.phone ? `${m.name} ${m.phone}` : m.name) : "—";
+    const header = [
+      "订单号", "状态", "下单时间", "支付时间", "配送方式",
+      "收货人", "电话", "寝室", "商品明细",
+      "商品额", "配送费", "优惠", "实付", "成本", "毛利",
+      "骑手", "楼长",
+    ];
+    const rows = all.map((o) => {
+      const d = details.get(o.id);
+      const cost = costOf(o);
+      return [
+        o.orderNo,
+        statusText(o),
+        fmtDateTime(o.createdAt),
+        o.paidAt ? fmtDateTime(o.paidAt) : "",
+        modeText(o),
+        o.address?.contactName || "",
+        o.address?.phone || o.userPhone || "",
+        addressText(o),
+        itemNames(o),
+        money(o.productAmount),
+        money(o.deliveryFee),
+        o.discount ? `¥${fenToYuan(o.discount)}` : "",
+        money(o.payableAmount),
+        cost == null ? "" : money(cost),
+        cost == null ? "" : money(o.payableAmount - cost),
+        chain(d?.deliveryChain?.rider),
+        chain(d?.deliveryChain?.manager),
+      ];
+    });
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    sheet["!cols"] = header.map(() => ({ wch: 16 }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "订单列表");
+    XLSX.writeFile(
+      book,
+      `订单列表-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+    notify(`已导出 ${all.length} 笔订单`);
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "导出失败", "error");
+  } finally {
+    exporting.value = false;
+  }
+}
+
 /** IKP0AP：列表行无配送链（deliveryChain 只在单查端点开启）——先以列表行
  *  秒开弹窗，异步拉详情替换补齐骑手/楼长；拉取失败静默保留列表行展示。 */
 async function openDetail(row: Order) {
@@ -205,6 +309,7 @@ onMounted(load);
     description="监控当前顶部校区的订单生命周期与配送进度。"
   >
     <template #actions>
+      <ElButton :loading="exporting" @click="exportOrders">导出</ElButton>
       <ElButton :loading="loading" @click="load">刷新</ElButton>
     </template>
 
