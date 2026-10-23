@@ -75,6 +75,12 @@
                   >查询</ElButton
                 ></ElFormItem
               ></ElCol
+            ><ElCol :xs="24" :sm="12"
+              ><ElFormItem label=" "
+                ><ElButton :loading="exporting" @click="exportProducts"
+                  >导出</ElButton
+                ></ElFormItem
+              ></ElCol
             ></ElRow
           ></ElForm
         >
@@ -364,6 +370,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import * as XLSX from "xlsx";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import ProductImagesField from "../../../../components/ProductImagesField.vue";
@@ -430,6 +437,87 @@ const title = computed(() => (official.value ? "官方商品库" : "商品管理
   tabs = computed(() =>
     official.value ? HQ_PRODUCT_STATUS_TABS : PRODUCT_STATUS_TABS,
   );
+/** 商品导出 Excel（道哥 2026-10-21）：按当前筛选（页签/关键字/分类）分页拉全
+ *  （后端 pageSize 封顶 100，循环翻页），SheetJS 生成 .xlsx（列宽自适应）。
+ *  列对齐列表可见维度；成本字段（批发价/本地进货价/进货价）为服务端 RBAC
+ *  裁剪后口径——无成本权限者自然为空。 */
+const exporting = ref(false);
+async function exportProducts() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const all: Product[] = [];
+    const pageSize = 100;
+    for (let p = 1; ; p++) {
+      const r = await api.products(
+        {
+          page: p,
+          pageSize,
+          keyword: keyword.value.trim() || undefined,
+          status: status.value === "all" ? undefined : status.value,
+          categoryId: categoryId.value || undefined,
+          campusId: campus.value,
+        },
+        props.mode,
+        campus.value,
+      );
+      all.push(...r.items);
+      if (all.length >= r.total || !r.items.length) break;
+    }
+    const money = (v?: number | null) => (v == null ? "" : `¥${fenToYuan(v)}`);
+    const modeText = (m?: string | null) =>
+      m === "LOCAL" ? "自主采购" : m === "HQ" ? "总部供货" : "待确认";
+    const statusText = (s: string) =>
+      s === "on-sale" ? "在售" : s === "off-sale" ? "已下架" : "售罄";
+    const catName = (id: string) =>
+      categories.value.find((c) => c.id === id)?.name ?? id ?? "";
+    const header = official.value
+      ? ["商品名", "条码", "分类", "售价", "建议零售价", "进货价", "批发价", "可售库存", "状态"]
+      : ["库位", "商品名", "条码", "分类", "售价", "建议零售价", "批发价", "本地进货价", "采购来源", "可售库存", "状态"];
+    const rows = all.map((p) =>
+      official.value
+        ? [
+            p.name,
+            p.barcode ?? "",
+            catName(p.categoryId),
+            money(p.price),
+            money(p.originalPrice),
+            money(p.costPrice),
+            money(p.wholesalePrice),
+            String(p.availableStock ?? p.stock ?? 0),
+            statusText(p.status),
+          ]
+        : [
+            [p.location, p.locationCode].filter(Boolean).join("-"),
+            p.name,
+            p.barcode ?? "",
+            catName(p.categoryId),
+            money(p.price),
+            money(p.originalPrice),
+            money(p.wholesalePrice),
+            money(p.localPurchasePrice),
+            modeText(p.procurementMode),
+            String(p.availableStock ?? p.stock ?? 0),
+            statusText(p.status),
+          ],
+    );
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    sheet["!cols"] = header.map((h) => ({
+      wch: Math.max(10, h.length * 2 + 2),
+    }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, official.value ? "官方商品库" : "商品列表");
+    XLSX.writeFile(
+      book,
+      `${official.value ? "官方商品库" : "商品列表"}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+    notify(`已导出 ${all.length} 个商品`);
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "导出失败", "error");
+  } finally {
+    exporting.value = false;
+  }
+}
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
 }
