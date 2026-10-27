@@ -52,8 +52,10 @@ const TABS = computed(() => {
     { key: "slots", label: "送达时段" },
     { key: "notices", label: "公告" },
   ];
-  if (hasPerm("GET /admin/wechat-groups"))
-    list.push({ key: "wechat-groups", label: "微信群码" });
+  // IKQXSD 统一（道哥 2026-10-27）：进群入口全部切校区售后福利群码，
+  // 微信群码（楼栋群/校级大群）已无前端消费方——Tab 隐藏（数据/页面保留）
+  // if (hasPerm("GET /admin/wechat-groups"))
+  //   list.push({ key: "wechat-groups", label: "微信群码" });
   if (hasPerm("GET /admin/printers"))
     list.push({ key: "printers", label: "打印机" });
   if (hasPerm("GET /admin/banners"))
