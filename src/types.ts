@@ -126,6 +126,8 @@ export interface Product {
   wholesalePrice?: number;
   /** 实际采购方式，与 sourceProductId（资料来源）无关。 */
   procurementMode?: 'HQ' | 'LOCAL' | null;
+  /** IKQZY7 周期限购：none/once/weekly/monthly（校区行配置） */
+  purchaseLimit?: 'none' | 'once' | 'weekly' | 'monthly';
   /** 校区本地进货价，分/零售单位。 */
   localPurchasePrice?: number | null;
   stock: number;

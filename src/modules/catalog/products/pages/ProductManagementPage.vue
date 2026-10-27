@@ -276,6 +276,16 @@
                     value="HQ" /><ElOption
                     label="自主采购"
                     value="LOCAL" /></ElSelect></ElFormItem></ElCol
+            ><!-- IKQZY7 周期限购：每人每周期 1 件（once 终身/weekly 周一/月 1 号），
+                 按已付订单计数（不分价格身份），退款释放 -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="限购周期"
+                ><ElSelect v-model="form.purchaseLimit"
+                  ><ElOption label="不限购" value="none" /><ElOption
+                    label="限购一次（终身）"
+                    value="once" /><ElOption label="每周一次" value="weekly" /><ElOption
+                    label="每月一次"
+                    value="monthly" /></ElSelect></ElFormItem></ElCol
             ><ElCol
               v-if="form.procurementMode === 'LOCAL'"
               :xs="24"
@@ -418,6 +428,7 @@ const form = reactive({
   costPrice: 0,
   wholesalePrice: 0,
   procurementMode: "HQ" as "HQ" | "LOCAL" | "UNSET",
+  purchaseLimit: "none" as "none" | "once" | "weekly" | "monthly",
   localPurchasePrice: 0,
   weight: 0,
   retailUnit: "",

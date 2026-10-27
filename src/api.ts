@@ -442,6 +442,8 @@ export const api = {
       wholesalePrice?: number;
       /** 采购来源（IKKRMZ）：有剩余库存/待处理采购单时后端拒绝切换。 */
       procurementMode?: "HQ" | "LOCAL";
+      /** IKQZY7：周期限购（校区行） */
+      purchaseLimit?: "none" | "once" | "weekly" | "monthly";
       /** 本地进货价（分/零售单位）：LOCAL 口径成本。 */
       localPurchasePrice?: number;
       image?: string;
