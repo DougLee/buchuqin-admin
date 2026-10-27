@@ -116,6 +116,7 @@ const profileForm = ref({
   address: "",
   servicePhone: "",
   serviceQrcode: "",
+  afterSalesGroupQrcode: "",
   status: "active" as "active" | "inactive",
 });
 watch(bundle, (b) => {
@@ -127,6 +128,9 @@ watch(bundle, (b) => {
     address: b.campus.address ?? "",
     servicePhone: (b.campus as { servicePhone?: string }).servicePhone ?? "",
     serviceQrcode: (b.campus as { serviceQrcode?: string }).serviceQrcode ?? "",
+    afterSalesGroupQrcode:
+      (b.campus as { afterSalesGroupQrcode?: string }).afterSalesGroupQrcode ??
+      "",
     status: b.campus.status === "inactive" ? "inactive" : "active",
   };
 });
@@ -145,6 +149,21 @@ async function onQrcodeChange(upload: UploadFile) {
     qrcodeUploading.value = false;
   }
 }
+/** IKQXSD post-sale group qrcode upload */
+const groupQrcodeUploading = ref(false);
+async function onGroupQrcodeChange(upload: UploadFile) {
+  const file = upload.raw;
+  if (!file) return;
+  groupQrcodeUploading.value = true;
+  try {
+    profileForm.value.afterSalesGroupQrcode = await uploadImage(file, "app");
+    ElMessage.success("二维码已上传");
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : "上传失败");
+  } finally {
+    groupQrcodeUploading.value = false;
+  }
+}
 async function saveProfile() {
   if (!canEditProfile.value || !bundle.value || saving.value) return;
   saving.value = true;
@@ -157,6 +176,7 @@ async function saveProfile() {
       // IKHMF1：客服电话（校区自定义，小程序拨号展示）
       servicePhone: profileForm.value.servicePhone.trim(),
       serviceQrcode: profileForm.value.serviceQrcode.trim(),
+      afterSalesGroupQrcode: profileForm.value.afterSalesGroupQrcode.trim(),
       // status 不在此提交：防误改校区启停（归校区管理页）
     });
     notify("基础档案已保存");
@@ -498,6 +518,38 @@ async function removeNotice(n: NoticeRow) {
                 </div>
                 <p class="qrcode-tip">
                   建议上传校区客服个人微信二维码；未上传时小程序客服入口回落拨打电话
+                </p>
+              </ElFormItem>
+              <ElFormItem label="售后福利群二维码（小程序售后页展示）">
+                <div class="qrcode-row">
+                  <img
+                    v-if="profileForm.afterSalesGroupQrcode"
+                    :src="profileForm.afterSalesGroupQrcode"
+                    class="qrcode-preview"
+                    alt="售后福利群二维码"
+                  />
+                  <div v-else class="qrcode-empty">未上传</div>
+                  <div class="qrcode-ops" v-if="canEditProfile">
+                    <ElUpload
+                      :auto-upload="false"
+                      :show-file-list="false"
+                      accept="image/*"
+                      :on-change="onGroupQrcodeChange"
+                      ><ElButton :loading="groupQrcodeUploading"
+                        >上传图片</ElButton
+                      ></ElUpload
+                    >
+                    <ElButton
+                      v-if="profileForm.afterSalesGroupQrcode"
+                      text
+                      type="danger"
+                      @click="profileForm.afterSalesGroupQrcode = ''"
+                      >移除</ElButton
+                    >
+                  </div>
+                </div>
+                <p class="qrcode-tip">
+                  售后福利群二维码；未上传时小程序售后页不显示该区块
                 </p>
               </ElFormItem></ElCol
             >

@@ -1003,6 +1003,8 @@ export const api = {
       servicePhone?: string;
       /** IKKTWM：客服微信二维码（COS 图，空=回落拨号） */
       serviceQrcode?: string;
+      /** IKQXSD：售后福利群二维码（空=小程序售后页不渲染） */
+      afterSalesGroupQrcode?: string;
       /** IKHMKR：无楼长提示（校区自定义，空=回落默认） */
       noManagerTip?: string;
       /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
