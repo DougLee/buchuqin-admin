@@ -3,11 +3,12 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
+import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import { BANNER_COLOR_TEXT, BANNER_PLACEMENT_TEXT } from "../../../../dicts";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Banner } from "../../../../types";
+import type { Banner , Product } from "../../../../types";
 import { resolveImageUrl } from "../../../../utils/image";
 
 const props = withDefaults(
@@ -46,6 +47,9 @@ const form = reactive({
   status: "active",
 });
 const linkPages = [
+  /** IKR14X：商品详情为哨兵值——选中时展开选品器（ProductPickerField），
+   *  拣定商品回填真实路径；哨兵不落库（保存时 linkUrl 已是真实路径） */
+  { value: "PRODUCT_DETAIL", label: "商品详情（选商品）" },
   { value: "pages/coupons/index", label: "优惠券中心" },
   { value: "pages/orders/index", label: "我的订单" },
   { value: "pages/address/index", label: "寝室地址" },
@@ -54,6 +58,55 @@ const linkPages = [
   { value: "pages/profile/index", label: "我的" },
   { value: "pages/campus/index", label: "楼栋选择" },
 ];
+/* ---------- IKR14X 商品选品（复用 ProductPickerField 公共组件） ---------- */
+const PRODUCT_PATH_RE = /^pages\/product\/detail\?id=(.+)$/;
+const pickerProducts = ref<Product[]>([]);
+const pickerLoading = ref(false);
+/** 下框显示值：linkUrl 是商品路径→哨兵；否则原值（allow-create 手输兼容） */
+const linkSelect = computed({
+  get: () =>
+    PRODUCT_PATH_RE.test(form.linkUrl)
+      ? "PRODUCT_DETAIL"
+      : form.linkUrl,
+  set: (v: string) => {
+    if (v !== "PRODUCT_DETAIL") {
+      form.linkUrl = v;
+      return;
+    }
+    // 切到哨兵：保持现值（商品已选）或清空待选
+    if (!PRODUCT_PATH_RE.test(form.linkUrl)) form.linkUrl = "";
+  },
+});
+/** 选品器拣定 → 回填真实路径（保存链路零改动） */
+function pickProduct(value: string | Record<string, number>) {
+  if (typeof value !== "string") return;
+  form.linkUrl = `pages/product/detail?id=${value}`;
+}
+/** 展开选品器时拉本校区在售商品（pageSize 上限 100，与促销/推荐位同口径） */
+watch(linkSelect, (v) => {
+  if (v === "PRODUCT_DETAIL" && !pickerProducts.value.length) {
+    pickerLoading.value = true;
+    void api
+      .products(
+        {
+          page: 1,
+          pageSize: 100,
+          status: "on-sale",
+          campusId: effectiveCampusId.value,
+        },
+        "campus",
+      )
+      .then((r) => {
+        pickerProducts.value = r.items;
+      })
+      .catch(() => {
+        ElMessage.error("在售商品加载失败");
+      })
+      .finally(() => {
+        pickerLoading.value = false;
+      });
+  }
+});
 const canCreate = computed(() => hasPerm("POST /admin/banners"));
 const canUpdate = computed(() => hasPerm("PATCH /admin/banners/:id"));
 const canDelete = computed(() => hasPerm("DELETE /admin/banners/:id"));
@@ -328,12 +381,23 @@ onMounted(load);
                   value="page" /></ElSelect></ElFormItem></ElCol
           ><ElCol v-if="form.linkType === 'page'" :xs="24" :sm="12"
             ><ElFormItem label="目标页面"
-              ><ElSelect v-model="form.linkUrl" filterable allow-create
+              ><ElSelect v-model="linkSelect" filterable allow-create
                 ><ElOption
                   v-for="item in linkPages"
                   :key="item.value"
                   :label="item.label"
-                  :value="item.value" /></ElSelect></ElFormItem></ElCol
+                  :value="item.value" /></ElSelect
+              ><!-- IKR14X：选「商品详情」展开公共选品器（促销/推荐位同款），
+                  拣定自动回填 linkUrl，零手拼 -->
+              <template v-if="linkSelect === 'PRODUCT_DETAIL'"
+                ><ProductPickerField
+                  class="banner-picker"
+                  :items="pickerProducts"
+                  :loading="pickerLoading"
+                  :model-value="PRODUCT_PATH_RE.exec(form.linkUrl)?.[1] ?? ''"
+                  simple
+                  @update:model-value="pickProduct" /></template
+            ></ElFormItem></ElCol
           ><ElCol v-if="editing" :xs="24" :sm="12"
             ><ElFormItem label="状态"
               ><ElSelect v-model="form.status"
@@ -350,6 +414,11 @@ onMounted(load);
   </AdminPageShell>
 </template>
 <style scoped>
+/* IKR14X：Banner 表单内选品器占满FormItem内容区 */
+.banner-picker {
+  width: 100%;
+  margin-top: 10px;
+}
 .thumb {
   width: 64px;
   height: 44px;
