@@ -62,6 +62,19 @@ const linkPages = [
 const PRODUCT_PATH_RE = /^pages\/product\/detail\?id=(.+)$/;
 const pickerProducts = ref<Product[]>([]);
 const pickerLoading = ref(false);
+/* IKR14X 数据源升级（道哥 10-28 实测选不到新商品）：一次性 pageSize=100
+ * 截断——大校区在售 700+，新建商品不在前 100。改 remote（照促销页先例）：
+ * 搜索/类别上抛服务端 + 加载更多翻页。 */
+let pickerFilter: { categoryId: string; keyword: string } = {
+  categoryId: "all",
+  keyword: "",
+};
+const pickerPage = ref(1);
+const pickerTotal = ref(0);
+const pickerMore = ref(false);
+const pickerHasMore = computed(
+  () => pickerProducts.value.length < pickerTotal.value,
+);
 /* IKR14X 重写（道哥 10-28 二轮实测）：显示状态与存储分离——此前从
  *  linkUrl 反推哨兵态，点选后 set 清空 linkUrl → get 返回空 → 输入框空
  * 且 v-if 判空不渲染选品器（两个症状同源）。pickerActive 独立承载
@@ -98,29 +111,56 @@ function pickProduct(value: string | Record<string, number>) {
   if (typeof value !== "string") return;
   form.linkUrl = `pages/product/detail?id=${value}`;
 }
-/** 展开选品器时拉本校区在售商品（pageSize 上限 100，与促销/推荐位同口径） */
-watch(pickerActive, (active) => {
-  if (!active || pickerProducts.value.length) return;
-  pickerLoading.value = true;
-  void api
-    .products(
+async function loadPicker(append = false) {
+  if (!effectiveCampusId.value) {
+    pickerProducts.value = [];
+    pickerTotal.value = 0;
+    return;
+  }
+  if (!append) pickerLoading.value = true;
+  else pickerMore.value = true;
+  try {
+    const r = await api.products(
       {
-        page: 1,
+        page: pickerPage.value,
         pageSize: 100,
         status: "on-sale",
+        categoryId:
+          pickerFilter.categoryId !== "all"
+            ? pickerFilter.categoryId
+            : undefined,
+        keyword: pickerFilter.keyword || undefined,
         campusId: effectiveCampusId.value,
       },
       "campus",
-    )
-    .then((r) => {
-      pickerProducts.value = r.items;
-    })
-    .catch(() => {
-      ElMessage.error("在售商品加载失败");
-    })
-    .finally(() => {
-      pickerLoading.value = false;
-    });
+    );
+    pickerProducts.value = append
+      ? [...pickerProducts.value, ...r.items]
+      : r.items;
+    pickerTotal.value = r.total;
+  } catch {
+    ElMessage.error("在售商品加载失败");
+  } finally {
+    pickerLoading.value = false;
+    pickerMore.value = false;
+  }
+}
+function onPickerFilter(f: { categoryId: string; keyword: string }) {
+  pickerFilter = f;
+  pickerPage.value = 1;
+  void loadPicker();
+}
+function loadMorePicker() {
+  if (pickerMore.value || !pickerHasMore.value) return;
+  pickerPage.value += 1;
+  void loadPicker(true);
+}
+watch(pickerActive, (active) => {
+  if (!active) return;
+  pickerProducts.value = [];
+  pickerFilter = { categoryId: "all", keyword: "" };
+  pickerPage.value = 1;
+  void loadPicker();
 });
 const canCreate = computed(() => hasPerm("POST /admin/banners"));
 const canUpdate = computed(() => hasPerm("PATCH /admin/banners/:id"));
@@ -417,11 +457,16 @@ onMounted(load);
               <template v-if="pickerActive || pickedProductId"
                 ><ProductPickerField
                   class="banner-picker"
+                  remote
                   :items="pickerProducts"
                   :loading="pickerLoading"
+                  :has-more="pickerHasMore"
+                  :loading-more="pickerMore"
                   :model-value="pickedProductId"
                   simple
-                  @update:model-value="pickProduct" /></template
+                  @update:model-value="pickProduct"
+                  @filter-change="onPickerFilter"
+                  @load-more="loadMorePicker" /></template
             ></ElFormItem></ElCol
           ><ElCol v-if="editing" :xs="24" :sm="12"
             ><ElFormItem label="状态"
