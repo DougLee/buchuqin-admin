@@ -410,8 +410,11 @@ onMounted(load);
                   :label="item.label"
                   :value="item.value" /></ElSelect
               ><!-- IKR14X：选「商品详情」展开公共选品器（促销/推荐位同款），
-                  拣定自动回填 linkUrl，零手拼 -->
-              <template v-if="linkSelect === 'PRODUCT_DETAIL'"
+                  拣定自动回填 linkUrl，零手拼。v-if 用 pickerActive/
+                  pickedProductId（此前残留旧比较 linkSelect==='PRODUCT_DETAIL'，
+                  而 get 返回中文 label 永不相等——选品器永不渲染，道哥 10-28
+                  三轮实测的最终根因） -->
+              <template v-if="pickerActive || pickedProductId"
                 ><ProductPickerField
                   class="banner-picker"
                   :items="pickerProducts"
