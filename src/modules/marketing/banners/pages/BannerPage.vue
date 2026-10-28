@@ -62,56 +62,65 @@ const linkPages = [
 const PRODUCT_PATH_RE = /^pages\/product\/detail\?id=(.+)$/;
 const pickerProducts = ref<Product[]>([]);
 const pickerLoading = ref(false);
-/** 哨兵归一化（IKR14X 修）：filterable+allow-create 下用户常输入过滤词
- *  后回车——创建的自定义值是 label 原文（如「商品详情（选商品）」或其
- *  片段），而非预设哨兵 PRODUCT_DETAIL——哨兵分支永不被命中（道哥 10-28
- *  实测）。label 原文与常见片段一律归一到哨兵。 */
+/* IKR14X 重写（道哥 10-28 二轮实测）：显示状态与存储分离——此前从
+ *  linkUrl 反推哨兵态，点选后 set 清空 linkUrl → get 返回空 → 输入框空
+ * 且 v-if 判空不渲染选品器（两个症状同源）。pickerActive 独立承载
+ * 「选商品模式」；linkUrl 只存最终路径。 */
 const SENTINEL_LABEL = "商品详情（选商品）";
+const pickerActive = ref(false);
+/** 哨兵判定：预设哨兵值 / 含「商品」的非路径文字（filterable 输入过滤词
+ *  回车创建的自定义值，allow-create 经典坑） */
 const isSentinel = (v: string) =>
   v === "PRODUCT_DETAIL" ||
   (v.includes("商品") && !v.startsWith("pages/"));
-/** 下框显示值：linkUrl 是商品路径→哨兵；否则原值（allow-create 手输兼容） */
 const linkSelect = computed({
   get: () =>
-    PRODUCT_PATH_RE.test(form.linkUrl) ? SENTINEL_LABEL : form.linkUrl,
+    pickerActive.value
+      ? SENTINEL_LABEL
+      : PRODUCT_PATH_RE.test(form.linkUrl)
+        ? SENTINEL_LABEL
+        : form.linkUrl,
   set: (v: string) => {
-    if (!isSentinel(v)) {
-      form.linkUrl = v;
-      return;
+    if (isSentinel(v)) {
+      pickerActive.value = true;
+      return; // 进入选商品模式；linkUrl 保持（已选商品或待选空）
     }
-    // 切到哨兵：保持现值（商品已选）或清空待选
-    if (!PRODUCT_PATH_RE.test(form.linkUrl)) form.linkUrl = "";
+    pickerActive.value = false;
+    form.linkUrl = v;
   },
 });
+/** 选品器当前选中商品 id（从 linkUrl 解析） */
+const pickedProductId = computed(
+  () => PRODUCT_PATH_RE.exec(form.linkUrl)?.[1] ?? "",
+);
 /** 选品器拣定 → 回填真实路径（保存链路零改动） */
 function pickProduct(value: string | Record<string, number>) {
   if (typeof value !== "string") return;
   form.linkUrl = `pages/product/detail?id=${value}`;
 }
 /** 展开选品器时拉本校区在售商品（pageSize 上限 100，与促销/推荐位同口径） */
-watch(linkSelect, (v) => {
-  if (isSentinel(v) && !pickerProducts.value.length) {
-    pickerLoading.value = true;
-    void api
-      .products(
-        {
-          page: 1,
-          pageSize: 100,
-          status: "on-sale",
-          campusId: effectiveCampusId.value,
-        },
-        "campus",
-      )
-      .then((r) => {
-        pickerProducts.value = r.items;
-      })
-      .catch(() => {
-        ElMessage.error("在售商品加载失败");
-      })
-      .finally(() => {
-        pickerLoading.value = false;
-      });
-  }
+watch(pickerActive, (active) => {
+  if (!active || pickerProducts.value.length) return;
+  pickerLoading.value = true;
+  void api
+    .products(
+      {
+        page: 1,
+        pageSize: 100,
+        status: "on-sale",
+        campusId: effectiveCampusId.value,
+      },
+      "campus",
+    )
+    .then((r) => {
+      pickerProducts.value = r.items;
+    })
+    .catch(() => {
+      ElMessage.error("在售商品加载失败");
+    })
+    .finally(() => {
+      pickerLoading.value = false;
+    });
 });
 const canCreate = computed(() => hasPerm("POST /admin/banners"));
 const canUpdate = computed(() => hasPerm("PATCH /admin/banners/:id"));
@@ -158,11 +167,18 @@ function openEditor(row?: Banner) {
     linkUrl: row?.linkUrl ?? "",
     status: row?.status ?? "active",
   });
+  // IKR14X 回显：已配商品跳转的 Banner 打开即进选商品模式（预选）
+  pickerActive.value = PRODUCT_PATH_RE.test(row?.linkUrl ?? "");
   editorOpen.value = true;
 }
 async function save() {
   if (!form.title.trim()) {
     notify("请填写标题", "error");
+    return;
+  }
+  // IKR14X：选商品模式未拣定商品——提前拦截（后端只报「需填写页面路径」不直观）
+  if (form.linkType === "page" && pickerActive.value && !pickedProductId.value) {
+    notify("已选择商品详情跳转，请在下方选择具体商品", "error");
     return;
   }
   saving.value = true;
@@ -400,7 +416,7 @@ onMounted(load);
                   class="banner-picker"
                   :items="pickerProducts"
                   :loading="pickerLoading"
-                  :model-value="PRODUCT_PATH_RE.exec(form.linkUrl)?.[1] ?? ''"
+                  :model-value="pickedProductId"
                   simple
                   @update:model-value="pickProduct" /></template
             ></ElFormItem></ElCol
