@@ -62,14 +62,20 @@ const linkPages = [
 const PRODUCT_PATH_RE = /^pages\/product\/detail\?id=(.+)$/;
 const pickerProducts = ref<Product[]>([]);
 const pickerLoading = ref(false);
+/** 哨兵归一化（IKR14X 修）：filterable+allow-create 下用户常输入过滤词
+ *  后回车——创建的自定义值是 label 原文（如「商品详情（选商品）」或其
+ *  片段），而非预设哨兵 PRODUCT_DETAIL——哨兵分支永不被命中（道哥 10-28
+ *  实测）。label 原文与常见片段一律归一到哨兵。 */
+const SENTINEL_LABEL = "商品详情（选商品）";
+const isSentinel = (v: string) =>
+  v === "PRODUCT_DETAIL" ||
+  (v.includes("商品") && !v.startsWith("pages/"));
 /** 下框显示值：linkUrl 是商品路径→哨兵；否则原值（allow-create 手输兼容） */
 const linkSelect = computed({
   get: () =>
-    PRODUCT_PATH_RE.test(form.linkUrl)
-      ? "PRODUCT_DETAIL"
-      : form.linkUrl,
+    PRODUCT_PATH_RE.test(form.linkUrl) ? SENTINEL_LABEL : form.linkUrl,
   set: (v: string) => {
-    if (v !== "PRODUCT_DETAIL") {
+    if (!isSentinel(v)) {
       form.linkUrl = v;
       return;
     }
@@ -84,7 +90,7 @@ function pickProduct(value: string | Record<string, number>) {
 }
 /** 展开选品器时拉本校区在售商品（pageSize 上限 100，与促销/推荐位同口径） */
 watch(linkSelect, (v) => {
-  if (v === "PRODUCT_DETAIL" && !pickerProducts.value.length) {
+  if (isSentinel(v) && !pickerProducts.value.length) {
     pickerLoading.value = true;
     void api
       .products(
