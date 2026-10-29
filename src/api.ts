@@ -44,6 +44,7 @@ import type {
   RestockShipmentDetail,
   HqDailyReport,
   CampusDailyReport,
+  AnalyticsSummary,
   BattleMapBuilding,
   BattleRoomDetail,
   PurchaseOrderRow,
@@ -674,6 +675,14 @@ export const api = {
         end ? `end=${end}` : undefined,
         campusId ? `campusId=${encodeURIComponent(campusId)}` : undefined,
         buildingId ? `buildingId=${encodeURIComponent(buildingId)}` : undefined,
+      )}`,
+    ),
+  /** 行为分析汇总（IKRGLV，仅超管）：漏斗+商品热度+搜索词 */
+  analyticsSummary: (start?: string, end?: string) =>
+    request<AnalyticsSummary>(
+      `/admin/analytics/summary${withQuery(
+        start ? `start=${start}` : undefined,
+        end ? `end=${end}` : undefined,
       )}`,
     ),
   /** 营销作战地图（IKFOQ3）：整栋楼层格子（三色）+汇总；平台账号带校区聚焦（IKISDN） */

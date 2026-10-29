@@ -1198,6 +1198,19 @@ export interface CampusDailyRow {
   /** 综合毛利率万分比（/100=百分比）=综合毛利/实付 */
   marginRate: number;
 }
+/** 行为分析汇总（IKRGLV，仅超管）：漏斗+交易段+热度榜 */
+export interface AnalyticsSummary {
+  range: { start: string; end: string };
+  funnel: Array<{ event: string; hits: number; users: number }>;
+  trade: { orders: number; amount: number };
+  topProducts: Array<{
+    productId: string;
+    name: string;
+    views: number;
+    carts: number;
+  }>;
+  topKeywords: Array<{ keyword: string; hits: number }>;
+}
 export interface CampusDailyReport {
   totals: {
     orders: number;
