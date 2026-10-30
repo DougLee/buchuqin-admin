@@ -8,8 +8,14 @@ import {
 } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Category, Product } from "../../../../types";
+import type {
+  Category,
+  Product,
+  StocktakeReason,
+  StocktakeStatGroup,
+} from "../../../../types";
 import { resolveImageUrl } from "../../../../utils/image";
+import { fenToYuan } from "../../../../utils/money";
 
 type StockAction = "stock-in" | "stocktake";
 const rows = ref<Product[]>([]),
@@ -23,11 +29,20 @@ const page = ref(1),
   keyword = ref(""),
   categoryId = ref("");
 const action = ref<StockAction>("stock-in");
+/** #85：盘点原因收敛四选一枚举（后端 400 门控非法值），入库仍走自由文本备注。 */
+const STOCKTAKE_REASONS: StocktakeReason[] = [
+  "线下销售",
+  "赠送",
+  "货损",
+  "丢损",
+];
 const form = reactive({
   productId: "",
   quantity: 1,
-  countedQty: 0,
+  /** 核减数量（正整数）：提交时换算 countedQty = 账面库存 − 核减数量。 */
+  reduceQty: 1,
   reason: "",
+  stocktakeReason: "" as StocktakeReason | "",
 });
 let generation = 0;
 let keywordTimer: number | undefined;
@@ -91,11 +106,23 @@ function openAction(next: StockAction, product?: Product) {
   Object.assign(form, {
     productId: product?.id ?? "",
     quantity: 1,
-    countedQty: product?.actualStock ?? product?.stock ?? 0,
+    reduceQty: 1,
     reason: "",
+    stocktakeReason: "",
   });
   dialogOpen.value = true;
 }
+/** 当前行账面库存（优先实际库存，回退旧字段 stock）。 */
+function bookQtyOf(productId: string) {
+  const row = rows.value.find((item) => item.id === productId);
+  return row?.actualStock ?? row?.stock ?? 0;
+}
+/** #85 只减不加：展示「账面 → 核减后」预览，核减超账面在提交前拦截。 */
+const stocktakePreview = computed(() => {
+  if (action.value !== "stocktake" || !form.productId) return null;
+  const book = bookQtyOf(form.productId);
+  return { book, after: book - (Number(form.reduceQty) || 0) };
+});
 async function submit() {
   if (!form.productId) {
     notify("请选择商品", "error");
@@ -117,13 +144,17 @@ async function submit() {
       );
       notify("入库成功，库存已更新");
     } else {
-      if (!Number.isFinite(form.countedQty) || form.countedQty < 0)
-        throw new Error("清点数量不能为负数");
+      // #85 只减不加：录入核减数量，前端换算绝对清点值传后端（契约不变）
+      if (!form.stocktakeReason) throw new Error("请选择盘点原因");
+      if (!Number.isInteger(form.reduceQty) || form.reduceQty <= 0)
+        throw new Error("核减数量必须为正整数");
+      const countedQty = bookQtyOf(form.productId) - form.reduceQty;
+      if (countedQty < 0) throw new Error("核减数量超过账面库存");
       const result = await api.stocktake(
         {
           productId: form.productId,
-          countedQty: form.countedQty,
-          ...(reason ? { reason } : {}),
+          countedQty,
+          reason: form.stocktakeReason,
         },
         operationalCampusId.value,
       );
@@ -138,6 +169,48 @@ async function submit() {
   } finally {
     saving.value = false;
   }
+}
+/* ---------- 盘点统计（#85）：按原因聚合卡片 + 该原因商品明细 ---------- */
+const statsOpen = ref(false);
+const statsLoading = ref(false);
+const statsError = ref("");
+const statsGroups = ref<StocktakeStatGroup[]>([]);
+const statsActiveReason = ref<StocktakeReason>("线下销售");
+/** 本地日期 → YYYY-MM-DD（统计/台账的缺省月份范围用）。 */
+function isoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+const statsRange = ref<[string, string] | null>([
+  isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+  isoDate(new Date()),
+]);
+const statsGroupOf = (reason: StocktakeReason) =>
+  statsGroups.value.find((group) => group.reason === reason);
+const statsActiveGroup = computed(() => statsGroupOf(statsActiveReason.value));
+async function loadStats() {
+  if (!operationalCampusId.value) return;
+  statsLoading.value = true;
+  statsError.value = "";
+  try {
+    statsGroups.value = await api.stocktakeStats(
+      statsRange.value?.[0],
+      statsRange.value?.[1],
+      operationalCampusId.value,
+    );
+    // 选中原因无数据时回落到首个有数据的分组
+    if (!statsGroups.value.some((group) => group.reason === statsActiveReason.value))
+      statsActiveReason.value = statsGroups.value[0]?.reason ?? "线下销售";
+  } catch (error) {
+    statsGroups.value = [];
+    statsError.value =
+      error instanceof Error ? error.message : "盘点统计加载失败";
+  } finally {
+    statsLoading.value = false;
+  }
+}
+function openStats() {
+  statsOpen.value = true;
+  void loadStats();
 }
 async function bootstrap() {
   try {
@@ -160,7 +233,7 @@ onMounted(bootstrap);
 
 <template>
   <AdminPageShell
-    title="库存总览"
+    title="库存盘点"
     eyebrow="WAREHOUSE INVENTORY"
     description="掌握实际、锁定和可售库存，提前处理库存异常。"
   >
@@ -176,6 +249,11 @@ onMounted(bootstrap);
         :disabled="!operationalCampusId"
         @click="openAction('stocktake')"
         >盘点</ElButton
+      ><ElButton
+        v-if="canStocktake"
+        :disabled="!operationalCampusId"
+        @click="openStats"
+        >盘点统计</ElButton
       ></template
     >
     <section class="admin-filter-panel" aria-label="库存筛选">
@@ -301,22 +379,38 @@ onMounted(bootstrap);
                 v-model="form.quantity"
                 :min="1"
                 :step="1" /></ElFormItem
-            ><ElFormItem v-else label="实际清点数量"
+            ><ElFormItem v-else label="核减数量"
               ><ElInputNumber
-                v-model="form.countedQty"
-                :min="0"
-                :step="1" /></ElFormItem></ElCol
+                v-model="form.reduceQty"
+                :min="1"
+                :step="1" /><div
+                v-if="stocktakePreview"
+                class="stocktake-hint"
+                :class="{ danger: stocktakePreview.after < 0 }"
+              >
+                账面 {{ stocktakePreview.book }} → 核减后
+                {{ stocktakePreview.after }}
+              </div></ElFormItem
+            ></ElCol
           ><ElCol :span="24"
-            ><ElFormItem label="原因备注"
+            ><ElFormItem
+              v-if="action === 'stocktake'"
+              label="盘点原因"
+              required
+              ><ElSelect
+                v-model="form.stocktakeReason"
+                placeholder="选择盘点原因"
+                ><ElOption
+                  v-for="item in STOCKTAKE_REASONS"
+                  :key="item"
+                  :label="item"
+                  :value="item" /></ElSelect></ElFormItem
+            ><ElFormItem v-else label="原因备注"
               ><ElInput
                 v-model="form.reason"
                 type="textarea"
                 :rows="3"
-                :placeholder="
-                  action === 'stock-in'
-                    ? '例如：本周采购入库'
-                    : '例如：月底盘点'
-                " /></ElFormItem></ElCol></ElRow></ElForm
+                placeholder="例如：本周采购入库" /></ElFormItem></ElCol></ElRow></ElForm
       ><template #footer
         ><ElButton @click="dialogOpen = false">取消</ElButton
         ><ElButton type="primary" :loading="saving" @click="submit">{{
@@ -324,6 +418,62 @@ onMounted(bootstrap);
         }}</ElButton></template
       ></ElDialog
     >
+    <!-- 盘点统计（#85）：四原因汇总卡（点选切换）+ 该原因商品明细 -->
+    <ElDrawer
+      v-model="statsOpen"
+      title="盘点统计"
+      size="min(680px, 94vw)"
+      destroy-on-close
+    >
+      <div class="stats-filter">
+        <ElDatePicker
+          v-model="statsRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+        /><ElButton :loading="statsLoading" @click="loadStats"
+          >查询</ElButton
+        >
+      </div>
+      <p v-if="statsError" class="stats-error">{{ statsError }}</p>
+      <div v-loading="statsLoading" class="stats-body">
+        <div class="stats-cards">
+          <button
+            v-for="reason in STOCKTAKE_REASONS"
+            :key="reason"
+            type="button"
+            class="stats-card"
+            :class="{ active: reason === statsActiveReason }"
+            @click="statsActiveReason = reason"
+          >
+            <span class="stats-reason">{{ reason }}</span>
+            <strong>{{ statsGroupOf(reason)?.totalQty ?? 0 }}</strong>
+            <span class="stats-sub"
+              >{{ statsGroupOf(reason)?.count ?? 0 }} 条流水 ·
+              {{ fenToYuan(statsGroupOf(reason)?.totalCost ?? 0) }} 元</span
+            >
+          </button>
+        </div>
+        <p class="stats-table-title">
+          「{{ statsActiveReason }}」商品明细（{{
+            statsActiveGroup?.products.length ?? 0
+          }}）
+        </p>
+        <ElTable
+          :data="statsActiveGroup?.products ?? []"
+          empty-text="该原因下暂无盘点记录"
+        >
+          <ElTableColumn prop="productName" label="商品" min-width="180" />
+          <ElTableColumn prop="qty" label="核减数量" width="110" />
+          <ElTableColumn label="成本" width="130"
+            ><template #default="{ row }"
+              >¥{{ fenToYuan(row.cost) }}</template
+            ></ElTableColumn
+          >
+        </ElTable>
+      </div>
+    </ElDrawer>
   </AdminPageShell>
 </template>
 
@@ -345,5 +495,68 @@ onMounted(bootstrap);
 .el-select,
 .el-input-number {
   width: 100%;
+}
+.stocktake-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.stocktake-hint.danger {
+  color: var(--el-color-danger);
+}
+.stats-filter {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stats-error {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--el-color-danger);
+}
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+@media (min-width: 560px) {
+  .stats-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+  cursor: pointer;
+}
+.stats-card.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.stats-reason {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.stats-card strong {
+  font-size: 22px;
+  color: var(--el-text-color-primary);
+}
+.stats-sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.stats-table-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 </style>

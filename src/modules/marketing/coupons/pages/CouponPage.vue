@@ -6,8 +6,9 @@ import { COUPON_STATUS_TABS } from "../../../../dicts/status-tab";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { AdminUser, Building, Coupon } from "../../../../types";
+import type { AdminUser, Building, Coupon, CouponRecord } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
+import * as XLSX from "xlsx";
 const rows = ref<Coupon[]>([]),
   loading = ref(false),
   saving = ref(false),
@@ -292,6 +293,113 @@ async function confirmIssue() {
 }
 watch([page, pageSize, status, effectiveCampusId], load);
 onMounted(load);
+/* ---------- IKRSJ0 #99：领取记录（领取/核销流水，弹层直查+导出） ---------- */
+const recordsOpen = ref(false),
+  recordsLoading = ref(false),
+  recordsExporting = ref(false),
+  recordRows = ref<CouponRecord[]>([]),
+  recPage = ref(1),
+  recPageSize = ref(20),
+  recTotal = ref(0),
+  recCouponId = ref(""),
+  recStatus = ref(""),
+  recKeyword = ref(""),
+  recStart = ref(""),
+  recEnd = ref("");
+function openRecords() {
+  recordsOpen.value = true;
+  recPage.value = 1;
+  void loadRecords();
+}
+/** 弹层筛选 → 端点参数（未选的条件不传）。 */
+function recordFilters() {
+  return {
+    couponId: recCouponId.value || undefined,
+    status: recStatus.value || undefined,
+    keyword: recKeyword.value.trim() || undefined,
+    start: recStart.value || undefined,
+    end: recEnd.value || undefined,
+  };
+}
+async function loadRecords() {
+  recordsLoading.value = true;
+  try {
+    const r = await api.couponRecords({
+      ...recordFilters(),
+      page: recPage.value,
+      pageSize: recPageSize.value,
+    });
+    recordRows.value = r.items ?? [];
+    recTotal.value = r.total ?? 0;
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "领取记录加载失败", "error");
+  } finally {
+    recordsLoading.value = false;
+  }
+}
+function queryRecords() {
+  recPage.value = 1;
+  void loadRecords();
+}
+function resetRecords() {
+  recCouponId.value = "";
+  recStatus.value = "";
+  recKeyword.value = "";
+  recStart.value = "";
+  recEnd.value = "";
+  queryRecords();
+}
+function recordStatusText(value?: string) {
+  if (value === "used") return "已核销";
+  if (value === "claimed") return "未使用";
+  return value || "—";
+}
+function fmtRecordTime(value?: string | null) {
+  return value ? value.replace("T", " ").slice(0, 16) : "—";
+}
+/* 导出按当前筛选全量拉齐（后端 pageSize 封顶 100，翻页循环），SheetJS 生成 xlsx */
+async function exportRecords() {
+  recordsExporting.value = true;
+  try {
+    const all = await fetchAllPages((query) =>
+      api.couponRecords({
+        ...recordFilters(),
+        page: query.page,
+        pageSize: query.pageSize,
+      }),
+    );
+    if (!all.length) {
+      notify("当前筛选暂无记录可导出", "error");
+      return;
+    }
+    const header = [
+      "用户昵称", "手机号", "券名", "状态", "领取时间", "核销订单号", "核销时间",
+    ];
+    const rows = all.map((r) => [
+      r.userNickname,
+      r.userPhone,
+      r.couponName,
+      recordStatusText(r.status),
+      fmtRecordTime(r.claimedAt),
+      r.orderNo ?? "",
+      fmtRecordTime(r.usedAt),
+    ]);
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    sheet["!cols"] = header.map(() => ({ wch: 18 }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "领取记录");
+    XLSX.writeFile(
+      book,
+      `优惠券领取记录-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+    notify(`已导出 ${all.length} 条领取记录`);
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "导出失败", "error");
+  } finally {
+    recordsExporting.value = false;
+  }
+}
+watch([recPage, recPageSize], () => void loadRecords());
 </script>
 <template>
   <AdminPageShell
@@ -299,6 +407,7 @@ onMounted(load);
     eyebrow="COUPONS"
     description="配置当前顶部校区的优惠券预算、领取门槛与核销效果。"
     ><template #actions
+      ><ElButton @click="openRecords">领取记录</ElButton
       ><ElButton
         v-if="effectiveCampusId && hasPerm('POST /admin/coupons')"
         type="primary"
@@ -662,6 +771,115 @@ onMounted(load);
           ></div
         ></template
       ></ElDialog
+    ><!-- IKRSJ0 #99：领取记录弹层（筛选+表格+分页+导出） --><ElDialog
+      v-model="recordsOpen"
+      title="领取记录"
+      width="min(1080px, calc(100vw - 32px))"
+      align-center
+      :close-on-click-modal="false"
+      ><section class="record-filters" aria-label="领取记录筛选"
+        ><ElForm label-position="top"
+          ><ElRow :gutter="12"
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="优惠券"
+                ><ElSelect
+                  v-model="recCouponId"
+                  clearable
+                  filterable
+                  placeholder="全部优惠券"
+                  ><ElOption
+                    v-for="c in rows"
+                    :key="c.id"
+                    :label="c.name"
+                    :value="c.id"
+                  /></ElSelect></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="状态"
+                ><ElSelect
+                  v-model="recStatus"
+                  clearable
+                  placeholder="全部状态"
+                  ><ElOption label="未使用" value="claimed" /><ElOption
+                    label="已核销"
+                    value="used" /></ElSelect></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="关键词"
+                ><ElInput
+                  v-model="recKeyword"
+                  clearable
+                  placeholder="昵称 / 手机号 / 订单号"
+                  @keyup.enter="queryRecords"
+                /></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="领取开始日期"
+                ><ElDatePicker
+                  v-model="recStart"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  style="width: 100%" /></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="领取结束日期"
+                ><ElDatePicker
+                  v-model="recEnd"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  style="width: 100%" /></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label=" "
+                ><ElButton
+                  type="primary"
+                  :loading="recordsLoading"
+                  @click="queryRecords"
+                  >查询</ElButton
+                ><ElButton @click="resetRecords">重置</ElButton></ElFormItem
+              ></ElCol
+            ></ElRow
+          ></ElForm
+        ></section
+      ><ElTable
+        v-loading="recordsLoading"
+        :data="recordRows"
+        row-key="id"
+        empty-text="当前筛选暂无领取记录"
+        ><ElTableColumn
+          prop="userNickname"
+          label="用户昵称"
+          min-width="140"
+        /><ElTableColumn label="手机号" min-width="130"
+          ><template #default="{ row }">{{
+            row.userPhone || "—"
+          }}</template></ElTableColumn
+        ><ElTableColumn prop="couponName" label="券名" min-width="160" /><ElTableColumn
+          label="状态"
+          width="100"
+          ><template #default="{ row }"
+            ><ElTag size="small" :type="row.status === 'used' ? 'success' : 'info'">{{
+              recordStatusText(row.status)
+            }}</ElTag></template
+          ></ElTableColumn
+        ><ElTableColumn label="领取时间" min-width="150"
+          ><template #default="{ row }">{{
+            fmtRecordTime(row.claimedAt)
+          }}</template></ElTableColumn
+        ><ElTableColumn label="核销订单号" min-width="180"
+          ><template #default="{ row }">{{
+            row.orderNo || "—"
+          }}</template></ElTableColumn
+        ><ElTableColumn label="核销时间" min-width="150"
+          ><template #default="{ row }">{{
+            fmtRecordTime(row.usedAt)
+          }}</template></ElTableColumn
+        ></ElTable
+      ><AdminPagination
+        v-model:page="recPage"
+        v-model:page-size="recPageSize"
+        :total="recTotal"
+        :page-sizes="[10, 20, 50, 100]"
+      /><template #footer
+        ><ElButton :loading="recordsExporting" @click="exportRecords"
+          >导出</ElButton
+        ><ElButton @click="recordsOpen = false">关闭</ElButton></template
+      ></ElDialog
     ></AdminPageShell
   >
 </template>
@@ -682,6 +900,13 @@ onMounted(load);
   padding: 48px;
   text-align: center;
   color: var(--muted);
+}
+/* IKRSJ0 #99：领取记录弹层筛选区 */
+.record-filters {
+  margin-bottom: 4px;
+}
+.record-filters :deep(.el-form-item) {
+  margin-bottom: 12px;
 }
 .el-select,
 .el-input-number,

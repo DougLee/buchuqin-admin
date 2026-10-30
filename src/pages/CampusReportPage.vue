@@ -16,6 +16,9 @@ const loading = ref(true);
 const error = ref("");
 const report = ref<Awaited<ReturnType<typeof api.campusDailyReport>> | null>(null);
 const buildings = ref<Building[]>([]);
+const buildingsLoading = ref(false);
+/** 楼栋列表加载失败不再静默（IKRSJ0）：静默会把下拉永久置灰且无从排查 */
+const buildingsError = ref("");
 
 /* 数据范围与后端 isHqScope 同口径：平台上下文跨校区，其余锁本校区
    （RBAC V1：role 判断换服务端 platform 上下文） */
@@ -39,6 +42,13 @@ const marginRateText = computed(() =>
 /** 毛利率（毛利/商品金额，未扣券，IKISZ2+） */
 const marginRawRateText = computed(() =>
   report.value ? (report.value.totals.marginRawRate / 100).toFixed(2) : "0.00",
+);
+/* IKRSJ0 #56：微信支付手续费试算（费率 0.6%，结算由校区承担）——销售总额口径
+   本身含手续费，此行仅作附注展示；精确账单以微信商户平台结算单为准。 */
+const wechatFeeText = computed(() =>
+  report.value
+    ? fenToYuan(Math.round((report.value.totals.salesTotal || 0) * 0.006))
+    : "0.00",
 );
 
 async function load() {
@@ -69,7 +79,9 @@ async function load() {
 async function loadBuildings() {
   buildings.value = [];
   buildingId.value = "";
+  buildingsError.value = "";
   if (!operationalCampusId.value) return;
+  buildingsLoading.value = true;
   try {
     const list = await api.buildings({
       page: 1,
@@ -79,8 +91,10 @@ async function loadBuildings() {
     buildings.value = (Array.isArray(list) ? list : (list as any).items ?? []).filter(
       (b: Building) => b.status === "active",
     );
-  } catch {
-    /* 楼栋筛选加载失败不阻断日报 */
+  } catch (e) {
+    buildingsError.value = e instanceof Error ? e.message : "楼栋列表加载失败";
+  } finally {
+    buildingsLoading.value = false;
   }
 }
 async function reloadCampusReport() {
@@ -115,7 +129,27 @@ function rawRateText(row: CampusDailyRow) {
       <ElForm class="head-actions report-filter" label-position="top" @submit.prevent="load"><ElRow :gutter="8" align="bottom">
         <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="开始日期"><ElDatePicker v-model="startDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="开始日期" /></ElFormItem></ElCol>
         <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="结束日期"><ElDatePicker v-model="endDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" placeholder="结束日期" /></ElFormItem></ElCol>
-        <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label="楼栋"><ElSelect v-model="buildingId" clearable placeholder="全部楼栋" :disabled="!operationalCampusId || !buildings.length"><ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" /></ElSelect></ElFormItem></ElCol>
+        <ElCol :xs="24" :sm="12" :lg="6">
+          <ElFormItem label="楼栋">
+            <ElSelect
+              v-model="buildingId"
+              clearable
+              placeholder="全部楼栋"
+              :loading="buildingsLoading"
+              :disabled="!operationalCampusId"
+            >
+              <ElOption v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
+              <template v-if="buildingsError" #header>
+                <p class="building-error" @click="void loadBuildings()">
+                  {{ buildingsError }} · 点击重试
+                </p>
+              </template>
+              <template v-else-if="!buildings.length" #header>
+                <p class="building-empty">该校区暂无启用中的楼栋</p>
+              </template>
+            </ElSelect>
+          </ElFormItem>
+        </ElCol>
         <ElCol :xs="24" :sm="12" :lg="6"><ElFormItem label=" "><ElButton native-type="submit" type="primary" :loading="loading" :disabled="!operationalCampusId">查询</ElButton></ElFormItem></ElCol>
       </ElRow></ElForm>
     </div>
@@ -125,15 +159,33 @@ function rawRateText(row: CampusDailyRow) {
       <p class="empty-cell">请先在顶部选择校区。</p>
     </div>
 
-    <!-- 五卡（范围合计，IKISZ2+ 双口径对称） -->
+    <!-- 八卡 4×2（IKRSJ0 #84b）：销售总额/批发成本/优惠金额/配送费 + 退款/毛利/综合毛利/有效订单 -->
     <div v-if="report" class="report-cards">
       <div class="report-card">
-        <p class="report-label">销售额（实付）</p>
+        <p class="report-label">销售总额</p>
         <strong>¥{{ fenToYuan(report.totals.salesTotal, true) }}</strong>
+        <!-- IKRSJ0 #56：手续费附注（0.6% 前端试算，主数值口径不变仍含手续费） -->
+        <p class="report-sub">
+          含微信支付手续费 ¥{{ wechatFeeText }}（0.6% · 结算由校区承担）
+        </p>
       </div>
       <div class="report-card">
         <p class="report-label">批发成本</p>
         <strong>¥{{ fenToYuan(report.totals.costTotal, true) }}</strong>
+      </div>
+      <div class="report-card">
+        <p class="report-label" title="学生实付中的优惠抵扣合计（优惠券等）">
+          优惠金额
+        </p>
+        <strong>¥{{ fenToYuan(report.totals.discountTotal ?? 0, true) }}</strong>
+      </div>
+      <div class="report-card">
+        <p class="report-label" title="交付配送员，不进综合毛利">配送费</p>
+        <strong>¥{{ fenToYuan(report.totals.deliveryTotal, true) }}</strong>
+      </div>
+      <div class="report-card">
+        <p class="report-label">退款金额</p>
+        <strong>¥{{ fenToYuan(report.totals.refundedTotal, true) }}</strong>
       </div>
       <div class="report-card">
         <p class="report-label" title="商品金额 − 批发成本（未扣券）">
@@ -156,9 +208,7 @@ function rawRateText(row: CampusDailyRow) {
       <div class="report-card">
         <p class="report-label">有效订单</p>
         <strong>{{ report.totals.orders }}</strong>
-        <p class="report-sub">
-          除待付/取消/退款 · 退款 ¥{{ fenToYuan(report.totals.refundedTotal) }}
-        </p>
+        <p class="report-sub">除待付/取消/退款口径</p>
       </div>
     </div>
 
@@ -208,13 +258,28 @@ function rawRateText(row: CampusDailyRow) {
 .report-filter select:focus {
   border-color: var(--brand);
 }
+/* 楼栋下拉头部状态条：加载失败可重试 / 空态说明（IKRSJ0） */
+.building-error {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #b33a3a;
+  cursor: pointer;
+}
+.building-empty {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #7b8981;
+}
 .report-sep {
   font-size: 12px;
   color: #7b8981;
 }
+/* 八卡 4×2（IKRSJ0 #84b）：4 列两行 */
 .report-cards {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -288,12 +353,12 @@ function rawRateText(row: CampusDailyRow) {
 }
 @media (max-width: 1200px) {
   .report-cards {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
-@media (max-width: 900px) {
+@media (max-width: 560px) {
   .report-cards {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -442,6 +442,55 @@ function exportReport() {
             立即处理 →
           </button>
         </article>
+        <!-- IKRSJ0 #82：总览五指标追加（历史总销售额/当日配送费/存货成本/盘点成本/预计销售额）。
+             后端按需下发，未部署时字段 undefined——?? 0 兜底显示 ¥0.00，不报错。 -->
+        <article class="kpi">
+          <p title="历史累计实付销售额">总销售额</p>
+          <strong
+            ><small>¥</small>{{ fenToYuan(data.totalSales ?? 0, true) }}</strong
+          >
+          <p class="kpi-sub">历史累计实付</p>
+        </article>
+        <article class="kpi">
+          <p title="当日配送费（交付配送员，不进毛利）">当日配送费</p>
+          <strong
+            ><small>¥</small>{{
+              fenToYuan(data.todayDeliveryFee ?? 0, true)
+            }}</strong
+          >
+          <p class="kpi-sub">交付配送员 · 不进毛利</p>
+        </article>
+        <article class="kpi">
+          <p title="当前在库商品成本合计">存货成本</p>
+          <strong
+            ><small>¥</small>{{ fenToYuan(data.stockCost ?? 0, true) }}</strong
+          >
+          <p class="kpi-sub">当前在库商品成本</p>
+        </article>
+        <article
+          class="kpi kpi-link"
+          title="点击查看库存流水"
+          @click="
+            router.push(menuPath('inventory-txns') || '/inventory-txns')
+          "
+        >
+          <p title="盘点产生的成本调整合计">盘点成本</p>
+          <strong
+            ><small>¥</small>{{
+              fenToYuan(data.stocktakeCost ?? 0, true)
+            }}</strong
+          >
+          <p class="kpi-sub">库存流水 →</p>
+        </article>
+        <article class="kpi">
+          <p title="按当前趋势预测的销售额">预计销售额</p>
+          <strong
+            ><small>¥</small>{{
+              fenToYuan(data.forecastSales ?? 0, true)
+            }}</strong
+          >
+          <p class="kpi-sub">按当前趋势预测</p>
+        </article>
       </section>
       <section class="dashboard-grid">
         <article class="panel chart-panel">
@@ -587,9 +636,12 @@ function exportReport() {
             <div>
               <h2>楼栋经营排行</h2>
             </div>
+            <!-- IKRSJ0 #81：完整数据跳楼栋经营榜独立页（原误跳 /orders） -->
             <button
               class="text-btn"
-              @click="router.push(menuPath('orders') || '/access-denied')"
+              @click="
+                router.push(menuPath('building-rank') || '/building-rank')
+              "
             >
               完整数据 →
             </button>
@@ -656,3 +708,17 @@ function exportReport() {
     >
   </div>
 </template>
+<style scoped>
+/* IKRSJ0 #82：盘点成本整卡可点跳库存流水——hover 提示可点，样式与 .kpi 同源 */
+.kpi-link {
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.kpi-link:hover {
+  border-color: var(--brand, #159c55);
+}
+.kpi-link:hover .kpi-sub {
+  color: var(--brand, #159c55);
+  font-weight: 600;
+}
+</style>

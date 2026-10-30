@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import * as XLSX from "xlsx";
 import { api } from "../api";
-import { hasPerm } from "../session";
-import type { RestockOrder } from "../types";
+import { accountOrgLevel, hasPerm } from "../session";
+import type { Campus, PurchaseRecordRow, RestockOrder } from "../types";
 import { RESTOCK_ORDER_STATUS_CLASS, RESTOCK_ORDER_STATUS_TEXT } from "../dicts";
 import type {
   PurchaseOrderDetail,
   PurchaseOrderRow,
 } from "../types";
-import { fenToYuan } from "../utils/money";
-import { fmtDateTime } from "../utils/datetime";
+import { fenToYuan, yuanToFen } from "../utils/money";
+import { fmtDate, fmtDateTime } from "../utils/datetime";
+import AdminPagination from "../shared/ui/AdminPagination.vue";
 const notify = (message: string, error = false) => ElMessage({ message, type: error ? "error" : "success", showClose: true });
 
 /**
@@ -96,6 +98,223 @@ async function openMyOrder(id: string) {
   }
 }
 onMounted(load);
+
+/* ---------- 采购台账（#97）：纯登记台账，不动库存不落流水 ---------- */
+const activeTab = ref<"orders" | "ledger">("orders");
+/** 台账能力按 RBAC fail-closed：无 GET /admin/purchases 授权的账号不出现该 Tab。 */
+const canLedger = computed(() => hasPerm("GET /admin/purchases"));
+/** 校区筛选只给平台/组织角色（campus 账号后端本就锁定本校区）。 */
+const canPickLedgerCampus = computed(() => accountOrgLevel.value !== "campus");
+const ledgerRows = ref<PurchaseRecordRow[]>([]);
+const ledgerLoading = ref(false);
+const ledgerError = ref("");
+const ledgerPage = ref(1);
+const ledgerPageSize = ref(20);
+const ledgerTotal = ref(0);
+const ledgerKeyword = ref("");
+const ledgerCampus = ref("");
+const ledgerCampuses = ref<Campus[]>([]);
+const ledgerLoaded = ref(false);
+/** 本地日期 → YYYY-MM-DD（purchasedAt 缺省本月范围）。 */
+function isoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+const ledgerRange = ref<[string, string] | null>([
+  isoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+  isoDate(new Date()),
+]);
+const asPurchaseRecord = (row: unknown) => row as PurchaseRecordRow;
+/** #97：后端暂无排序参数——sortable="custom" 只对当前页内存排序（翻页/重查还原）。 */
+const ledgerSortProp = ref<"purchasedAt" | "price" | "">("");
+const ledgerSortOrder = ref<"ascending" | "descending" | null>(null);
+const ledgerDisplayRows = computed(() => {
+  const rows = [...ledgerRows.value];
+  const prop = ledgerSortProp.value;
+  const order = ledgerSortOrder.value;
+  if (!prop || !order) return rows;
+  const dir = order === "ascending" ? 1 : -1;
+  return rows.sort((a, b) =>
+    a[prop] === b[prop] ? 0 : a[prop] > b[prop] ? dir : -dir,
+  );
+});
+/** 到期预警汇总（只统计当前页返回行）。 */
+const ledgerExpiringCount = computed(
+  () => ledgerRows.value.filter((row) => row.expiring && !row.expired).length,
+);
+const ledgerExpiredCount = computed(
+  () => ledgerRows.value.filter((row) => row.expired).length,
+);
+async function loadLedger() {
+  ledgerLoading.value = true;
+  ledgerError.value = "";
+  try {
+    const result = await api.purchases({
+      start: ledgerRange.value?.[0],
+      end: ledgerRange.value?.[1],
+      campus: ledgerCampus.value || undefined,
+      keyword: ledgerKeyword.value.trim() || undefined,
+      page: ledgerPage.value,
+      pageSize: ledgerPageSize.value,
+    });
+    ledgerRows.value = result.items;
+    ledgerTotal.value = result.total;
+  } catch (e) {
+    ledgerRows.value = [];
+    ledgerTotal.value = 0;
+    ledgerError.value = e instanceof Error ? e.message : "台账加载失败";
+  } finally {
+    ledgerLoading.value = false;
+  }
+}
+function searchLedger() {
+  if (ledgerPage.value === 1) void loadLedger();
+  else ledgerPage.value = 1; // 翻页 watch 会触发加载
+}
+function onLedgerSortChange({
+  prop,
+  order,
+}: {
+  prop: string | null;
+  order: "ascending" | "descending" | null;
+}) {
+  ledgerSortProp.value =
+    prop === "purchasedAt" || prop === "price" ? prop : "";
+  ledgerSortOrder.value = order;
+}
+async function loadLedgerCampuses() {
+  if (!canPickLedgerCampus.value || ledgerCampuses.value.length) return;
+  try {
+    ledgerCampuses.value = await api.campuses();
+  } catch {
+    ledgerCampuses.value = [];
+  }
+}
+watch(activeTab, (tab) => {
+  if (tab === "ledger" && !ledgerLoaded.value) {
+    ledgerLoaded.value = true;
+    void loadLedger();
+    void loadLedgerCampuses();
+  }
+});
+watch([ledgerPage, ledgerPageSize, ledgerCampus], () => void loadLedger());
+let ledgerKeywordTimer: number | undefined;
+watch(ledgerKeyword, () => {
+  if (ledgerKeywordTimer) clearTimeout(ledgerKeywordTimer);
+  ledgerKeywordTimer = window.setTimeout(() => {
+    ledgerPage.value = 1;
+    void loadLedger();
+  }, 280);
+});
+
+/** 手动新增弹窗（price 存元、提交 yuanToFen；expiresAt 可空）。 */
+const createOpen = ref(false);
+const creating = ref(false);
+const createForm = reactive({
+  productName: "",
+  qty: 1,
+  price: null as number | null,
+  expiresAt: "",
+  purchasedAt: isoDate(new Date()),
+  remark: "",
+});
+function openCreate() {
+  Object.assign(createForm, {
+    productName: "",
+    qty: 1,
+    price: null,
+    expiresAt: "",
+    purchasedAt: isoDate(new Date()),
+    remark: "",
+  });
+  createOpen.value = true;
+}
+async function submitCreate() {
+  const productName = createForm.productName.trim();
+  if (!productName) return notify("请填写商品名称", true);
+  if (!Number.isInteger(createForm.qty) || createForm.qty <= 0)
+    return notify("入库数量必须为正整数", true);
+  const price = createForm.price;
+  if (price == null || !Number.isFinite(price) || price < 0)
+    return notify("请填写采购价", true);
+  if (!createForm.purchasedAt) return notify("请选择入库日期", true);
+  creating.value = true;
+  try {
+    await api.createPurchase(
+      {
+        productName,
+        qty: createForm.qty,
+        price: yuanToFen(price),
+        expiresAt: createForm.expiresAt || null,
+        purchasedAt: createForm.purchasedAt,
+        remark: createForm.remark.trim(),
+      },
+      ledgerCampus.value || undefined,
+    );
+    notify("台账已登记");
+    createOpen.value = false;
+    searchLedger();
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "登记失败", true);
+  } finally {
+    creating.value = false;
+  }
+}
+
+/** 导出 xlsx：照商品管理模式按当前筛选翻页取全量（pageSize 100，防失控封顶 50 页）。 */
+const exporting = ref(false);
+async function exportLedger() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const all: PurchaseRecordRow[] = [];
+    for (let p = 1; p <= 50; p++) {
+      const result = await api.purchases({
+        start: ledgerRange.value?.[0],
+        end: ledgerRange.value?.[1],
+        campus: ledgerCampus.value || undefined,
+        keyword: ledgerKeyword.value.trim() || undefined,
+        page: p,
+        pageSize: 100,
+      });
+      all.push(...result.items);
+      if (all.length >= result.total || !result.items.length) break;
+    }
+    const statusText = (row: PurchaseRecordRow) =>
+      row.expired ? "已过期" : row.expiring ? "30 天内到期" : "正常";
+    const header = [
+      "商品名称",
+      "入库数量",
+      "采购价(元)",
+      "入库日期",
+      "到期时间",
+      "状态",
+      "备注",
+      "登记人",
+      "登记时间",
+    ];
+    const rows = all.map((row) => [
+      row.productName,
+      row.qty,
+      Number(fenToYuan(row.price)),
+      row.purchasedAt,
+      row.expiresAt ? fmtDate(row.expiresAt) : "",
+      statusText(row),
+      row.remark || "",
+      row.createdByName || "",
+      fmtDateTime(row.createdAt),
+    ]);
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    sheet["!cols"] = header.map((h) => ({ wch: Math.max(10, h.length * 2 + 2) }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "采购台账");
+    XLSX.writeFile(book, `采购台账-${isoDate(new Date())}.xlsx`);
+    notify(`已导出 ${all.length} 条台账`);
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "导出失败", true);
+  } finally {
+    exporting.value = false;
+  }
+}
 
 /* ---------- 详情 + 验收 ---------- */
 const detailDrawer = ref(false);
@@ -206,25 +425,98 @@ async function refreshDetail() {
       </ElTable>
     </div>
 
-    <div v-else class="data-panel">
-      <div class="data-summary">
-        <div>
-          <strong>{{ orders.length }}</strong><span> 张采购单</span>
+    <!-- #97：总部视角加 Tab——订货批次（原批次流）+ 采购台账（纯登记） -->
+    <ElTabs v-else v-model="activeTab" class="purchase-tabs">
+      <ElTabPane label="订货批次" name="orders">
+        <div class="data-panel">
+          <div class="data-summary">
+            <div>
+              <strong>{{ orders.length }}</strong><span> 张采购单</span>
+            </div>
+            <p><span class="live-dot"></span>数据已同步</p>
+          </div>
+          <ElTable v-loading="loading" :data="orders" row-key="id" empty-text="还没有采购单。到「订货单」打开批次详情，一键聚合生成。">
+            <ElTableColumn prop="batchName" label="采购批次" min-width="160" />
+            <ElTableColumn prop="supplierName" label="供应商" min-width="140" />
+            <ElTableColumn label="状态" width="110"><template #default="{ row }"><ElTag>{{ PURCHASE_PHASE_TEXT[row.phase] }}</ElTag></template></ElTableColumn>
+            <ElTableColumn label="应收 / 已收（件）" min-width="150"><template #default="{ row }">{{ row.requiredCases }} / {{ row.receivedCases }}<em v-if="row.phase === 'partial'" class="shortage">（欠 {{ row.requiredCases - row.receivedCases }}）</em></template></ElTableColumn>
+            <ElTableColumn label="坏品" width="80"><template #default="{ row }">{{ row.badCases || "—" }}</template></ElTableColumn>
+            <ElTableColumn label="采购总额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.totalCost) }}</template></ElTableColumn>
+            <ElTableColumn label="已收金额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.receivedCost) }}</template></ElTableColumn>
+            <ElTableColumn label="创建人 / 时间" min-width="180"><template #default="{ row }">{{ row.createdByName || "—" }}<br />{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
+            <ElTableColumn label="操作" fixed="right" width="100"><template #default="{ row }"><ElButton v-if="hasPerm('GET /admin/purchase/orders/:id')" size="small" type="primary" @click="openDetail(asPurchaseOrder(row))">详情</ElButton></template></ElTableColumn>
+          </ElTable>
         </div>
-        <p><span class="live-dot"></span>数据已同步</p>
-      </div>
-      <ElTable v-loading="loading" :data="orders" row-key="id" empty-text="还没有采购单。到「订货单」打开批次详情，一键聚合生成。">
-        <ElTableColumn prop="batchName" label="采购批次" min-width="160" />
-        <ElTableColumn prop="supplierName" label="供应商" min-width="140" />
-        <ElTableColumn label="状态" width="110"><template #default="{ row }"><ElTag>{{ PURCHASE_PHASE_TEXT[row.phase] }}</ElTag></template></ElTableColumn>
-        <ElTableColumn label="应收 / 已收（件）" min-width="150"><template #default="{ row }">{{ row.requiredCases }} / {{ row.receivedCases }}<em v-if="row.phase === 'partial'" class="shortage">（欠 {{ row.requiredCases - row.receivedCases }}）</em></template></ElTableColumn>
-        <ElTableColumn label="坏品" width="80"><template #default="{ row }">{{ row.badCases || "—" }}</template></ElTableColumn>
-        <ElTableColumn label="采购总额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.totalCost) }}</template></ElTableColumn>
-        <ElTableColumn label="已收金额" width="120"><template #default="{ row }">¥{{ fenToYuan(row.receivedCost) }}</template></ElTableColumn>
-        <ElTableColumn label="创建人 / 时间" min-width="180"><template #default="{ row }">{{ row.createdByName || "—" }}<br />{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
-        <ElTableColumn label="操作" fixed="right" width="100"><template #default="{ row }"><ElButton v-if="hasPerm('GET /admin/purchase/orders/:id')" size="small" type="primary" @click="openDetail(asPurchaseOrder(row))">详情</ElButton></template></ElTableColumn>
-      </ElTable>
-    </div>
+      </ElTabPane>
+      <ElTabPane v-if="canLedger" label="采购台账" name="ledger">
+        <div class="data-panel ledger-panel">
+          <div class="ledger-filter">
+            <ElDatePicker
+              v-model="ledgerRange"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+              start-placeholder="入库开始"
+              end-placeholder="入库结束"
+              :clearable="false"
+            />
+            <ElInput
+              v-model="ledgerKeyword"
+              clearable
+              placeholder="搜索商品名称"
+              class="ledger-keyword"
+              @keyup.enter="searchLedger"
+            />
+            <ElSelect
+              v-if="canPickLedgerCampus"
+              v-model="ledgerCampus"
+              clearable
+              filterable
+              placeholder="全部校区"
+              class="ledger-campus"
+            ><ElOption v-for="c in ledgerCampuses" :key="c.id" :label="c.name" :value="c.id" /></ElSelect>
+            <ElButton type="primary" :loading="ledgerLoading" @click="searchLedger">查询</ElButton>
+            <div class="ledger-actions">
+              <ElButton :loading="exporting" @click="exportLedger">导出</ElButton>
+              <ElButton v-if="hasPerm('POST /admin/purchases')" type="primary" @click="openCreate">手动新增</ElButton>
+            </div>
+          </div>
+          <ElAlert
+            v-if="ledgerExpiredCount || ledgerExpiringCount"
+            type="warning"
+            show-icon
+            :closable="false"
+            class="ledger-alert"
+            title="到期预警"
+            ><template #default
+              >当前结果里 <strong>{{ ledgerExpiredCount }}</strong> 条已过期、<strong>{{ ledgerExpiringCount }}</strong> 条 30 天内到期</template
+            ></ElAlert
+          >
+          <p v-if="ledgerError" class="load-error">{{ ledgerError }}</p>
+          <ElTable
+            v-loading="ledgerLoading"
+            :data="ledgerDisplayRows"
+            row-key="id"
+            empty-text="暂无采购记录，点「手动新增」登记第一笔"
+            @sort-change="onLedgerSortChange"
+          >
+            <ElTableColumn prop="productName" label="商品" min-width="180" />
+            <ElTableColumn prop="qty" label="数量" width="90" />
+            <ElTableColumn prop="price" label="采购价" width="110" sortable="custom"><template #default="{ row }">¥{{ fenToYuan(asPurchaseRecord(row).price) }}</template></ElTableColumn>
+            <ElTableColumn prop="purchasedAt" label="入库日期" width="130" sortable="custom" />
+            <ElTableColumn label="到期时间" width="130"><template #default="{ row }">{{ asPurchaseRecord(row).expiresAt ? fmtDate(asPurchaseRecord(row).expiresAt) : "—" }}</template></ElTableColumn>
+            <ElTableColumn label="状态" width="130"><template #default="{ row }"><ElTag v-if="asPurchaseRecord(row).expired" type="danger">已过期</ElTag><ElTag v-else-if="asPurchaseRecord(row).expiring" type="warning">30 天内到期</ElTag><span v-else class="ledger-ok">正常</span></template></ElTableColumn>
+            <ElTableColumn label="备注" min-width="140"><template #default="{ row }">{{ asPurchaseRecord(row).remark || "—" }}</template></ElTableColumn>
+            <ElTableColumn label="登记人" width="110"><template #default="{ row }">{{ asPurchaseRecord(row).createdByName || "—" }}</template></ElTableColumn>
+            <ElTableColumn label="登记时间" width="170"><template #default="{ row }">{{ fmtDateTime(asPurchaseRecord(row).createdAt) }}</template></ElTableColumn>
+          </ElTable>
+          <AdminPagination
+            v-model:page="ledgerPage"
+            v-model:page-size="ledgerPageSize"
+            :total="ledgerTotal"
+          />
+        </div>
+      </ElTabPane>
+    </ElTabs>
 
     <!-- 详情 + 验收弹框 -->
     <ElDialog v-model="detailDrawer" :title="detail?.supplierName ?? '采购单'" width="min(860px, calc(100vw - 32px))" align-center destroy-on-close :close-on-click-modal="false">
@@ -345,6 +637,37 @@ async function refreshDetail() {
           </template>
         </div>
     </ElDialog>
+
+    <!-- #97 手动新增采购台账：纯登记（不动库存不落流水），price 元→分提交 -->
+    <ElDialog
+      v-model="createOpen"
+      title="手动新增采购台账"
+      width="min(560px, calc(100vw - 32px))"
+      align-center
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <ElForm label-position="top">
+        <ElFormItem label="商品名称" required>
+          <ElInput v-model="createForm.productName" maxlength="100" placeholder="商品名称" />
+        </ElFormItem>
+        <ElRow :gutter="12">
+          <ElCol :span="12"><ElFormItem label="入库数量"><ElInputNumber v-model="createForm.qty" :min="1" :step="1" /></ElFormItem></ElCol>
+          <ElCol :span="12"><ElFormItem label="自主采购价（元）"><ElInputNumber v-model="createForm.price" :min="0" :precision="2" :step="1" placeholder="0.00" /></ElFormItem></ElCol>
+        </ElRow>
+        <ElRow :gutter="12">
+          <ElCol :span="12"><ElFormItem label="入库日期" required><ElDatePicker v-model="createForm.purchasedAt" type="date" value-format="YYYY-MM-DD" placeholder="选择入库日期" /></ElFormItem></ElCol>
+          <ElCol :span="12"><ElFormItem label="商品过期时间"><ElDatePicker v-model="createForm.expiresAt" type="date" value-format="YYYY-MM-DD" placeholder="可空" /></ElFormItem></ElCol>
+        </ElRow>
+        <ElFormItem label="备注">
+          <ElInput v-model="createForm.remark" type="textarea" :rows="2" maxlength="200" placeholder="备注（可空）" />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="createOpen = false">取消</ElButton>
+        <ElButton type="primary" :loading="creating" @click="submitCreate">登记</ElButton>
+      </template>
+    </ElDialog>
   </div>
 </template>
 
@@ -415,6 +738,35 @@ async function refreshDetail() {
 .rx-note {
   margin-top: 10px;
   font-size: 11px;
+  color: #647169;
+}
+/* ---------- 采购台账（#97） ---------- */
+.purchase-tabs :deep(.el-tabs__content) {
+  overflow: visible;
+}
+.ledger-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ledger-keyword {
+  width: min(220px, 100%);
+}
+.ledger-campus {
+  width: min(180px, 100%);
+}
+.ledger-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+.ledger-alert {
+  margin-bottom: 12px;
+}
+.ledger-ok {
+  font-size: 12px;
   color: #647169;
 }
 </style>

@@ -32,6 +32,10 @@ export interface ListQuery extends PageQuery {
   /** 创建时间起止（IKJ9XQ 对账：订单列表，YYYY-MM-DD，北京时间日界）。 */
   start?: string;
   end?: string;
+  /** 列排序字段（IKRSJ1 #93：商品列表 price/wholesalePrice）。 */
+  sortBy?: string;
+  /** 排序方向（IKRSJ1 #93：asc/desc，缺省 desc）。 */
+  sortDir?: string;
 }
 
 /** 列表统一分页响应（IK8W5X 契约：所有列表接口返回该结构）。 */
@@ -204,6 +208,8 @@ export interface Order {
   orderNo: string;
   userId: string;
   campusId: string;
+  /** 当日分拣序号（IKRSIV #87：出库时落库，小票票头同款；历史单可能为空）。 */
+  dailySeq?: number | null;
   /** IKAJSL：跨校区列表的校区列（单校区视角冗余）。 */
   campusName?: string;
   status: string;
@@ -706,6 +712,8 @@ export interface RefundApplication {
   amount: number;
   payableAmount: number;
   deliveryFee: number;
+  /** 退配送费开关（#110/#91）：批准时审核勾选，true=本笔退款含配送费 */
+  refundDeliveryFee?: boolean;
   status: string;
   statusText: string;
   beforeStatus: string;
@@ -860,6 +868,18 @@ export interface DashboardData {
   fulfillmentDetail: Record<string, FulfillmentNodeDetail>;
   timeoutOrders: TimeoutOrder[];
   hotBuildings: HotBuilding[];
+  /* IKRSJ0 #82：总览五指标（根级，金额分）。后端按需下发，未部署时为 undefined——
+     页面一律 `?? 0` 兜底展示，绝不裸读。 */
+  /** 历史总销售额（分） */
+  totalSales?: number;
+  /** 当日配送费（分） */
+  todayDeliveryFee?: number;
+  /** 存货成本（分） */
+  stockCost?: number;
+  /** 盘点成本（分） */
+  stocktakeCost?: number;
+  /** 预计销售额（分） */
+  forecastSales?: number;
 }
 
 export interface BarcodeLookup {
@@ -1247,13 +1267,45 @@ export interface CampusDailyReport {
     productTotal: number;
     /** 毛利合计（分）=商品金额−成本，未扣券（IKISZ2） */
     marginTotal: number;
+    /** 配送费合计（分，#84b 暴露）：交付配送员，不进综合毛利 */
+    deliveryTotal?: number;
     gross: number;
     /** 毛利率万分比（/100=百分比）=毛利合计/商品金额合计（IKISZ2+） */
     marginRawRate: number;
     /** 综合毛利率万分比（/100=百分比）=综合毛利/实付 */
     marginRate: number;
+    /* IKRSJ0 #84b：优惠金额合计（分）——学生实付中的优惠抵扣合计；后端未部署时缺省 undefined */
+    discountTotal?: number;
   };
   rows: CampusDailyRow[];
+}
+
+/* IKRSJ0 #116/#81b：楼栋经营榜行（salesTotal 降序，端点一次回全部楼栋） */
+export interface BuildingRankItem {
+  buildingId: string;
+  buildingName: string;
+  orders: number;
+  /** 范围内销售额（分，含手续费口径同销售总额） */
+  salesTotal: number;
+}
+export interface BuildingRankReport {
+  items: BuildingRankItem[];
+}
+
+/* IKRSJ0 #99：优惠券领取记录行（领取/核销流水；未核销时 usedAt/orderNo 为空） */
+export interface CouponRecord {
+  id: string;
+  userId: string;
+  userNickname: string;
+  /** 列表口径脱敏手机号 */
+  userPhone: string;
+  couponId: string;
+  couponName: string;
+  /** claimed 已领取未使用 | used 已核销 */
+  status: string;
+  claimedAt: string;
+  usedAt: string | null;
+  orderNo: string | null;
 }
 
 /** 营销作战地图（IKFOQ3）：寝室格子三色=ordered 已下单/registered 注册未下单/fresh 未开发 */
@@ -1369,6 +1421,8 @@ export interface CampusConfigCampus {
   closeEnd: string;
   manualClosed: boolean;
   buildingManagerBaseSalary: number;
+  /** #110/#91：到店前退款是否退配送费（默认 false=不退），售后审核预选用 */
+  refundDeliveryFeeBeforeArrive?: boolean;
 }
 export interface DeliverySlotRow {
   id: string;
@@ -1391,4 +1445,59 @@ export interface CampusConfigBundle {
   campus: CampusConfigCampus;
   slots: DeliverySlotRow[];
   notices: NoticeRow[];
+}
+
+/* ---------- 库存盘点统计（#85）：盘点原因枚举化 + 按原因聚合 ---------- */
+/** 盘点原因四选一（后端 400 门控非法值）。 */
+export type StocktakeReason = "线下销售" | "赠送" | "货损" | "丢损";
+/** 某原因下的商品明细行。 */
+export interface StocktakeStatProduct {
+  productId: string;
+  productName: string;
+  /** 核减数量合计 */
+  qty: number;
+  /** 成本合计（分） */
+  cost: number;
+}
+/** 按原因聚合的统计分组（GET /admin/inventory/stocktake-stats 行）。 */
+export interface StocktakeStatGroup {
+  reason: StocktakeReason;
+  /** 流水条数 */
+  count: number;
+  /** 核减数量合计 */
+  totalQty: number;
+  /** 成本合计（分） */
+  totalCost: number;
+  products: StocktakeStatProduct[];
+}
+
+/* ---------- 采购台账（#97）：纯登记台账，不动库存不落流水 ---------- */
+export interface PurchaseRecordRow {
+  id: string;
+  productName: string;
+  /** 入库数量 */
+  qty: number;
+  /** 采购价（分） */
+  price: number;
+  /** 商品过期时间；null = 未登记 */
+  expiresAt: string | null;
+  /** 入库日期（YYYY-MM-DD） */
+  purchasedAt: string;
+  remark: string;
+  /** ≤30 天到期 */
+  expiring: boolean;
+  /** 已过期 */
+  expired: boolean;
+  createdByName?: string;
+  createdAt: string;
+}
+/** 手动新增采购台账入参（price 分制，expiresAt 可空）。 */
+export interface PurchaseRecordCreateInput {
+  productName: string;
+  qty: number;
+  price: number;
+  expiresAt?: string | null;
+  /** 入库日期（YYYY-MM-DD，必填） */
+  purchasedAt: string;
+  remark?: string;
 }

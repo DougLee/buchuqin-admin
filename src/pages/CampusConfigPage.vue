@@ -119,6 +119,14 @@ const profileForm = ref({
   servicePhone: "",
   serviceQrcode: "",
   afterSalesGroupQrcode: "",
+  // IKRSJ3 #114：群二维码弹窗文案（校区自定义，空=回落默认文案）
+  groupQrcodeTip: "",
+  // #88/#89：企微在线客服链接（空=小程序用旧客服弹层）
+  serviceKfUrl: "",
+  // IKRSIY #195：企微企业 ID（openCustomerServiceChat 的 corpAccessId）
+  serviceKfCorpId: "",
+  // #88/#89：用户可见配送员联系方式（骑手/楼长姓名电话+一键拨打）
+  showDeliveryContacts: false,
   status: "active" as "active" | "inactive",
 });
 watch(bundle, (b) => {
@@ -133,6 +141,14 @@ watch(bundle, (b) => {
     afterSalesGroupQrcode:
       (b.campus as { afterSalesGroupQrcode?: string }).afterSalesGroupQrcode ??
       "",
+    groupQrcodeTip:
+      (b.campus as { groupQrcodeTip?: string }).groupQrcodeTip ?? "",
+    // #88/#89：企微在线客服链接 + 用户可见配送员联系方式（bundle 宽位断言读）
+    serviceKfUrl: (b.campus as { serviceKfUrl?: string }).serviceKfUrl ?? "",
+    serviceKfCorpId: (b.campus as { serviceKfCorpId?: string }).serviceKfCorpId ?? "",
+    showDeliveryContacts:
+      (b.campus as { showDeliveryContacts?: boolean }).showDeliveryContacts ??
+      false,
     status: b.campus.status === "inactive" ? "inactive" : "active",
   };
 });
@@ -179,6 +195,13 @@ async function saveProfile() {
       servicePhone: profileForm.value.servicePhone.trim(),
       serviceQrcode: profileForm.value.serviceQrcode.trim(),
       afterSalesGroupQrcode: profileForm.value.afterSalesGroupQrcode.trim(),
+      // IKRSJ3 #114：群二维码弹窗文案（空=回落默认文案）
+      groupQrcodeTip: profileForm.value.groupQrcodeTip.trim(),
+      // #88/#89：企微在线客服链接（空=小程序用旧客服弹层）
+      serviceKfUrl: profileForm.value.serviceKfUrl.trim(),
+      serviceKfCorpId: profileForm.value.serviceKfCorpId.trim(),
+      // #88/#89：用户可见配送员联系方式
+      showDeliveryContacts: profileForm.value.showDeliveryContacts,
       // status 不在此提交：防误改校区启停（归校区管理页）
     });
     notify("基础档案已保存");
@@ -220,6 +243,10 @@ const deliveryForm = ref({
   // IKM55A 订单自动出库：开启后 paid 单 N 秒 Cron 自动出库（30s 扫描精度）
   autoOutbound: false,
   autoOutboundDelay: 60,
+  // IKRSIZ #108：楼长销售额展示开关（关=配送端工作台不下发销售额）
+  managerSalesVisible: true,
+  // #110/#91：到店前退款是否退配送费（默认 false=不退）
+  refundFeeBeforeArrive: false,
 });
 watch(bundle, (b) => {
   if (!b) return;
@@ -237,6 +264,11 @@ watch(bundle, (b) => {
     autoOutboundDelay:
       (b.campus as { autoOutboundDelaySeconds?: number })
         .autoOutboundDelaySeconds ?? 60,
+    managerSalesVisible:
+      (b.campus as { managerSalesVisible?: boolean }).managerSalesVisible ??
+      true,
+    // #110/#91：到店前退款退配送费（bundle.campus 已带该字段类型）
+    refundFeeBeforeArrive: b.campus.refundDeliveryFeeBeforeArrive ?? false,
   };
   closeMode.value = b.campus.manualClosed
     ? "now"
@@ -258,6 +290,10 @@ async function saveDelivery() {
       // IKM55A 订单自动出库：双链路 DTO 均收
       autoOutboundEnabled: deliveryForm.value.autoOutbound,
       autoOutboundDelaySeconds: deliveryForm.value.autoOutboundDelay,
+      // IKRSIZ #108：楼长销售额展示开关（双链路 DTO 均收）
+      managerSalesVisible: deliveryForm.value.managerSalesVisible,
+      // #110/#91：到店前退款退配送费（双链路 DTO 均收，照 managerSalesVisible 先例）
+      refundDeliveryFeeBeforeArrive: deliveryForm.value.refundFeeBeforeArrive,
     };
     if (canManageCampus.value) {
       // 平台角色可保存任意选中校区（含打烊窗/手动闭店/无楼长提示 IKHMKR）
@@ -281,12 +317,26 @@ async function saveDelivery() {
   }
 }
 
-/* ---------- 楼长结算（底薪，平台角色） ---------- */
-const salaryForm = ref({ baseSalary: 0 });
+/* ---------- 楼长结算（底薪+提成，平台角色） ---------- */
+const salaryForm = ref({
+  baseSalary: 0,
+  // #110 前置：提成方式——per-order=按单固定（配送费直取）/ rate=按销售额比例
+  commissionMode: "per-order" as "per-order" | "rate",
+  /** 提成比例（百分数显示，如 5 = 5%），保存换算万分比（×100） */
+  commissionRatePercent: 0,
+});
 watch(bundle, (b) => {
   if (b)
     salaryForm.value = {
       baseSalary: Number(fenToYuan(b.campus.buildingManagerBaseSalary)),
+      commissionMode:
+        (b.campus as { managerCommissionMode?: string })
+          .managerCommissionMode === "rate"
+          ? "rate"
+          : "per-order",
+      commissionRatePercent:
+        ((b.campus as { managerCommissionRate?: number })
+          .managerCommissionRate ?? 0) / 100,
     };
 });
 async function saveSalary() {
@@ -295,8 +345,13 @@ async function saveSalary() {
   try {
     await api.updateCampus(bundle.value.campus.id, {
       buildingManagerBaseSalary: yuanToFen(salaryForm.value.baseSalary),
+      // #110 前置：提成方式 + 比例（万分比，前端百分数 ×100；per-order 存而不用）
+      managerCommissionMode: salaryForm.value.commissionMode,
+      managerCommissionRate: Math.round(
+        salaryForm.value.commissionRatePercent * 100,
+      ),
     });
-    notify("楼长底薪已保存");
+    notify("楼长结算配置已保存");
     await load();
   } catch (error) {
     notify(error instanceof Error ? error.message : "保存失败", true);
@@ -553,6 +608,49 @@ async function removeNotice(n: NoticeRow) {
                 <p class="qrcode-tip">
                   售后福利群二维码；未上传时小程序售后页不显示该区块
                 </p>
+              </ElFormItem>
+              <!-- IKRSJ3 #114：群二维码弹窗文案（校区自定义，空=默认文案） -->
+              <ElFormItem label="群二维码弹窗文案（小程序展示，留空用默认文案）">
+                <ElInput
+                  v-model="profileForm.groupQrcodeTip"
+                  :maxlength="100"
+                  show-word-limit
+                  placeholder="如：加入福利群，售后进度与专属优惠第一时间掌握"
+                />
+              </ElFormItem>
+              <!-- #88/#89：企微在线客服链接（空=小程序用旧客服弹层） -->
+              <ElFormItem label="企微在线客服链接（留空=小程序用旧客服弹层）">
+                <ElInput
+                  v-model.trim="profileForm.serviceKfUrl"
+                  :disabled="!canEditProfile"
+                  placeholder="https://work.weixin.qq.com/kfid/xxx"
+                />
+                <p class="qrcode-tip">
+                  企业微信 kf.weixin.qq.com 创建客服账号后复制链接
+                </p>
+              </ElFormItem>
+              <!-- IKRSIY #195：企微企业 ID（拉起客服会话必填） -->
+              <ElFormItem label="企微企业 ID（拉起在线客服必填）">
+                <ElInput
+                  v-model.trim="profileForm.serviceKfCorpId"
+                  :disabled="!canEditProfile"
+                  placeholder="wwxxxxxxxx（企业微信我的企业页复制）"
+                />
+                <p class="qrcode-tip">
+                  企业微信管理后台「我的企业」页的企业 ID；与上方链接配套填写
+                </p>
+              </ElFormItem>
+              <!-- #88/#89：用户可见配送员联系方式 -->
+              <ElFormItem label="用户可见配送员联系方式">
+                <ElSwitch
+                  v-model="profileForm.showDeliveryContacts"
+                  active-text="开启"
+                  inactive-text="关闭"
+                  :disabled="!canEditProfile"
+                />
+                <p class="qrcode-tip">
+                  开启后用户订单详情显示骑手/楼长姓名与电话并可一键拨打
+                </p>
               </ElFormItem></ElCol
             >
             <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
@@ -657,6 +755,28 @@ async function removeNotice(n: NoticeRow) {
                   :max="600"
                   :step="10"
                   :precision="0" /></ElFormItem
+            ></ElCol>
+            <!-- IKRSIZ #108：楼长销售额展示开关（关=配送端工作台不显示销售额） -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="楼长销售额展示"
+                ><ElSwitch
+                  v-model="deliveryForm.managerSalesVisible"
+                  active-text="显示"
+                  inactive-text="隐藏" />
+                <p class="form-hint">
+                  关闭后配送端工作台不向楼长显示今日/本月销售额
+                </p></ElFormItem
+            ></ElCol>
+            <!-- #110/#91：到店前退款退配送费（默认到店前不退，开启后到店前也退） -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="到店前退款退配送费"
+                ><ElSwitch
+                  v-model="deliveryForm.refundFeeBeforeArrive"
+                  active-text="退"
+                  inactive-text="不退" />
+                <p class="form-hint">
+                  默认到店前退款不退配送费，开启后到店前也退
+                </p></ElFormItem
             ></ElCol> </ElRow
         ></ElForm>
         <p class="form-hint">
@@ -683,7 +803,34 @@ async function removeNotice(n: NoticeRow) {
                   v-model.number="salaryForm.baseSalary"
                   :min="0"
                   :step="1"
-                  :disabled="!canEditProfile" /></ElFormItem></ElCol></ElRow
+                  :disabled="!canEditProfile" /></ElFormItem></ElCol
+            ><ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="提成方式"
+                ><ElSelect
+                  v-model="salaryForm.commissionMode"
+                  :disabled="!canEditProfile"
+                  ><ElOption
+                    label="按单固定（配送费直取）"
+                    value="per-order" /><ElOption
+                    label="按销售额比例"
+                    value="rate" /></ElSelect></ElFormItem></ElCol
+            ><ElCol
+              v-if="salaryForm.commissionMode === 'rate'"
+              :xs="24"
+              :sm="12"
+              :lg="8"
+              ><ElFormItem label="提成比例（%，按销售额）"
+                ><ElInputNumber
+                  v-model="salaryForm.commissionRatePercent"
+                  :min="0"
+                  :max="100"
+                  :precision="1"
+                  :step="0.5"
+                  :disabled="!canEditProfile" />
+                <p class="form-hint">
+                  按单固定=每单提成即该单配送费；按比例=提成=销售额×比例
+                </p></ElFormItem
+            ></ElCol></ElRow
         ></ElForm>
         <p v-if="!canEditProfile" class="form-hint">
           当前账号没有楼长底薪修改权限
@@ -694,7 +841,7 @@ async function removeNotice(n: NoticeRow) {
           :loading="saving"
           @click="saveSalary"
         >
-          保存底薪</ElButton
+          保存结算配置</ElButton
         >
       </template>
     </section>

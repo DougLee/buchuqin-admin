@@ -32,8 +32,17 @@ let generation = 0;
 let timer: number | undefined;
 
 const campusId = effectiveCampusId;
+/** 「配送中」分组补 arrived（已到店：骑手扫码/按钮确认取货后的态，位于
+ *  已接单 waiting-first-mile 与首公里 first-mile 之间）。dicts 的
+ *  ORDER_STATUS_TABS 为多页共享字典，此处本地展开注入，不动共享常量。 */
+const ORDER_TABS: typeof ORDER_STATUS_TABS = ORDER_STATUS_TABS.map((tab) => {
+  if (tab.key !== "delivering") return tab;
+  const statuses = [...tab.statuses];
+  statuses.splice(statuses.indexOf("waiting-first-mile") + 1, 0, "arrived");
+  return { ...tab, statuses };
+});
 const currentTab = computed(
-  () => ORDER_STATUS_TABS.find((tab) => tab.key === statusKey.value) ?? ORDER_STATUS_TABS[0],
+  () => ORDER_TABS.find((tab) => tab.key === statusKey.value) ?? ORDER_TABS[0],
 );
 
 function asOrder(row: unknown) {
@@ -73,7 +82,7 @@ function chainText(member: OrderDeliveryMember | null | undefined) {
 }
 
 function tabCount(key: string) {
-  const tab = ORDER_STATUS_TABS.find((item) => item.key === key);
+  const tab = ORDER_TABS.find((item) => item.key === key);
   return tab?.statuses.length
     ? tab.statuses.reduce((sum, status) => sum + (counts.value[status] ?? 0), 0)
     : Object.values(counts.value).reduce((sum, count) => sum + count, 0);
@@ -291,6 +300,135 @@ async function print(row: Order) {
   }
 }
 
+/* ---------- 行操作「退款」（#88/#89）：发起后进售后退款列表人工审核 ----------
+ * 复用按商品退款端点（POST /admin/orders/:id/refunds，source 由服务端按
+ * 订单状态判定）；整单一笔金额按行上限比例分摊到商品行上送。 */
+/** 已退/占用金额口径同后端预检：pending/approved/refunding/refunded 之和 */
+const REFUND_RESERVED_STATUSES = ["pending", "approved", "refunding", "refunded"];
+const refundOpen = ref(false);
+const refundOrder = ref<Order | null>(null);
+const refundReserved = ref(0);
+const refundReservedLoading = ref(false);
+const refundForm = reactive({ amount: 0, reason: "" });
+
+/** 未进入终态（待用户确认/已完成/已退款/已取消）才可发起退款 */
+function refundable(order: Order) {
+  return !["delivered", "completed", "refunded", "cancelled"].includes(order.status);
+}
+
+/** 商品额（分）：行快照优先，缺快照回落 实付−配送费 */
+function goodsAmountOf(order: Order) {
+  return order.productAmount ?? order.payableAmount - (order.deliveryFee ?? 0);
+}
+
+/** 当前可退余额（元）= 商品额 − 已退（含处理中） */
+const refundAvailableYuan = computed(() =>
+  refundOrder.value
+    ? Math.max(0, (goodsAmountOf(refundOrder.value) - refundReserved.value) / 100)
+    : 0,
+);
+
+async function openRefund(row: Order) {
+  refundOrder.value = row;
+  refundReserved.value = 0;
+  refundForm.amount = 0;
+  refundForm.reason = "";
+  refundOpen.value = true;
+  refundReservedLoading.value = true;
+  try {
+    const res = await api.refunds({
+      page: 1,
+      pageSize: 50,
+      keyword: row.orderNo,
+      campusId: campusId.value || undefined,
+    });
+    if (refundOrder.value?.id === row.id) {
+      refundReserved.value = res.items
+        .filter(
+          (r) => r.orderId === row.id && REFUND_RESERVED_STATUSES.includes(r.status),
+        )
+        .reduce((sum, r) => sum + r.amount, 0);
+    }
+  } catch {
+    /* 已退金额拉取失败按 0 展示，可退上限由后端兜底校验 */
+  } finally {
+    refundReservedLoading.value = false;
+  }
+  if (refundOrder.value?.id === row.id)
+    refundForm.amount = Number(refundAvailableYuan.value.toFixed(2));
+}
+
+/** 单笔总额按各行上限比例分摊（最大余数法）：Σ=总额且每行不超上限 */
+function allocateRefundAmounts(totalFen: number, caps: number[]) {
+  const capSum = caps.reduce((sum, cap) => sum + cap, 0);
+  const total = Math.min(totalFen, capSum);
+  const amounts = caps.map((cap) => Math.floor((total * cap) / capSum));
+  let left = total - amounts.reduce((sum, a) => sum + a, 0);
+  const byFrac = caps
+    .map((cap, i) => ({ i, frac: (total * cap) / capSum - amounts[i] }))
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of byFrac) {
+    if (left <= 0) break;
+    if (amounts[i] + 1 <= caps[i]) {
+      amounts[i] += 1;
+      left -= 1;
+    }
+  }
+  for (let i = 0; left > 0 && i < amounts.length; i++) {
+    while (left > 0 && amounts[i] < caps[i]) {
+      amounts[i] += 1;
+      left -= 1;
+    }
+  }
+  return amounts;
+}
+
+async function submitRefund() {
+  const order = refundOrder.value;
+  if (!order || working.value) return;
+  if (!refundForm.reason.trim()) {
+    notify("请填写退款原因", "error");
+    return;
+  }
+  const totalFen = Math.round(refundForm.amount * 100);
+  if (!(totalFen >= 1)) {
+    notify("退款金额必须至少 0.01 元", "error");
+    return;
+  }
+  const lines = (order.items ?? [])
+    .map((item) => ({
+      productId: item.product.id ?? "",
+      cap: (item.product.price ?? 0) * item.quantity,
+    }))
+    .filter((line) => line.productId && line.cap > 0);
+  if (!lines.length) {
+    notify("订单商品快照缺失，请到售后退款页操作", "error");
+    return;
+  }
+  working.value = true;
+  try {
+    const amounts = allocateRefundAmounts(
+      totalFen,
+      lines.map((line) => line.cap),
+    );
+    await api.createOrderRefund(order.id, {
+      productIds: lines.map((line) => line.productId),
+      amounts: lines.map((line, i) => ({
+        productId: line.productId,
+        amount: amounts[i],
+      })),
+      remark: refundForm.reason.trim(),
+    });
+    refundOpen.value = false;
+    notify("已提交退款申请，请到售后退款页审核");
+    await load();
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "退款提交失败", "error");
+  } finally {
+    working.value = false;
+  }
+}
+
 watch([page, pageSize, statusKey, deliveryMode, dateRange, campusId], load);
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
@@ -316,7 +454,7 @@ onMounted(load);
     <section class="order-filter-panel" aria-label="订单筛选">
       <div class="status-tabs single-line-tabs" role="tablist" aria-label="订单状态">
         <button
-          v-for="tab in ORDER_STATUS_TABS"
+          v-for="tab in ORDER_TABS"
           :key="tab.key"
           type="button"
           role="tab"
@@ -375,6 +513,12 @@ onMounted(load);
         :empty-text="campusId ? '暂无订单' : '请先在顶部选择校区'"
         @row-click="(row) => openDetail(asOrder(row))"
       >
+        <!-- IKRSIV #87：当日分拣序号（小票票头同款 dailySeq），历史单无值为 — -->
+        <ElTableColumn label="当日序号" width="90">
+          <template #default="{ row }">{{
+            asOrder(row).dailySeq ?? "—"
+          }}</template>
+        </ElTableColumn>
         <ElTableColumn prop="orderNo" label="订单编号" min-width="190" />
         <ElTableColumn label="商品" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">{{ itemNames(asOrder(row)) }}</template>
@@ -421,6 +565,19 @@ onMounted(load);
                 @click="print(asOrder(row))"
               >
                 补打
+              </ElButton>
+              <!-- #88/#89：行内发起退款（未进终态且有退款审核权），提交后进售后退款列表 -->
+              <ElButton
+                v-if="
+                  hasPerm('POST /admin/refunds/:id/audit') &&
+                  refundable(asOrder(row))
+                "
+                size="small"
+                type="danger"
+                plain
+                @click="openRefund(asOrder(row))"
+              >
+                退款
               </ElButton>
             </div>
           </template>
@@ -563,6 +720,72 @@ onMounted(load);
       <template #footer>
         <ElButton @click="statusOpen = false">取消</ElButton>
         <ElButton type="primary" :loading="working" @click="submitStatus">确认修改</ElButton>
+      </template>
+    </ElDialog>
+
+    <!-- #88/#89 行内退款弹窗：金额默认可退余额（可改）+原因必填 -->
+    <ElDialog
+      v-model="refundOpen"
+      title="发起退款"
+      width="min(560px, calc(100vw - 32px))"
+      align-center
+      :close-on-click-modal="false"
+    >
+      <template v-if="refundOrder">
+        <ElDescriptions :column="2" border>
+          <ElDescriptionsItem label="订单编号" :span="2">
+            {{ refundOrder.orderNo }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="实付">
+            ¥{{ fenToYuan(refundOrder.payableAmount) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="商品额">
+            ¥{{ fenToYuan(goodsAmountOf(refundOrder)) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="配送费">
+            ¥{{ fenToYuan(refundOrder.deliveryFee ?? 0) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="已退金额">
+            {{ refundReservedLoading ? "查询中…" : `¥${fenToYuan(refundReserved)}` }}
+          </ElDescriptionsItem>
+        </ElDescriptions>
+        <ElForm label-position="top" class="refund-form">
+          <ElFormItem label="退款金额（元）">
+            <ElInputNumber
+              v-model="refundForm.amount"
+              :min="0"
+              :max="refundAvailableYuan"
+              :precision="2"
+              :step="1"
+              :disabled="refundReservedLoading"
+            />
+          </ElFormItem>
+          <ElFormItem label="退款原因（必填）">
+            <ElInput
+              v-model="refundForm.reason"
+              type="textarea"
+              :rows="2"
+              maxlength="120"
+              show-word-limit
+              placeholder="随退款申请展示给审核人"
+            />
+          </ElFormItem>
+          <p class="refund-tip">
+            提交后进入售后退款列表，审核通过后原路退回。默认可退 =
+            商品额 − 已退（含处理中的退款）；配送费不在本入口退还。
+          </p>
+        </ElForm>
+      </template>
+      <template #footer>
+        <ElButton @click="refundOpen = false">取消</ElButton>
+        <ElButton
+          type="danger"
+          :loading="working"
+          :disabled="refundReservedLoading"
+          @click="submitRefund"
+        >
+          提交退款申请
+        </ElButton>
       </template>
     </ElDialog>
   </AdminPageShell>
@@ -716,6 +939,21 @@ onMounted(load);
 
 .el-dialog .el-select {
   width: 100%;
+}
+
+/* #88/#89 退款弹窗 */
+.refund-form {
+  margin-top: 16px;
+}
+
+.refund-form :deep(.el-input-number) {
+  width: 200px;
+}
+
+.refund-tip {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 @media (max-width: 1500px) {

@@ -124,15 +124,47 @@ const submitting = ref(false);
 /** v2 部分退款：审核核定的各行金额（itemId → 元字符串，提交时转分） */
 const itemAmounts = ref<Record<string, string>>({});
 
+/* ---------- 退配送费开关（#110/#91）----------
+ * 默认规则：订单已到店（arrived 及之后的配送链状态）默认退；
+ * 到店前默认不退，除非校区配置 refundDeliveryFeeBeforeArrive=true
+ * （拉不到校区配置按关处理）。预选仅是默认值，审核员可手动改。 */
+const FEE_ARRIVED_STATUSES = [
+  "arrived",
+  "first-mile",
+  "waiting-handover",
+  "last-mile",
+  "delivered",
+  "completed",
+];
+const refundDeliveryFee = ref(false);
+/** 校区「到店前退款退配送费」配置 */
+const feeBeforeArrive = ref(false);
+async function loadFeeRule() {
+  feeBeforeArrive.value = false;
+  if (!operationalCampusId.value) return;
+  try {
+    const conf = await api.campusConfig(operationalCampusId.value);
+    feeBeforeArrive.value = conf.campus.refundDeliveryFeeBeforeArrive ?? false;
+  } catch {
+    /* 拿不到校区配置就关 */
+  }
+}
+
 function openDetail(row: RefundApplication) {
   detail.value = row;
   auditMode.value = null;
   remark.value = "";
   itemAmounts.value = {};
+  refundDeliveryFee.value = false;
 }
 function startAudit(mode: "approve" | "reject") {
   auditMode.value = mode;
   remark.value = "";
+  refundDeliveryFee.value =
+    mode === "approve" &&
+    (FEE_ARRIVED_STATUSES.includes(detail.value?.orderStatus ?? "")
+      ? true
+      : feeBeforeArrive.value);
   if (mode === "approve" && detail.value?.items.length)
     itemAmounts.value = Object.fromEntries(
       detail.value.items.map((i) => [i.id, (i.amount / 100).toFixed(2)]),
@@ -157,6 +189,8 @@ async function submitAudit() {
       auditMode.value,
       remark.value.trim(),
       amounts,
+      // 退配送费开关仅批准时上送；拒绝时 undefined（JSON 序列化自动剔除）
+      auditMode.value === "approve" ? refundDeliveryFee.value : undefined,
     );
     toast.value =
       auditMode.value === "approve"
@@ -279,6 +313,7 @@ async function submitCreate() {
 onMounted(() => {
   void load();
   void loadPendingCount();
+  void loadFeeRule();
 });
 watch(operationalCampusId, () => {
   page.value = 1;
@@ -286,6 +321,7 @@ watch(operationalCampusId, () => {
   detail.value = null;
   void load();
   void loadPendingCount();
+  void loadFeeRule();
 });
 </script>
 
@@ -296,7 +332,7 @@ watch(operationalCampusId, () => {
       <div>
         <h1>售后退款</h1>
         <p>
-          售后与未发货退款统一审核：批准后微信原路退回（配送费不退）；拒绝后订单回滚、用户可重新申请。
+          售后与未发货退款统一审核：批准后微信原路退回（配送费按审核开关退还）；拒绝后订单回滚、用户可重新申请。
         </p>
       </div>
       <div class="head-actions">
@@ -347,7 +383,7 @@ watch(operationalCampusId, () => {
         <ElTableColumn label="用户" min-width="130"><template #default="{ row }">{{ row.userName || row.userPhone || "用户" }}</template></ElTableColumn>
         <ElTableColumn label="来源" width="100"><template #default="{ row }"><ElTag size="small" type="info">{{ REFUND_SOURCE_TEXT[row.source] ?? row.source }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="原因" min-width="180"><template #default="{ row }">{{ row.source === "pre-delivery" ? row.reason || "—" : (AFTERSALE_PAGE_TYPE_TEXT[row.type ?? ""] ?? row.type) }}</template></ElTableColumn>
-        <ElTableColumn label="退款金额" width="110"><template #default="{ row }">¥{{ fenToYuan(row.amount) }}</template></ElTableColumn>
+        <ElTableColumn label="退款金额" width="150"><template #default="{ row }">¥{{ fenToYuan(row.amount) }} <ElTag v-if="asRefund(row).refundDeliveryFee" size="small" type="warning">含配送费</ElTag></template></ElTableColumn>
         <ElTableColumn label="申请时间" min-width="170"><template #default="{ row }">{{ new Date(row.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</template></ElTableColumn>
         <ElTableColumn label="状态" min-width="120"><template #default="{ row }"><ElTag :type="row.status === 'failed' ? 'danger' : row.status === 'pending' ? 'warning' : 'success'">{{ row.statusText }}</ElTag></template></ElTableColumn>
         <ElTableColumn v-if="canAudit" label="操作" fixed="right" width="220"><template #default="{ row }"><div @click.stop><ElButton v-if="['pending', 'failed'].includes(row.status)" size="small" type="primary" @click="openDetail(asRefund(row)); startAudit('approve')">{{ row.status === "failed" ? "重新发起" : "批准" }}</ElButton><ElButton v-if="row.status === 'pending'" size="small" type="danger" plain @click="openDetail(asRefund(row)); startAudit('reject')">拒绝</ElButton><ElButton v-if="['refunding', 'approved', 'failed'].includes(row.status)" size="small" @click="sync(asRefund(row))">同步状态</ElButton></div></template></ElTableColumn>
@@ -389,7 +425,7 @@ watch(operationalCampusId, () => {
           </div>
           <div><dt>申请时间</dt><dd>{{ new Date(detail.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</dd></div>
           <div><dt>订单实付</dt><dd>¥{{ fenToYuan(detail.payableAmount) }}（含配送费 ¥{{ fenToYuan(detail.deliveryFee) }}）</dd></div>
-          <div><dt>退款金额</dt><dd class="as-amount">¥{{ fenToYuan(detail.amount) }}</dd></div>
+          <div><dt>退款金额</dt><dd class="as-amount">¥{{ fenToYuan(detail.amount) }} <ElTag v-if="detail.refundDeliveryFee" size="small" type="warning">含配送费</ElTag></dd></div>
           <div v-if="detail.reason"><dt>退款原因</dt><dd>{{ detail.reason }}</dd></div>
           <div v-if="detail.description"><dt>问题描述</dt><dd>{{ detail.description }}</dd></div>
           <div v-if="detail.images.length" class="as-imgs-row">
@@ -429,10 +465,25 @@ watch(operationalCampusId, () => {
             <ElCol :span="24"><p class="as-audit-tip">
               {{
                 auditMode === "approve"
-                  ? `确认向微信发起 ¥${fenToYuan(detail.amount)} 原路退款？批准后不可撤销。`
+                  ? refundDeliveryFee
+                    ? `确认批准 ¥${fenToYuan(detail.amount)} 退款并退还配送费 ¥${fenToYuan(detail.deliveryFee)}？批准后微信原路退回、不可撤销。`
+                    : `确认向微信发起 ¥${fenToYuan(detail.amount)} 原路退款（不含配送费）？批准后不可撤销。`
                   : "拒绝后订单将回滚至申请前状态（" + (REFUND_ROLLBACK_STATUS_TEXT[detail.beforeStatus] ?? detail.beforeStatus) + "），用户可补充后重新申请。"
               }}
             </p></ElCol>
+            <!-- #110/#91 退配送费开关：预选=已到店默认开/到店前看校区配置（拉不到就关） -->
+            <ElCol v-if="auditMode === 'approve'" :span="24">
+              <div class="as-fee-row">
+                <ElSwitch
+                  v-model="refundDeliveryFee"
+                  active-text="退配送费"
+                  inactive-text="不退配送费"
+                />
+                <span class="as-fee-hint">
+                  到店前退款默认不退配送费¥{{ fenToYuan(detail.deliveryFee) }}；到店后默认退
+                </span>
+              </div>
+            </ElCol>
             <!-- v2 部分退款：核定各行金额（默认申请值，可改） -->
             <ElCol v-if="detail.items.length" :span="24"><div class="as-amounts">
               <div v-for="i in detail.items" :key="i.id" class="as-amounts__row">
@@ -652,6 +703,9 @@ input.as-input:focus,
 }
 .as-audit { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line, #e5e7eb); }
 .as-audit-tip { font-size: 13px; color: var(--ink-2, #4b5563); margin: 0 0 8px; }
+/* #110/#91 退配送费开关行 */
+.as-fee-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.as-fee-hint { font-size: 12px; color: var(--ink-3, #9ca3af); }
 .as-textarea {
   width: 100%;
   border: 1px solid var(--line, #e5e7eb);

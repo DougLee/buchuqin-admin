@@ -6,6 +6,8 @@ import Reports from "./pages/DailyReportPage.vue";
 import CampusReport from "./pages/CampusReportPage.vue";
 import BehaviorAnalytics from "./pages/BehaviorPage.vue";
 import TransferLogs from "./pages/TransferLogsPage.vue";
+// IKRSJ0 #116/#81b：楼栋经营榜（报表页，校区管理员也要看——只注册 coreViews，不进 superViews）
+import BuildingRank from "./pages/BuildingRankPage.vue";
 import BattleMap from "./pages/BattleMapPage.vue";
 import Featured from "./pages/FeaturedPage.vue";
 import CampusConfig from "./pages/CampusConfigPage.vue";
@@ -45,6 +47,8 @@ const coreViews: Record<string, Component> = {
   "rbac-permissions": Permissions, "rbac-audit": Audit, organizations: Organizations,
   "behavior-analytics": BehaviorAnalytics,
   "transfer-logs": TransferLogs,
+  // IKRSJ0 #116/#81b：楼栋经营榜（Dashboard「完整数据 →」跳转的独立报表页）
+  "building-rank": BuildingRank,
   help: HelpCenter, changelog: Changelog,
 };
 export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, settingsViews, warehouseViews, governanceViews, marketingViews, financeViews, organizationViews);

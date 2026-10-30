@@ -20,10 +20,12 @@ import type {
   Banner,
   BarcodeLookup,
   Building,
+  BuildingRankReport,
   Campus,
   Category,
   CommissionRule,
   Coupon,
+  CouponRecord,
   DashboardData,
   HqDashboardData,
   DispatchInvitation,
@@ -60,6 +62,10 @@ import type {
   WheelConfig,
   WheelPrizeInput,
   CampusConfigBundle,
+  StocktakeReason,
+  StocktakeStatGroup,
+  PurchaseRecordRow,
+  PurchaseRecordCreateInput,
 } from "./types";
 
 interface ApiResult<T> {
@@ -516,18 +522,55 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  /** 盘点（IKD6FJ，原「盘点校准」）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。 */
+  /** 盘点（IKD6FJ，原「盘点校准」）：提交实际清点数量，后端自动算差额落账（账实相符不落流水）。
+   *  #85：reason 收敛为四选一枚举（线下销售/赠送/货损/丢损），非法值后端 400。 */
   stocktake: (
     data: {
       productId: string;
       countedQty: number;
-      reason?: string;
+      reason: StocktakeReason;
     },
     // IKFOPY：平台视角盘点须指定仓库（校区/总部仓）
     campus?: string,
   ) =>
     request<StocktakeResult>(
       `/admin/inventory/stocktake${withQuery(campus ? `campus=${encodeURIComponent(campus)}` : "")}`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
+  /** 盘点统计（#85）：按原因聚合的核减/成本汇总，products 为该原因商品明细。 */
+  stocktakeStats: (start?: string, end?: string, campus?: string) =>
+    request<StocktakeStatGroup[]>(
+      `/admin/inventory/stocktake-stats${withQuery(
+        start ? `start=${encodeURIComponent(start)}` : undefined,
+        end ? `end=${encodeURIComponent(end)}` : undefined,
+        campus ? `campus=${encodeURIComponent(campus)}` : undefined,
+      )}`,
+    ),
+  /* ---------- 采购台账（#97）：纯登记台账，不动库存不落流水 ---------- */
+  purchases: (query: {
+    start?: string;
+    end?: string;
+    campus?: string;
+    keyword?: string;
+    page: number;
+    pageSize: number;
+  }) =>
+    request<PagedResponse<PurchaseRecordRow>>(
+      `/admin/purchases${withQuery(
+        query.start ? `start=${encodeURIComponent(query.start)}` : undefined,
+        query.end ? `end=${encodeURIComponent(query.end)}` : undefined,
+        query.campus ? `campus=${encodeURIComponent(query.campus)}` : undefined,
+        query.keyword ? `keyword=${encodeURIComponent(query.keyword)}` : undefined,
+        `page=${query.page}`,
+        `pageSize=${query.pageSize}`,
+      )}`,
+    ),
+  createPurchase: (data: PurchaseRecordCreateInput, campus?: string) =>
+    request<PurchaseRecordRow>(
+      `/admin/purchases${withQuery(campus ? `campus=${encodeURIComponent(campus)}` : "")}`,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -678,6 +721,41 @@ export const api = {
         buildingId ? `buildingId=${encodeURIComponent(buildingId)}` : undefined,
       )}`,
     ),
+  /** 楼栋经营榜（IKRSJ0 #116/#81b）：范围订单数/销售额排行（salesTotal 降序，
+   *  一次回全部楼栋）；start/end YYYY-MM-DD，hq 可选校区。 */
+  buildingRank: (start?: string, end?: string, campusId?: string) =>
+    request<BuildingRankReport>(
+      `/admin/building-rank${withQuery(
+        start ? `start=${start}` : undefined,
+        end ? `end=${end}` : undefined,
+        campusId ? `campusId=${encodeURIComponent(campusId)}` : undefined,
+      )}`,
+    ),
+  /** 优惠券领取记录（IKRSJ0 #99）：按券/状态/关键词/领取日期筛选，paginate 信封。 */
+  couponRecords: (params: {
+    couponId?: string;
+    status?: string;
+    keyword?: string;
+    start?: string;
+    end?: string;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<PagedResponse<CouponRecord>>(
+      `/admin/coupon-records${withQuery(
+        params.couponId
+          ? `couponId=${encodeURIComponent(params.couponId)}`
+          : undefined,
+        params.status ? `status=${encodeURIComponent(params.status)}` : undefined,
+        params.keyword
+          ? `keyword=${encodeURIComponent(params.keyword)}`
+          : undefined,
+        params.start ? `start=${params.start}` : undefined,
+        params.end ? `end=${params.end}` : undefined,
+        params.page ? `page=${params.page}` : undefined,
+        params.pageSize ? `pageSize=${params.pageSize}` : undefined,
+      )}`,
+    ),
   /** 行为分析汇总（IKRGLV，仅超管）：漏斗+商品热度+搜索词 */
   analyticsSummary: (start?: string, end?: string) =>
     request<AnalyticsSummary>(
@@ -803,16 +881,18 @@ export const api = {
       )}`,
     ),
   /** IKHZKA 审核：approve=批准并发起微信原路退回；reject=拒绝回滚订单。
-   *  v2：amounts=部分退款各行核定金额（分）。 */
+   *  v2：amounts=部分退款各行核定金额（分）。
+   *  #110/#91：refundDeliveryFee=退配送费开关（仅 approve 传，不传=后端按规则默认）。 */
   auditRefund: (
     id: string,
     action: "approve" | "reject",
     remark?: string,
     amounts?: Array<{ itemId: string; amount: number }>,
+    refundDeliveryFee?: boolean,
   ) =>
     request<{ id: string; status: string }>(`/admin/refunds/${id}/audit`, {
       method: "POST",
-      body: JSON.stringify({ action, remark, amounts }),
+      body: JSON.stringify({ action, remark, amounts, refundDeliveryFee }),
     }),
   /** IKHZKA v2：客服按商品发起部分退款并即时批准（金额可核定，单位分）。 */
   createOrderRefund: (
@@ -1034,9 +1114,25 @@ export const api = {
       afterSalesGroupQrcode?: string;
       /** IKHMKR：无楼长提示（校区自定义，空=回落默认） */
       noManagerTip?: string;
+      /** IKRSJ3 #114：群二维码弹窗文案（空=回落默认文案） */
+      groupQrcodeTip?: string;
+      /** IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额） */
+      managerSalesVisible?: boolean;
       /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
       autoOutboundEnabled?: boolean;
       autoOutboundDelaySeconds?: number;
+      /** #110/#91：到店前退款是否退配送费（默认 false=不退） */
+      refundDeliveryFeeBeforeArrive?: boolean;
+      /** #88/#89：企微在线客服链接（空=小程序用旧客服弹层） */
+      serviceKfUrl?: string;
+      /** IKRSIY #195：企微企业 ID（拉起在线客服必填） */
+      serviceKfCorpId?: string;
+      /** #88/#89：用户可见配送员联系方式（骑手/楼长姓名电话+一键拨打） */
+      showDeliveryContacts?: boolean;
+      /** #110 前置：楼长提成方式（per-order=按单固定，配送费直取；rate=按销售额比例） */
+      managerCommissionMode?: "per-order" | "rate";
+      /** #110 前置：楼长提成比例（万分比，500=5%） */
+      managerCommissionRate?: number;
     }>,
   ) =>
     request<Campus>(`/admin/campuses/${id}`, {
@@ -1339,6 +1435,20 @@ export const api = {
     /** IKM55A：订单自动出库（校区级，开启后 paid 单 N 秒 Cron 出库） */
     autoOutboundEnabled?: boolean;
     autoOutboundDelaySeconds?: number;
+    /** IKRSIZ #108：楼长销售额展示开关（关=配送端工作台不下发销售额） */
+    managerSalesVisible?: boolean;
+    /** #110/#91：到店前退款是否退配送费（默认 false=不退） */
+    refundDeliveryFeeBeforeArrive?: boolean;
+    /** #88/#89：企微在线客服链接（空=小程序用旧客服弹层） */
+    serviceKfUrl?: string;
+      /** IKRSIY #195：企微企业 ID（拉起在线客服必填） */
+      serviceKfCorpId?: string;
+    /** #88/#89：用户可见配送员联系方式（骑手/楼长姓名电话+一键拨打） */
+    showDeliveryContacts?: boolean;
+    /** 楼长提成方式（per-order=按单固定；rate=按销售额比例） */
+    managerCommissionMode?: "per-order" | "rate";
+    /** 楼长提成比例（万分比，500=5%） */
+    managerCommissionRate?: number;
   }) =>
     request<{
       deliveryFeeInstant: number;

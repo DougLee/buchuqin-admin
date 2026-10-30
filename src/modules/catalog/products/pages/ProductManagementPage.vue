@@ -81,7 +81,11 @@
         >
       </section>
       <section class="product-table-panel" aria-label="商品列表">
-        <ElTable v-loading="loading" :data="rows" row-key="id"
+        <ElTable
+          v-loading="loading"
+          :data="rows"
+          row-key="id"
+          @sort-change="onSortChange"
           ><ElTableColumn label="图片" width="76"
             ><template #default="{ row }"
               ><ElImage
@@ -109,7 +113,7 @@
                 row.categoryId ??
                 "—"
             }}</template></ElTableColumn
-          ><ElTableColumn label="售价" width="100"
+          ><ElTableColumn label="售价" width="100" prop="price" sortable="custom"
             ><template #default="{ row }"
               >¥{{ fenToYuan(row.price) }}</template
             ></ElTableColumn
@@ -117,14 +121,24 @@
             ><template #default="{ row }">{{
               row.costPrice == null ? "—" : `¥${fenToYuan(row.costPrice)}`
             }}</template></ElTableColumn
-          ><ElTableColumn v-if="official" label="批发价" width="110"
+          ><ElTableColumn
+            v-if="official"
+            label="批发价"
+            width="110"
+            prop="wholesalePrice"
+            sortable="custom"
             ><template #default="{ row }">{{
               row.wholesalePrice == null
                 ? "—"
                 : `¥${fenToYuan(row.wholesalePrice)}`
             }}</template></ElTableColumn
           ><!-- 校区可见批发价快照（IKC1AC/IKFOPQ）：订单行毛利=售价−批发价基准 -->
-          <ElTableColumn v-if="!official" label="批发价" width="110"
+          <ElTableColumn
+            v-if="!official"
+            label="批发价"
+            width="110"
+            prop="wholesalePrice"
+            sortable="custom"
             ><template #default="{ row }">{{
               row.wholesalePrice == null
                 ? "—"
@@ -567,6 +581,22 @@ function notify(message: string, type: "success" | "error" = "success") {
 function product(row: unknown) {
   return row as Product;
 }
+/* IKRSJ1 #93：售价/批发价列排序（后端 orderBy，缺省维持销量序） */
+const sortBy = ref<string>();
+const sortDir = ref<string>();
+function onSortChange({
+  prop,
+  order,
+}: {
+  prop: string | null;
+  order: "ascending" | "descending" | null;
+}) {
+  sortBy.value = order && prop ? prop : undefined;
+  sortDir.value = order === "ascending" ? "asc" : "desc";
+  page.value = 1;
+  void load();
+}
+
 async function load() {
   if (!official.value && !campus.value) {
     rows.value = [];
@@ -583,6 +613,8 @@ async function load() {
         status: status.value === "all" ? undefined : status.value,
         categoryId: categoryId.value || undefined,
         campusId: campus.value,
+        sortBy: sortBy.value || undefined,
+        sortDir: sortDir.value || undefined,
       },
       props.mode,
       campus.value,
