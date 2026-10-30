@@ -5,6 +5,7 @@ import Purchase from "./pages/PurchasePage.vue";
 import Reports from "./pages/DailyReportPage.vue";
 import CampusReport from "./pages/CampusReportPage.vue";
 import BehaviorAnalytics from "./pages/BehaviorPage.vue";
+import TransferLogs from "./pages/TransferLogsPage.vue";
 import BattleMap from "./pages/BattleMapPage.vue";
 import Featured from "./pages/FeaturedPage.vue";
 import CampusConfig from "./pages/CampusConfigPage.vue";
@@ -43,9 +44,10 @@ const coreViews: Record<string, Component> = {
   "campus-config": CampusConfig, "after-sales": AfterSales, accounts: Accounts, "rbac-roles": Roles, "rbac-menus": Menus,
   "rbac-permissions": Permissions, "rbac-audit": Audit, organizations: Organizations,
   "behavior-analytics": BehaviorAnalytics,
+  "transfer-logs": TransferLogs,
   help: HelpCenter, changelog: Changelog,
 };
 export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, settingsViews, warehouseViews, governanceViews, marketingViews, financeViews, organizationViews);
 // behavior-analytics：IKRGLV 道哥定稿仅超管可见——非超管前端即拦（双保险，
 // 后端另有 ctx.super 强制）
-export const superViews = new Set(["rbac-roles", "rbac-menus", "rbac-permissions", "behavior-analytics"]);
+export const superViews = new Set(["rbac-roles", "rbac-menus", "rbac-permissions", "behavior-analytics", "transfer-logs"]);

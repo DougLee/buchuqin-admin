@@ -1198,6 +1198,23 @@ export interface CampusDailyRow {
   /** 综合毛利率万分比（/100=百分比）=综合毛利/实付 */
   marginRate: number;
 }
+/** 转单记录（IKRQR7，仅超管） */
+export interface TransferLogRow {
+  id: string;
+  orderNo: string;
+  campusId: string;
+  amount: number;
+  staffName: string;
+  staffNo: string;
+  fromStatus: string;
+  createdAt: string;
+}
+export interface TransferLogPage {
+  items: TransferLogRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 /** 行为分析汇总（IKRGLV，仅超管）：漏斗+交易段+热度榜 */
 export interface AnalyticsSummary {
   range: { start: string; end: string };

@@ -45,6 +45,7 @@ import type {
   HqDailyReport,
   CampusDailyReport,
   AnalyticsSummary,
+  TransferLogPage,
   BattleMapBuilding,
   BattleRoomDetail,
   PurchaseOrderRow,
@@ -683,6 +684,21 @@ export const api = {
       `/admin/analytics/summary${withQuery(
         start ? `start=${start}` : undefined,
         end ? `end=${end}` : undefined,
+      )}`,
+    ),
+  /** 转单管理（IKRQR7，仅超管）：骑手转单留痕 */
+  transferLogs: (params: {
+    start?: string;
+    end?: string;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<TransferLogPage>(
+      `/admin/transfer-logs${withQuery(
+        params.start ? `start=${params.start}` : undefined,
+        params.end ? `end=${params.end}` : undefined,
+        params.page ? `page=${params.page}` : undefined,
+        params.pageSize ? `pageSize=${params.pageSize}` : undefined,
       )}`,
     ),
   /** 营销作战地图（IKFOQ3）：整栋楼层格子（三色）+汇总；平台账号带校区聚焦（IKISDN） */
