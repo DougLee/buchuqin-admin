@@ -459,6 +459,35 @@ onMounted(load);
             </ElDescriptionsItem>
           </ElDescriptions>
         </section>
+        <!-- IKRQR7：转单留痕（谁在何时从何状态转出），无记录不渲染 -->
+        <section
+          v-if="selected.transferLogs?.length"
+          class="delivery-chain"
+          aria-label="转单记录"
+        >
+          <strong>转单记录</strong>
+          <ElTable
+            :data="selected.transferLogs"
+            size="small"
+            class="transfer-table"
+          >
+            <ElTableColumn label="转单骑手" min-width="120">
+              <template #default="{ row }"
+                >{{ row.staffName }}（{{ row.staffNo }}）</template
+              >
+            </ElTableColumn>
+            <ElTableColumn
+              prop="fromStatus"
+              label="转出时状态"
+              min-width="160"
+            />
+            <ElTableColumn label="转单时间" min-width="150">
+              <template #default="{ row }">{{
+                row.createdAt.replace("T", " ").slice(0, 16)
+              }}</template>
+            </ElTableColumn>
+          </ElTable>
+        </section>
         <ElTable :data="selected.items || []" class="items-table">
           <ElTableColumn label="商品">
             <template #default="{ row }">{{ row.product?.name || "未知商品" }}</template>
@@ -655,6 +684,10 @@ onMounted(load);
   font-size: 12px;
 }
 
+.transfer-table {
+  margin-top: 8px;
+  width: 100%;
+}
 .delivery-chain {
   margin-top: 16px;
 }

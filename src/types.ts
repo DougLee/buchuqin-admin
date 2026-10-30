@@ -239,6 +239,14 @@ export interface Order {
   } | null;
   /** IKP0AP：配送链路（骑手/楼长姓名+电话），未接单或自提场景对应角色为 null。 */
   deliveryChain?: OrderDeliveryChain | null;
+  /** IKRQR7：转单留痕（详情端点返回，新→旧） */
+  transferLogs?: Array<{
+    id: string;
+    staffName: string;
+    staffNo: string;
+    fromStatus: string;
+    createdAt: string;
+  }>;
 }
 
 export interface Staff {
