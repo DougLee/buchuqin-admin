@@ -46,11 +46,14 @@ async function onPick(uploadFile: UploadFile) {
       />
     </div>
     <div v-if="modelValue" class="img-field__preview">
-      <img
+      <ElImage
         class="img-field__thumb"
         :src="resolveImageUrl(modelValue)"
+        :preview-src-list="[resolveImageUrl(modelValue)]"
+        preview-teleported
+        hide-on-click-modal
+        fit="cover"
         alt="图片预览"
-        loading="lazy"
       />
       <!-- IKC1AA：一键清除（保存后即落「恢复默认」语义，如类别图回退默认图标） -->
       <ElButton

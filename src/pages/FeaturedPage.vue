@@ -255,7 +255,15 @@ async function save() {
           <ElTableColumn label="商品" min-width="260"
             ><template #default="{ row: p }">
               <div class="feat-product">
-                <img class="cell-thumb" :src="p.image" :alt="p.name" />
+                <ElImage
+                  class="cell-thumb"
+                  :src="p.image"
+                  :preview-src-list="[p.image]"
+                  preview-teleported
+                  hide-on-click-modal
+                  fit="cover"
+                  :alt="p.name"
+                />
                 <strong>{{ p.name }}</strong>
                 <!-- 道哥 2026-09-28：分类已隐藏的商品前台不露出，标记提醒 -->
                 <span

@@ -331,6 +331,9 @@ onMounted(load);
               :src="resolveImageUrl(row.image)"
               fit="cover"
               class="thumb"
+              :preview-src-list="[resolveImageUrl(row.image)]"
+              preview-teleported
+              hide-on-click-modal
               ><template #error>—</template></ElImage
             ><span v-else>—</span></template
           ></ElTableColumn

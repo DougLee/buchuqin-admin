@@ -223,6 +223,9 @@ onMounted(bootstrap);
               :src="resolveImageUrl(row.image)"
               fit="cover"
               class="thumb"
+              :preview-src-list="[resolveImageUrl(row.image)]"
+              preview-teleported
+              hide-on-click-modal
               ><template #error
                 ><span class="image-fallback">—</span></template
               ></ElImage

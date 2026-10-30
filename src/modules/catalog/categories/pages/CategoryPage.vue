@@ -192,10 +192,14 @@ watch(operationalCampusId, () => {
       >
         <ElTableColumn label="图片" width="88"
           ><template #default="{ row }"
-            ><img
+            ><ElImage
               v-if="row.image"
               class="cell-thumb"
               :src="resolveImageUrl(row.image)"
+              :preview-src-list="[resolveImageUrl(row.image)]"
+              preview-teleported
+              hide-on-click-modal
+              fit="cover"
               alt="类别图片" /></template
         ></ElTableColumn>
         <ElTableColumn prop="name" label="类别名称" min-width="160"

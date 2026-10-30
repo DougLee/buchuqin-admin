@@ -87,7 +87,11 @@
               ><ElImage
                 :src="row.image"
                 fit="cover"
-                class="thumb" /></template></ElTableColumn
+                class="thumb"
+                :preview-src-list="[row.image]"
+                preview-teleported
+                hide-on-click-modal
+              /></template></ElTableColumn
           ><ElTableColumn label="库位" width="100"
             ><template #default="{ row }"
               >{{ [product(row).location, product(row).locationCode].filter(Boolean).join("-") || "—" }}</template

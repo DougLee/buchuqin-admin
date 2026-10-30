@@ -350,7 +350,7 @@ watch(operationalCampusId, () => {
         <ElTableColumn label="退款金额" width="110"><template #default="{ row }">¥{{ fenToYuan(row.amount) }}</template></ElTableColumn>
         <ElTableColumn label="申请时间" min-width="170"><template #default="{ row }">{{ new Date(row.createdAt).toLocaleString("zh-CN", { hour12: false }) }}</template></ElTableColumn>
         <ElTableColumn label="状态" min-width="120"><template #default="{ row }"><ElTag :type="row.status === 'failed' ? 'danger' : row.status === 'pending' ? 'warning' : 'success'">{{ row.statusText }}</ElTag></template></ElTableColumn>
-        <ElTableColumn v-if="canAudit" label="操作" fixed="right" width="190"><template #default="{ row }"><div @click.stop><ElButton v-if="row.status === 'pending'" size="small" type="primary" @click="openDetail(asRefund(row)); startAudit('approve')">批准</ElButton><ElButton v-if="row.status === 'pending'" size="small" type="danger" plain @click="openDetail(asRefund(row)); startAudit('reject')">拒绝</ElButton><ElButton v-if="['refunding', 'approved', 'failed'].includes(row.status)" size="small" @click="sync(asRefund(row))">同步状态</ElButton></div></template></ElTableColumn>
+        <ElTableColumn v-if="canAudit" label="操作" fixed="right" width="220"><template #default="{ row }"><div @click.stop><ElButton v-if="['pending', 'failed'].includes(row.status)" size="small" type="primary" @click="openDetail(asRefund(row)); startAudit('approve')">{{ row.status === "failed" ? "重新发起" : "批准" }}</ElButton><ElButton v-if="row.status === 'pending'" size="small" type="danger" plain @click="openDetail(asRefund(row)); startAudit('reject')">拒绝</ElButton><ElButton v-if="['refunding', 'approved', 'failed'].includes(row.status)" size="small" @click="sync(asRefund(row))">同步状态</ElButton></div></template></ElTableColumn>
       </ElTable>
       <div v-if="hasMore" class="as-more">
         <button class="btn" :disabled="loading" @click="loadMore">
@@ -421,9 +421,9 @@ watch(operationalCampusId, () => {
           </div>
         </dl>
 
-        <ElForm v-if="canAudit && detail.status === 'pending'" class="as-audit" label-position="top"><ElRow :gutter="16">
+        <ElForm v-if="canAudit && ['pending', 'failed'].includes(detail.status)" class="as-audit" label-position="top"><ElRow :gutter="16">
           <template v-if="!auditMode">
-            <ElCol :span="24"><ElButton type="primary" @click="startAudit('approve')">批准退款</ElButton><ElButton type="danger" plain @click="startAudit('reject')">拒绝申请</ElButton></ElCol>
+            <ElCol :span="24"><ElButton type="primary" @click="startAudit('approve')">{{ detail.status === "failed" ? "重新发起退款" : "批准退款" }}</ElButton><ElButton v-if="detail.status === 'pending'" type="danger" plain @click="startAudit('reject')">拒绝申请</ElButton></ElCol>
           </template>
           <template v-else>
             <ElCol :span="24"><p class="as-audit-tip">
@@ -459,9 +459,6 @@ watch(operationalCampusId, () => {
             </div></ElCol>
           </template>
         </ElRow></ElForm>
-        <p v-else-if="canAudit && detail.status === 'failed'" class="as-audit-tip">
-          可在列表对该申请「同步状态」；微信侧已关闭时可重新批准发起。
-        </p>
       </template>
     </ElDialog>
   <!-- v2 按商品退款弹窗：搜订单 → 勾商品 → 核定金额 → 提交即退款 -->

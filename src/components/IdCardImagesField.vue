@@ -58,12 +58,15 @@ function setAt(index: number, url: string) {
         class="idcard-field__slot"
       >
         <span class="idcard-field__tag">{{ slot.label }}</span>
-        <img
+        <ElImage
           v-if="urlAt(i)"
           class="idcard-field__img"
           :src="resolveImageUrl(urlAt(i))"
+          :preview-src-list="[resolveImageUrl(urlAt(i))]"
+          preview-teleported
+          hide-on-click-modal
+          fit="cover"
           :alt="`身份证${slot.label}`"
-          loading="lazy"
         />
         <ElUpload
           v-else

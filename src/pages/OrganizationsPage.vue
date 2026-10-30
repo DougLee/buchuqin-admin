@@ -384,10 +384,14 @@ function organizationRow(row: unknown): AdminOrganization {
           <ElCol :xs="24" :sm="12"><ElFormItem label="派单模板 ID"><ElInput v-model="form.gzhTemplateId" placeholder="服务号模板消息模板 ID" /></ElFormItem></ElCol>
           <ElCol :span="24"><ElFormItem label="关注二维码（配送端引导关注展示）">
             <div class="qrcode-row">
-              <img
+              <ElImage
                 v-if="form.gzhQrcodeUrl"
                 :src="form.gzhQrcodeUrl"
                 class="qrcode-preview"
+                :preview-src-list="[form.gzhQrcodeUrl]"
+                preview-teleported
+                hide-on-click-modal
+                fit="cover"
                 alt="服务号二维码"
               />
               <div v-else class="qrcode-empty">未上传</div>

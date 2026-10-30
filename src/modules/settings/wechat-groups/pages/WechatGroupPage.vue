@@ -110,7 +110,13 @@ watch(effectiveCampusId, load);
       >
         <ElTableColumn label="二维码" width="100"
           ><template #default="{ row }"
-            ><ElImage :src="resolveImageUrl(row.image)" fit="cover" class="qr"
+            ><ElImage
+              :src="resolveImageUrl(row.image)"
+              fit="cover"
+              class="qr"
+              :preview-src-list="[resolveImageUrl(row.image)]"
+              preview-teleported
+              hide-on-click-modal
               ><template #error>—</template></ElImage
             ></template
           ></ElTableColumn
