@@ -319,9 +319,21 @@
               ><ElInput v-model="form.wholesaleUnit" /></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="库位区域"
-              ><ElInput
+              ><!-- IKRRSC 库位改下拉：选项联动库位管理字典（可搜索），选中即回填
+                   库位名称；字典为空/加载失败时回退手填输入框，不阻塞编辑 -->
+              <ElSelect
+                v-if="locationOptions.length"
                 v-model="form.location"
-                placeholder="如：A 区" /></ElFormItem></ElCol
+                filterable
+                clearable
+                placeholder="选择库位区域"
+                ><ElOption
+                  v-for="opt in mergedLocationOptions"
+                  :key="opt.id"
+                  :label="opt.name"
+                  :value="opt.name"
+              /></ElSelect>
+              <ElInput v-else v-model="form.location" placeholder="如：A 区" /></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12" :lg="8"
             ><ElFormItem label="库位编号"
               ><ElInput
@@ -442,6 +454,27 @@ const form = reactive({
   locationCode: "",
   stock: 0,
   status: "off-sale" as "on-sale" | "off-sale",
+});
+// 库位字典（IKRRSC）：选项联动「库位管理」（IKA0VG，GET /admin/locations），
+// 条目只有 name 没有编号字段，故下拉只回填 location（库位区域名），
+// locationCode（库位编号）仍保持手填。
+const locationOptions = ref<Array<{ id: string; name: string }>>([]);
+async function loadLocationOptions() {
+  try {
+    locationOptions.value = await api.adminLocations();
+  } catch {
+    // 字典拉取失败静默降级为手填（locationOptions 为空 → 模板回退 ElInput）
+    locationOptions.value = [];
+  }
+}
+// 下拉选项 = 字典 + 存量兜底（IKRRSC）：历史手填值不在字典里时追加为额外
+// 选项，避免打开编辑即丢值；改选字典项保存后自然归一。
+const mergedLocationOptions = computed(() => {
+  const extra =
+    form.location && !locationOptions.value.some((l) => l.name === form.location)
+      ? [{ id: `legacy:${form.location}`, name: form.location }]
+      : [];
+  return [...locationOptions.value, ...extra];
 });
 const title = computed(() => (official.value ? "官方商品库" : "商品管理")),
   tabs = computed(() =>
@@ -748,6 +781,8 @@ async function submitImport() {
 }
 watch([page, pageSize, status, categoryId, campus], load);
 onMounted(async () => {
+  // 库位字典独立拉取（IKRRSC）：失败只降级手填，不影响商品列表加载
+  void loadLocationOptions();
   try {
     categories.value = await api.adminCategories();
     await load();
