@@ -573,9 +573,6 @@ async function removeNotice(n: NoticeRow) {
                     >
                   </div>
                 </div>
-                <p class="qrcode-tip">
-                  建议上传校区客服个人微信二维码；未上传时小程序客服入口回落拨打电话
-                </p>
               </ElFormItem>
               <ElFormItem label="售后福利群二维码（小程序售后页展示）">
                 <div class="qrcode-row">
@@ -605,9 +602,6 @@ async function removeNotice(n: NoticeRow) {
                     >
                   </div>
                 </div>
-                <p class="qrcode-tip">
-                  售后福利群二维码；未上传时小程序售后页不显示该区块
-                </p>
               </ElFormItem>
               <!-- IKRSJ3 #114：群二维码弹窗文案（校区自定义，空=默认文案） -->
               <ElFormItem label="群二维码弹窗文案（小程序展示，留空用默认文案）">
@@ -625,9 +619,6 @@ async function removeNotice(n: NoticeRow) {
                   :disabled="!canEditProfile"
                   placeholder="https://work.weixin.qq.com/kfid/xxx"
                 />
-                <p class="qrcode-tip">
-                  企业微信 kf.weixin.qq.com 创建客服账号后复制链接
-                </p>
               </ElFormItem>
               <!-- IKRSIY #195：企微企业 ID（拉起客服会话必填） -->
               <ElFormItem label="企微企业 ID（拉起在线客服必填）">
@@ -636,9 +627,6 @@ async function removeNotice(n: NoticeRow) {
                   :disabled="!canEditProfile"
                   placeholder="wwxxxxxxxx（企业微信我的企业页复制）"
                 />
-                <p class="qrcode-tip">
-                  企业微信管理后台「我的企业」页的企业 ID；与上方链接配套填写
-                </p>
               </ElFormItem>
               <!-- #88/#89：用户可见配送员联系方式 -->
               <ElFormItem label="用户可见配送员联系方式">
@@ -648,9 +636,6 @@ async function removeNotice(n: NoticeRow) {
                   inactive-text="关闭"
                   :disabled="!canEditProfile"
                 />
-                <p class="qrcode-tip">
-                  开启后用户订单详情显示骑手/楼长姓名与电话并可一键拨打
-                </p>
               </ElFormItem></ElCol
             >
             <!-- 状态下拉已移除（道哥 2026-09-22）：校区启停属组织动作（校区管理页），
@@ -763,9 +748,7 @@ async function removeNotice(n: NoticeRow) {
                   v-model="deliveryForm.managerSalesVisible"
                   active-text="显示"
                   inactive-text="隐藏" />
-                <p class="form-hint">
-                  关闭后配送端工作台不向楼长显示今日/本月销售额
-                </p></ElFormItem
+</ElFormItem
             ></ElCol>
             <!-- #110/#91：到店前退款退配送费（默认到店前不退，开启后到店前也退） -->
             <ElCol :xs="24" :sm="12" :lg="8"
@@ -774,14 +757,9 @@ async function removeNotice(n: NoticeRow) {
                   v-model="deliveryForm.refundFeeBeforeArrive"
                   active-text="退"
                   inactive-text="不退" />
-                <p class="form-hint">
-                  默认到店前退款不退配送费，开启后到店前也退
-                </p></ElFormItem
+</ElFormItem
             ></ElCol> </ElRow
         ></ElForm>
-        <p class="form-hint">
-          打烊窗跨零点合法（如 22:00 ~ 06:00）；立即闭店与时间窗叠加判定。
-        </p>
         <ElButton
           v-if="canEditDelivery"
           type="primary"
@@ -827,9 +805,7 @@ async function removeNotice(n: NoticeRow) {
                   :precision="1"
                   :step="0.5"
                   :disabled="!canEditProfile" />
-                <p class="form-hint">
-                  按单固定=每单提成即该单配送费；按比例=提成=销售额×比例
-                </p></ElFormItem
+</ElFormItem
             ></ElCol></ElRow
         ></ElForm>
         <p v-if="!canEditProfile" class="form-hint">
