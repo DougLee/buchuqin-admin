@@ -118,11 +118,11 @@ export const HELP_MANUAL = `# 不出寝食社 · 运营手册
 
 ![商品类别](https://static.buchuqin.com/uploads/2026/09/ee09f749-6bcc-4cfd-98e2-00b4da84ec75.png)
 
-### 库存总览
+### 库存盘点
 
 全校区商品实时库存一览：可用库存 = 库存 − 锁定库存；在售但库存 0 即「售罄」。支持按类目筛选、导出。盘点发现的差异走「入库/出库」调整并留流水。
 
-![库存总览](https://static.buchuqin.com/uploads/2026/09/13b99340-dec9-4217-adcf-447e954c9e17.png)
+![库存盘点](https://static.buchuqin.com/uploads/2026/09/13b99340-dec9-4217-adcf-447e954c9e17.png)
 
 ### 拣货任务
 
