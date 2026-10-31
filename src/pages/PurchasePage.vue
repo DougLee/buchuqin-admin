@@ -502,7 +502,7 @@ async function refreshDetail() {
             <ElTableColumn prop="productName" label="商品" min-width="180" />
             <ElTableColumn prop="qty" label="数量" width="90" />
             <ElTableColumn prop="price" label="采购价" width="110" sortable="custom"><template #default="{ row }">¥{{ fenToYuan(asPurchaseRecord(row).price) }}</template></ElTableColumn>
-            <ElTableColumn prop="purchasedAt" label="入库日期" width="130" sortable="custom" />
+            <ElTableColumn label="入库日期" width="130" sortable="custom"><template #default="{ row }">{{ fmtDate(asPurchaseRecord(row).purchasedAt) }}</template></ElTableColumn>
             <ElTableColumn label="到期时间" width="130"><template #default="{ row }">{{ asPurchaseRecord(row).expiresAt ? fmtDate(asPurchaseRecord(row).expiresAt) : "—" }}</template></ElTableColumn>
             <ElTableColumn label="状态" width="130"><template #default="{ row }"><ElTag v-if="asPurchaseRecord(row).expired" type="danger">已过期</ElTag><ElTag v-else-if="asPurchaseRecord(row).expiring" type="warning">30 天内到期</ElTag><span v-else class="ledger-ok">正常</span></template></ElTableColumn>
             <ElTableColumn label="备注" min-width="140"><template #default="{ row }">{{ asPurchaseRecord(row).remark || "—" }}</template></ElTableColumn>
