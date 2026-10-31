@@ -358,6 +358,41 @@ async function openRefund(row: Order) {
     refundForm.amount = Number(refundAvailableYuan.value.toFixed(2));
 }
 
+/* ---------- IKRSJ2 #83：详情弹窗商品行售价/成本/毛利 + 金额汇总 ----------
+ *  成本口径=行综合成本快照 unitGrossCost（与导出同源，服务端按 cost.read
+ *  裁剪——无权限/老快照为 null，显示「—」fail-closed）。 */
+const itemLines = computed(() =>
+  (selected.value?.items ?? []).map((item) => {
+    const price = (item.product?.price ?? 0) as number;
+    const qty = item.quantity ?? 0;
+    const unitCost = (item.product?.unitGrossCost ?? null) as number | null;
+    return {
+      name: item.product?.name || "未知商品",
+      qty,
+      price,
+      unitCost,
+      subtotal: price * qty,
+      lineProfit: unitCost == null ? null : (price - unitCost) * qty,
+    };
+  }),
+);
+const itemTotals = computed(() => {
+  const o = selected.value;
+  if (!o) return null;
+  const costTotal = itemLines.value.every((l) => l.unitCost == null)
+    ? null
+    : itemLines.value.reduce((sum, l) => sum + (l.unitCost ?? 0) * l.qty, 0);
+  return {
+    productAmount: o.productAmount ?? 0,
+    deliveryFee: o.deliveryFee ?? 0,
+    discount: o.discount ?? 0,
+    payable: o.payableAmount ?? 0,
+    costTotal,
+    gross: costTotal == null ? null : (o.payableAmount ?? 0) - costTotal,
+  };
+});
+const fmt = (fen: number | null) =>
+  fen == null ? "—" : `¥${fenToYuan(fen)}`;
 /** 单笔总额按各行上限比例分摊（最大余数法）：Σ=总额且每行不超上限 */
 function allocateRefundAmounts(totalFen: number, caps: number[]) {
   const capSum = caps.reduce((sum, cap) => sum + cap, 0);
@@ -663,12 +698,35 @@ onMounted(load);
             </ElTableColumn>
           </ElTable>
         </section>
-        <ElTable :data="selected.items || []" class="items-table">
-          <ElTableColumn label="商品">
-            <template #default="{ row }">{{ row.product?.name || "未知商品" }}</template>
+        <ElTable :data="itemLines" class="items-table">
+          <ElTableColumn label="商品" min-width="140">
+            <template #default="{ row }">{{ row.name }}</template>
           </ElTableColumn>
-          <ElTableColumn prop="quantity" label="数量" width="100" />
+          <ElTableColumn label="单价" width="90">
+            <template #default="{ row }">{{ fmt(row.price) }}</template>
+          </ElTableColumn>
+          <ElTableColumn prop="qty" label="数量" width="70" />
+          <ElTableColumn label="小计" width="90">
+            <template #default="{ row }">{{ fmt(row.subtotal) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="成本" width="90">
+            <template #default="{ row }">{{ fmt(row.unitCost) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="毛利" width="90">
+            <template #default="{ row }">{{ fmt(row.lineProfit) }}</template>
+          </ElTableColumn>
         </ElTable>
+        <!-- IKRSJ2 #83：金额汇总（配送费/优惠券/综合毛利一并展示） -->
+        <div v-if="itemTotals" class="order-amounts">
+          <span>商品额 {{ fmt(itemTotals.productAmount) }}</span>
+          <span>配送费 {{ fmt(itemTotals.deliveryFee) }}</span>
+          <span>优惠 {{ fmt(itemTotals.discount) }}</span>
+          <span>实付 {{ fmt(itemTotals.payable) }}</span>
+          <span class="order-amounts__gross"
+            >综合毛利
+            {{ itemTotals.gross == null ? "—" : fmt(itemTotals.gross) }}</span
+          >
+        </div>
         <div
           v-for="group in [
             { label: '骑手交接', images: selected.package?.handoverProof?.images || [] },
@@ -934,6 +992,21 @@ onMounted(load);
   margin-bottom: 10px;
 }
 
+.order-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 18rpx;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f5f8f5;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #41564b;
+}
+.order-amounts__gross {
+  font-weight: 700;
+  color: #159c55;
+}
 .items-table {
   margin-top: 16px;
 }
