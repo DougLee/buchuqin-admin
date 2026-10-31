@@ -158,6 +158,10 @@ function listQuery(query?: ListQuery): string {
     // 全量断链审计（2026-09-05）：履约人员角色筛选——types/loader/后端三处
     // 早已支持，唯独此处白名单漏拼，role 从未上请求（同 IKDCDP 病灶第四例）
     query.role ? `role=${encodeURIComponent(query.role)}` : "",
+    // IKRSJ1 #93：列表排序（售价/批发价升降序）——第五例同病灶（ego 排序
+    // 实测抓出：types/loader/后端三处齐备，唯独此处漏拼，点击排序从未上请求）
+    query.sortBy ? `sortBy=${encodeURIComponent(query.sortBy)}` : "",
+    query.sortDir ? `sortDir=${encodeURIComponent(query.sortDir)}` : "",
   ]
     .filter(Boolean)
     .join("&");
