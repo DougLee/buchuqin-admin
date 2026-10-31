@@ -395,18 +395,36 @@ async function submitRefund() {
     notify("退款金额必须至少 0.01 元", "error");
     return;
   }
+  // 已出库未送达单（道哥 2026-10-31 方案 A）：整单退款申请——不带商品行，
+  // 金额=商品额，进售后审核队列（批准才原路退，配送费按审核开关）
+  const unshipped = [
+    "waiting-first-mile",
+    "arrived",
+    "first-mile",
+    "waiting-handover",
+    "last-mile",
+  ].includes(order.status);
   const lines = (order.items ?? [])
     .map((item) => ({
       productId: item.product.id ?? "",
       cap: (item.product.price ?? 0) * item.quantity,
     }))
     .filter((line) => line.productId && line.cap > 0);
-  if (!lines.length) {
+  if (!unshipped && !lines.length) {
     notify("订单商品快照缺失，请到售后退款页操作", "error");
     return;
   }
   working.value = true;
   try {
+    if (unshipped) {
+      await api.createOrderRefund(order.id, {
+        remark: refundForm.reason.trim(),
+      });
+      refundOpen.value = false;
+      notify("已提交整单退款申请，请到售后退款页审核");
+      await load();
+      return;
+    }
     const amounts = allocateRefundAmounts(
       totalFen,
       lines.map((line) => line.cap),

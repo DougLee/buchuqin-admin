@@ -900,7 +900,8 @@ export const api = {
   createOrderRefund: (
     orderId: string,
     input: {
-      productIds: string[];
+      /** 送达后按商品退款必填；已出库未送达整单退款（方案 A）不带 */
+      productIds?: string[];
       amounts?: Array<{ productId: string; amount: number }>;
       remark?: string;
     },
