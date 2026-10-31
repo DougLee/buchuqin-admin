@@ -192,11 +192,12 @@ async function loadStats() {
   statsLoading.value = true;
   statsError.value = "";
   try {
-    statsGroups.value = await api.stocktakeStats(
+    const res = await api.stocktakeStats(
       statsRange.value?.[0],
       statsRange.value?.[1],
       operationalCampusId.value,
     );
+    statsGroups.value = res?.items ?? [];
     // 选中原因无数据时回落到首个有数据的分组
     if (!statsGroups.value.some((group) => group.reason === statsActiveReason.value))
       statsActiveReason.value = statsGroups.value[0]?.reason ?? "线下销售";

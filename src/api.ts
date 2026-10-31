@@ -542,7 +542,9 @@ export const api = {
     ),
   /** 盘点统计（#85）：按原因聚合的核减/成本汇总，products 为该原因商品明细。 */
   stocktakeStats: (start?: string, end?: string, campus?: string) =>
-    request<StocktakeStatGroup[]>(
+    // #85 修正（ego 实测）：接口返回 {items:[...]} 包裹而非裸数组——
+    // 此前按数组声明导致 .some 对对象调用抛错（道哥 2026-10-31）
+    request<{ items: StocktakeStatGroup[] }>(
       `/admin/inventory/stocktake-stats${withQuery(
         start ? `start=${encodeURIComponent(start)}` : undefined,
         end ? `end=${encodeURIComponent(end)}` : undefined,
