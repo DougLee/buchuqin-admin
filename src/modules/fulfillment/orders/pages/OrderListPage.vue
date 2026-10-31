@@ -770,10 +770,6 @@ onMounted(load);
               placeholder="随退款申请展示给审核人"
             />
           </ElFormItem>
-          <p class="refund-tip">
-            提交后进入售后退款列表，审核通过后原路退回。默认可退 =
-            商品额 − 已退（含处理中的退款）；配送费不在本入口退还。
-          </p>
         </ElForm>
       </template>
       <template #footer>

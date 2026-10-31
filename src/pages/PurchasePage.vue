@@ -538,10 +538,6 @@ async function refreshDetail() {
         <template v-if="detail">
           <!-- 验收编辑态（IQ3 快捷全收：预填欠收，可改小可 0） -->
           <template v-if="rxLines.length">
-            <div class="rx-tip">
-              本次到货默认按欠收数预填（快捷全收），没到的行改成 0；坏品在到货行内登记，
-              系统自动入库存再出库扣回。
-            </div>
             <ElForm class="rx-form" label-position="top">
               <ElRow v-for="l in rxLines" :key="l.productId" :gutter="12" class="rx-form-row">
                 <ElCol :xs="24" :md="6"><ElFormItem label="商品"><strong class="rx-name">{{ detail.items.find((i) => i.productId === l.productId)?.name }}</strong></ElFormItem></ElCol>

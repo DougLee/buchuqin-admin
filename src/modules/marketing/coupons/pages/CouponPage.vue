@@ -689,7 +689,6 @@ watch([recPage, recPageSize], () => void loadRecords());
               aria-label="手机号列表"
               placeholder="每行一个或逗号分隔&#10;13800000001&#10;13800000002"
             />
-            <p class="issue-hint">按用户绑定的手机号匹配，最多 500 个</p>
           </template>
           <template v-else
             ><div class="issue-room-row">
@@ -718,9 +717,6 @@ watch([recPage, recPageSize], () => void loadRecords());
               aria-label="寝室号（选填）"
               placeholder="寝室号（选填，收窄范围）&#10;612, 613&#10;701"
             />
-            <p class="issue-hint">
-              按收货地址匹配；未填过收货地址的用户无法按寝室触达。
-            </p>
           </template>
         </div>
         <!-- ③ 发放张数 -->
@@ -728,7 +724,6 @@ watch([recPage, recPageSize], () => void loadRecords());
           <div class="issue-step-head">
             <span class="issue-step-no">3</span>
             <span class="issue-step-title">发放张数（每人）</span>
-            <span class="issue-hint">上限受「每人限领」约束</span>
           </div>
           <div class="issue-count-row">
             <ElInputNumber

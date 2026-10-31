@@ -479,9 +479,6 @@ watch(operationalCampusId, () => {
                   active-text="退配送费"
                   inactive-text="不退配送费"
                 />
-                <span class="as-fee-hint">
-                  到店前退款默认不退配送费¥{{ fenToYuan(detail.deliveryFee) }}；到店后默认退
-                </span>
               </div>
             </ElCol>
             <!-- v2 部分退款：核定各行金额（默认申请值，可改） -->
@@ -497,9 +494,6 @@ watch(operationalCampusId, () => {
                   step="0.01"
                 />
               </div>
-              <p class="as-audit-tip">
-                金额可调整（单位元）；合计不得超过本单可退余额（实付−配送费−已退）。
-              </p>
             </div></ElCol>
             <ElCol :span="24"><ElFormItem :label="auditMode === 'reject' ? '拒绝原因' : '审核备注'"><ElInput v-model="remark" type="textarea" :rows="2" :placeholder="auditMode === 'reject' ? '必填，随通知发给用户' : '选填'" /></ElFormItem></ElCol>
             <ElCol :span="24"><div class="as-audit-actions">
@@ -550,9 +544,6 @@ watch(operationalCampusId, () => {
             />
           </div>
         </div>
-        <p class="as-audit-tip">
-          勾选商品、可改金额（元）；提交即向微信发起原路退款，合计不得超可退上限。
-        </p>
         <div class="as-audit-actions">
           <ElButton
             type="primary"
