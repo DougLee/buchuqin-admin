@@ -430,9 +430,12 @@ async function submitRefund() {
     notify("退款金额必须至少 0.01 元", "error");
     return;
   }
-  // 已出库未送达单（道哥 2026-10-31 方案 A）：整单退款申请——不带商品行，
-  // 金额=商品额，进售后审核队列（批准才原路退，配送费按审核开关）
+  // 已支付未履约完成单（道哥 2026-10-31 定稿）：整单退款申请——不带商品行，
+  // 金额=商品额，进售后审核队列（批准才原路退，配送费按审核开关）。
+  // 未出库（paid/picking）与已出库未送达都可发起，与后端白名单同口径。
   const unshipped = [
+    "paid",
+    "picking",
     "waiting-first-mile",
     "arrived",
     "first-mile",
