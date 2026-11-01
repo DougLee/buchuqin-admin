@@ -121,6 +121,11 @@ const profileForm = ref({
   afterSalesGroupQrcode: "",
   // IKRSJ3 #114：群二维码弹窗文案（校区自定义，空=回落默认文案）
   groupQrcodeTip: "",
+  // IKS0W7：栏目标签文案（分类页侧栏+首页栏目，空=回落默认文案）
+  seckillLabel: "",
+  featuredLabel: "",
+  homeFeaturedLabel: "",
+  clearanceLabel: "",
   // #88/#89：企微在线客服链接（空=小程序用旧客服弹层）
   serviceKfUrl: "",
   // IKRSIY #195：企微企业 ID（openCustomerServiceChat 的 corpAccessId）
@@ -143,6 +148,13 @@ watch(bundle, (b) => {
       "",
     groupQrcodeTip:
       (b.campus as { groupQrcodeTip?: string }).groupQrcodeTip ?? "",
+    // IKS0W7：栏目标签文案回显（bundle 宽位断言读）
+    seckillLabel: (b.campus as { seckillLabel?: string }).seckillLabel ?? "",
+    featuredLabel: (b.campus as { featuredLabel?: string }).featuredLabel ?? "",
+    homeFeaturedLabel:
+      (b.campus as { homeFeaturedLabel?: string }).homeFeaturedLabel ?? "",
+    clearanceLabel:
+      (b.campus as { clearanceLabel?: string }).clearanceLabel ?? "",
     // #88/#89：企微在线客服链接 + 用户可见配送员联系方式（bundle 宽位断言读）
     serviceKfUrl: (b.campus as { serviceKfUrl?: string }).serviceKfUrl ?? "",
     serviceKfCorpId: (b.campus as { serviceKfCorpId?: string }).serviceKfCorpId ?? "",
@@ -197,6 +209,11 @@ async function saveProfile() {
       afterSalesGroupQrcode: profileForm.value.afterSalesGroupQrcode.trim(),
       // IKRSJ3 #114：群二维码弹窗文案（空=回落默认文案）
       groupQrcodeTip: profileForm.value.groupQrcodeTip.trim(),
+      // IKS0W7：栏目标签文案（空=回落默认文案）
+      seckillLabel: profileForm.value.seckillLabel.trim(),
+      featuredLabel: profileForm.value.featuredLabel.trim(),
+      homeFeaturedLabel: profileForm.value.homeFeaturedLabel.trim(),
+      clearanceLabel: profileForm.value.clearanceLabel.trim(),
       // #88/#89：企微在线客服链接（空=小程序用旧客服弹层）
       serviceKfUrl: profileForm.value.serviceKfUrl.trim(),
       serviceKfCorpId: profileForm.value.serviceKfCorpId.trim(),
@@ -610,6 +627,39 @@ async function removeNotice(n: NoticeRow) {
                   :maxlength="100"
                   show-word-limit
                   placeholder="如：加入福利群，售后进度与专属优惠第一时间掌握"
+                />
+              </ElFormItem>
+              <!-- IKS0W7：栏目标签文案（校区自定义，空=默认文案；分类页侧栏+首页栏目同名统一） -->
+              <ElFormItem label="秒杀栏目名称（留空默认「限时秒杀」）">
+                <ElInput
+                  v-model="profileForm.seckillLabel"
+                  :maxlength="20"
+                  :disabled="!canEditProfile"
+                  placeholder="限时秒杀"
+                />
+              </ElFormItem>
+              <ElFormItem label="分类页推荐名称（留空默认「推荐」）">
+                <ElInput
+                  v-model="profileForm.featuredLabel"
+                  :maxlength="20"
+                  :disabled="!canEditProfile"
+                  placeholder="推荐"
+                />
+              </ElFormItem>
+              <ElFormItem label="首页推荐栏目名称（留空默认「为你推荐」）">
+                <ElInput
+                  v-model="profileForm.homeFeaturedLabel"
+                  :maxlength="20"
+                  :disabled="!canEditProfile"
+                  placeholder="为你推荐"
+                />
+              </ElFormItem>
+              <ElFormItem label="临期栏目名称（留空默认「临期特惠」）">
+                <ElInput
+                  v-model="profileForm.clearanceLabel"
+                  :maxlength="20"
+                  :disabled="!canEditProfile"
+                  placeholder="临期特惠"
                 />
               </ElFormItem>
               <!-- #88/#89：企微在线客服链接（空=小程序用旧客服弹层） -->

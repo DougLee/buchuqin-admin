@@ -1123,6 +1123,11 @@ export const api = {
       noManagerTip?: string;
       /** IKRSJ3 #114：群二维码弹窗文案（空=回落默认文案） */
       groupQrcodeTip?: string;
+      /** IKS0W7：栏目标签文案（分类页侧栏+首页栏目，空=小程序回落默认） */
+      seckillLabel?: string;
+      featuredLabel?: string;
+      homeFeaturedLabel?: string;
+      clearanceLabel?: string;
       /** IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额） */
       managerSalesVisible?: boolean;
       /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
