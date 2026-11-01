@@ -144,7 +144,11 @@
                 ? "—"
                 : `¥${fenToYuan(row.wholesalePrice)}`
             }}</template></ElTableColumn
-          ><ElTableColumn label="建议零售价" width="110"
+          ><ElTableColumn
+            label="建议零售价"
+            width="110"
+            prop="originalPrice"
+            sortable="custom"
             ><template #default="{ row }"
               >¥{{ fenToYuan(row.originalPrice ?? 0) }}</template
             ></ElTableColumn
@@ -156,7 +160,12 @@
             ></ElTableColumn
           ><!-- 本地进货价（道哥 2026-10-19）：LOCAL 显示自报价，总部直供一律
               ¥0.00；无成本权限（RBAC 裁剪）显示 — -->
-          <ElTableColumn v-if="!official" label="本地进货价" width="110"
+          <ElTableColumn
+            v-if="!official"
+            label="本地进货价"
+            width="110"
+            prop="localPurchasePrice"
+            sortable="custom"
             ><template #default="{ row }"
               >{{
                 row.localPurchasePrice == null
@@ -172,6 +181,7 @@
             v-if="!official"
             prop="availableStock"
             label="可售库存"
+            sortable="custom"
           /><ElTableColumn label="状态"
             ><template #default="{ row }"
               ><ElTag :type="row.status === 'on-sale' ? 'success' : 'info'">{{
