@@ -364,12 +364,18 @@
                 v-model="form.locationCode"
                 placeholder="如：01-3" /></ElFormItem></ElCol
           ><ElCol v-if="!official" :xs="24" :sm="12" :lg="8"
-            ><ElFormItem :label="editing ? '可售库存' : '初始库存'"
+            ><ElFormItem
+              :label="editing ? '可售库存（只读）' : '初始库存'"
               ><ElInputNumber
                 v-model="form.stock"
                 :min="0"
                 :precision="0"
-                :disabled="!canEditStock" /></ElFormItem></ElCol
+                :disabled="!!editing"
+                :controls="editing == null" /><div
+                v-if="editing"
+                class="form-tip"
+                >库存调整请到库存管理（盘点/入库）操作</div
+              /></ElFormItem></ElCol
           ><ElCol :span="24"
             ><ElFormItem label="商品介绍"
               ><ElInput
@@ -438,6 +444,8 @@ const props = defineProps<{ mode: "official" | "campus" }>(),
 const canEditStock = computed(
   () => !official.value && hasPerm("POST /admin/inventory/stocktake"),
 );
+/** 库存直改门控（旧版口径）已随「库存只读」下线（道哥 2026-11-02）：商品
+ *  编辑不再改库存，调整统一走库存管理（盘点/入库）。 */
 const rows = ref<Product[]>([]),
   categories = ref<Category[]>([]),
   library = ref<Product[]>([]),
@@ -723,12 +731,8 @@ async function save() {
               : {}),
           }
         : {}),
-      // 库存直改（旧版口径回迁）：编辑态+有权+值变化才提交，无权限用户保存不被 403
-      ...(editing.value &&
-      canEditStock.value &&
-      form.stock !== editing.value.stock
-        ? { stock: form.stock }
-        : {}),
+      // 库存只读（道哥 2026-11-02）：编辑不再提交 stock，调整统一走库存管理
+      //（盘点/入库）；新建的初始库存由 createProduct 承接
     };
     const prices = {
       price: yuanToFen(form.price),
@@ -958,5 +962,12 @@ onMounted(async () => {
   .product-status-tab {
     transition: none;
   }
+}
+/* 库存只读提示（IKS0W8 同批）：编辑态库存字段下的引导小字 */
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 </style>
