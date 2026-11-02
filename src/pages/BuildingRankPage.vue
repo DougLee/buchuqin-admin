@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import * as XLSX from "xlsx";
 import { api } from "../api";
@@ -18,8 +18,14 @@ const error = ref("");
 const items = ref<BuildingRankItem[]>([]);
 const startDate = ref("");
 const endDate = ref("");
-const campusId = ref("");
+/* 校区筛选默认跟随顶部选择器（道哥 2026-11-02：进页应只看所选学校的楼栋，
+   不能默认「全部校区」混排）；页内仍可手动切换/清空看全量，顶部再切则覆盖 */
+const campusId = ref(effectiveCampusId.value || "");
 const campuses = ref<CampusOption[]>([]);
+watch(effectiveCampusId, (v) => {
+  campusId.value = v || "";
+  void load();
+});
 
 /* 校区上下文：平台/组织角色可下拉聚焦校区（运营校区口径，排除总部仓）；
    校区角色锁本校区（同 CampusReportPage 的 effectiveCampusId 口径） */
