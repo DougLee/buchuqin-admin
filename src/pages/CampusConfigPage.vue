@@ -257,6 +257,11 @@ const deliveryForm = ref({
   closeEnd: "00:00",
   manualClosed: false,
   noManagerTip: "",
+  // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段（空=前端默认）
+  scheduledGiftText: "",
+  deliveryStoryTitle: "",
+  deliveryStoryMain: "",
+  deliveryStoryDesc: "",
   // IKM55A 订单自动出库：开启后 paid 单 N 秒 Cron 自动出库（30s 扫描精度）
   autoOutbound: false,
   autoOutboundDelay: 60,
@@ -275,6 +280,14 @@ watch(bundle, (b) => {
     closeEnd: b.campus.closeEnd,
     manualClosed: b.campus.manualClosed,
     noManagerTip: (b.campus as { noManagerTip?: string }).noManagerTip ?? "",
+    scheduledGiftText:
+      (b.campus as { scheduledGiftText?: string }).scheduledGiftText ?? "",
+    deliveryStoryTitle:
+      (b.campus as { deliveryStoryTitle?: string }).deliveryStoryTitle ?? "",
+    deliveryStoryMain:
+      (b.campus as { deliveryStoryMain?: string }).deliveryStoryMain ?? "",
+    deliveryStoryDesc:
+      (b.campus as { deliveryStoryDesc?: string }).deliveryStoryDesc ?? "",
     autoOutbound:
       (b.campus as { autoOutboundEnabled?: boolean }).autoOutboundEnabled ??
       false,
@@ -311,6 +324,11 @@ async function saveDelivery() {
       managerSalesVisible: deliveryForm.value.managerSalesVisible,
       // #110/#91：到店前退款退配送费（双链路 DTO 均收，照 managerSalesVisible 先例）
       refundDeliveryFeeBeforeArrive: deliveryForm.value.refundFeeBeforeArrive,
+      // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段（双链路 DTO 均收）
+      scheduledGiftText: deliveryForm.value.scheduledGiftText.trim(),
+      deliveryStoryTitle: deliveryForm.value.deliveryStoryTitle.trim(),
+      deliveryStoryMain: deliveryForm.value.deliveryStoryMain.trim(),
+      deliveryStoryDesc: deliveryForm.value.deliveryStoryDesc.trim(),
     };
     if (canManageCampus.value) {
       // 平台角色可保存任意选中校区（含打烊窗/手动闭店/无楼长提示 IKHMKR）
@@ -772,6 +790,43 @@ async function removeNotice(n: NoticeRow) {
                   maxlength="60"
                   show-word-limit
                   placeholder="默认：本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～" /></ElFormItem
+            ></ElCol>
+            <!-- IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段
+                 （结算页卡片与商品详情底部，空=小程序端默认文案；
+                 详情页三段整块可改，不支持送上楼的校区换成自取说明防投诉） -->
+            <ElCol :span="24"
+              ><ElFormItem label="预约达卡片营销文案（空=默认文案）"
+                ><ElInput
+                  v-model.trim="deliveryForm.scheduledGiftText"
+                  maxlength="40"
+                  show-word-limit
+                  placeholder="默认：赠送 2 元全品类优惠券" /></ElFormItem
+            ></ElCol>
+            <ElCol :span="24"
+              ><ElFormItem label="商品页配送说明·标题（空=默认文案）"
+                ><ElInput
+                  v-model.trim="deliveryForm.deliveryStoryTitle"
+                  maxlength="20"
+                  show-word-limit
+                  placeholder="默认：今晚的快乐很简单" /></ElFormItem
+            ></ElCol>
+            <ElCol :span="24"
+              ><ElFormItem label="商品页配送说明·主句（空=默认文案）"
+                ><ElInput
+                  v-model.trim="deliveryForm.deliveryStoryMain"
+                  maxlength="30"
+                  show-word-limit
+                  placeholder="默认：不用换鞋，不用下楼。" /></ElFormItem
+            ></ElCol>
+            <ElCol :span="24"
+              ><ElFormItem label="商品页配送说明·流程说明（空=默认文案）"
+                ><ElInput
+                  v-model.trim="deliveryForm.deliveryStoryDesc"
+                  type="textarea"
+                  :rows="2"
+                  maxlength="80"
+                  show-word-limit
+                  placeholder="默认：下单后从你所在校区的校园仓出发，经配送员送到楼下，再由楼长送到你的寝室门口。" /></ElFormItem
             ></ElCol>
             <!-- IKM55A 订单自动出库：开关+延迟秒数，仅即时达/预约达已支付单，
                  拣货中（人工介入）不抢跑；退款单天然跳过 -->
