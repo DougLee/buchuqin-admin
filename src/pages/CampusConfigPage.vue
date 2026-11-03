@@ -397,17 +397,24 @@ async function saveSalary() {
 
 /* ---------- 送达时段 CRUD（IKHM1O 补后台管理入口） ---------- */
 const slots = computed<DeliverySlotRow[]>(() => bundle.value?.slots ?? []);
-const slotForm = ref({ label: "", capacity: 100 });
+// IKSN20（道哥 2026-11-03）：时段改下拉拼接——自由输入格式校验不过，
+// 被误以为功能不可用；开始/结束各选一个 30 分钟档，拼 HH:mm-HH:mm
+const slotForm = ref({ start: "", end: "", capacity: 100 });
 async function addSlot() {
   if (!canWrite("POST /admin/delivery-slots")) return;
-  if (!bundle.value || !slotForm.value.label.trim()) return;
+  const { start, end } = slotForm.value;
+  if (!bundle.value || !start || !end) return;
+  if (start >= end) {
+    notify("结束时间须晚于开始时间", true);
+    return;
+  }
   try {
     await api.createSlot({
       campusId: bundle.value.campus.id,
-      label: slotForm.value.label.trim(),
+      label: `${start}-${end}`,
       capacity: slotForm.value.capacity,
     });
-    slotForm.value = { label: "", capacity: 100 };
+    slotForm.value = { start: "", end: "", capacity: 100 };
     notify("时段已创建");
     await load();
   } catch (error) {
@@ -934,12 +941,29 @@ async function removeNotice(n: NoticeRow) {
           v-if="canWrite('POST /admin/delivery-slots')"
           label-position="top"
           ><ElRow :gutter="16" align="bottom">
-            <ElCol :xs="24" :sm="12" :lg="10"
-              ><ElFormItem label="时段文案"
-                ><ElInput
-                  v-model="slotForm.label"
-                  placeholder="如 12:00-14:00"
-                  maxlength="20" /></ElFormItem
+            <ElCol :xs="12" :sm="6" :lg="5"
+              ><ElFormItem label="开始时间"
+                ><ElSelect
+                  v-model="slotForm.start"
+                  filterable
+                  placeholder="如 12:00"
+                  ><ElOption
+                    v-for="t in TIME_OPTIONS"
+                    :key="t"
+                    :label="t"
+                    :value="t" /></ElSelect></ElFormItem
+            ></ElCol>
+            <ElCol :xs="12" :sm="6" :lg="5"
+              ><ElFormItem label="结束时间"
+                ><ElSelect
+                  v-model="slotForm.end"
+                  filterable
+                  placeholder="如 14:00"
+                  ><ElOption
+                    v-for="t in TIME_OPTIONS"
+                    :key="t"
+                    :label="t"
+                    :value="t" /></ElSelect></ElFormItem
             ></ElCol>
             <ElCol :xs="24" :sm="8" :lg="6"
               ><ElFormItem label="容量"
