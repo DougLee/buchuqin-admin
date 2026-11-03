@@ -61,12 +61,15 @@ export const REFUND_SOURCE_TEXT: Record<string, string> = {
 };
 
 /** 售后类型（AfterSalesPage 用）。分叉提示：与 AFTER_SALE_TYPE_TEXT 同域
- *  文案不同（missing「缺件」vs「商品缺失」、键集少 damaged/wrong/other 的
- *  翻译差异）——纯重构保持两套，统一待后续拍板。 */
+ *  文案不同（missing「缺件」vs「商品缺失」、damaged「破损」vs「包装破损」
+ *  ——纯重构保持两套）；wrong/other 补齐（道哥 2026-11-03：与 C 端申请
+ *  枚举对齐，此前漏译显示原值）。 */
 export const AFTERSALE_PAGE_TYPE_TEXT: Record<string, string> = {
   quality: "质量问题",
   missing: "缺件",
   damaged: "破损",
+  wrong: "错发",
+  other: "其他",
 };
 
 /** 订单状态中文（退款拒绝后回滚去向展示，AfterSalesPage） */
