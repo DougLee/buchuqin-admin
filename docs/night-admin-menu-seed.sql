@@ -28,76 +28,76 @@
 -- - perms 逗号串规则：「METHOD 路径模式」，:seg 通配单段——与鉴权守卫匹配语义一致。
 
 -- ---------- 1. 目录：夜宵经营 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
-VALUES ('cm-night-dir','g.night',NULL,'夜宵经营',0,'','','',false,'',8,true,'active')
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
+VALUES ('cm-night-dir','g.night',NULL,'夜宵经营',0,'','','',false,'',8,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 2. 菜单：夜宵店铺 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-stores','night-stores',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='g.night'),
   '夜宵店铺',1,
   'GET /admin/night/stores,GET /admin/night/stores/:id,GET /admin/night/stores/:id/stock-txns,GET /admin/night/stores/:id/liquidation,GET /admin/night/catalog,GET /admin/night/config,GET /admin/night/coupons',
-  '/night-stores','night-stores',false,'campus',1,true,'active')
+  '/night-stores','night-stores',false,'campus',1,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 3. 按钮：夜宵店铺管理 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-stores-w','night-stores.write',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='night-stores'),
   '夜宵店铺管理',2,
   'POST /admin/night/stores,PATCH /admin/night/stores/:id,POST /admin/night/catalog,PATCH /admin/night/catalog/:id,POST /admin/night/stores/:id/products,PATCH /admin/night/stores/:id/products/:productId,POST /admin/night/stores/:id/products/:productId/stock,PUT /admin/night/config',
-  '','',false,'',1,true,'active')
+  '','',false,'',1,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 4. 按钮：押金账务 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-deposit','night-deposit',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='night-stores'),
   '押金账务',2,
   'POST /admin/night/stores/:id/deposit/deduct,POST /admin/night/stores/:id/deposit/refund',
-  '','',false,'',2,true,'active')
+  '','',false,'',2,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 5. 菜单：夜宵订单 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-orders','night-orders',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='g.night'),
   '夜宵订单',1,
   'GET /admin/night/orders,GET /admin/night/orders/:id',
-  '/night-orders','night-orders',false,'orders',2,true,'active')
+  '/night-orders','night-orders',false,'orders',2,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 6. 按钮：夜宵退款 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-orders-r','night-orders.refund',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='night-orders'),
   '夜宵退款',2,
   'POST /admin/night/orders/:id/refund',
-  '','',false,'',1,true,'active')
+  '','',false,'',1,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 7. 菜单：夜宵结算 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-settle','night-settlements',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='g.night'),
   '夜宵结算',1,
   'GET /admin/night/settlements',
-  '/night-settlements','night-settlements',false,'finance',3,true,'active')
+  '/night-settlements','night-settlements',false,'finance',3,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 8. 按钮：夜宵结算操作 ----------
-INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status")
+INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
 VALUES (
   'cm-night-settle-w','night-settlements.write',
   (SELECT "id" FROM "AdminMenu" WHERE "code"='night-settlements'),
   '夜宵结算操作',2,
   'POST /admin/night/settlements/settle,POST /admin/night/settlements/:batch/pay',
-  '','',false,'',1,true,'active')
+  '','',false,'',1,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
