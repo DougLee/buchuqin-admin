@@ -18,7 +18,9 @@ const rows = ref<Coupon[]>([]),
   pageSize = ref(20),
   total = ref(0),
   keyword = ref(""),
-  status = ref("all");
+  status = ref("all"),
+  // IKSW1F：适用业务维度（day 白天券 / night 夜宵券，双向隔离）；空=全部
+  businessType = ref("");
 const form = reactive({
   kind: "platform" as "platform" | "partner",
   trigger: "manual" as "manual" | "lottery" | "signup",
@@ -33,6 +35,8 @@ const form = reactive({
   featuredAfterPay: false,
   perUserLimit: 1,
   targetedOnly: false,
+  // IKSW1F：创建时选白天/夜宵；创建后不可改（后端 UpdateCouponDto 不收）
+  businessType: "day" as "day" | "night",
 });
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
@@ -56,6 +60,7 @@ async function load() {
         campusId: effectiveCampusId.value,
       },
       status.value === "all" ? undefined : status.value,
+      businessType.value || undefined,
     );
     rows.value = r.items;
     total.value = r.total;
@@ -83,6 +88,10 @@ function edit(row?: Coupon) {
       (row as Coupon & { perUserLimit?: number })?.perUserLimit ?? 1,
     ),
     targetedOnly: !!(row as Coupon & { targetedOnly?: boolean })?.targetedOnly,
+    // 新建默认跟随当前列表筛选（夜宵 Tab 下建券默认夜宵券）；编辑回显不可改
+    businessType:
+      (row?.businessType as "day" | "night" | undefined) ??
+      (businessType.value === "night" ? "night" : "day"),
   });
   open.value = true;
 }
@@ -120,6 +129,8 @@ async function save() {
         ...common,
         kind: form.kind,
         trigger: form.trigger,
+        // IKSW1F：适用业务随表单提交（缺省 day，后端同口径）
+        businessType: form.businessType,
         amount: form.kind === "partner" ? 0 : yuanToFen(form.amount),
         threshold: form.kind === "partner" ? 0 : yuanToFen(form.threshold),
         ...(form.totalMode === "limited" ? { total: form.total } : {}),
@@ -291,7 +302,7 @@ async function confirmIssue() {
     issuing.value = false;
   }
 }
-watch([page, pageSize, status, effectiveCampusId], load);
+watch([page, pageSize, status, businessType, effectiveCampusId], load);
 onMounted(load);
 /* ---------- IKRSJ0 #99：领取记录（领取/核销流水，弹层直查+导出） ---------- */
 const recordsOpen = ref(false),
@@ -428,6 +439,16 @@ watch([recPage, recPageSize], () => void loadRecords());
             :label="tab.label"
             :name="tab.key"
         /></ElTabs>
+        <!-- IKSW1F：适用业务维度（白天券/夜宵券双向隔离；空=全部不过滤） -->
+        <ElSegmented
+          v-model="businessType"
+          class="marketing-biz"
+          :options="[
+            { label: '全部', value: '' },
+            { label: '白天券', value: 'day' },
+            { label: '夜宵券', value: 'night' },
+          ]"
+        />
         <div class="admin-filter-form marketing-search">
           <ElInput
             v-model="keyword"
@@ -456,6 +477,14 @@ watch([recPage, recPageSize], () => void loadRecords());
             ><template #default="{ row }">{{
               row.kind === "platform" ? "金额券" : "异业券"
             }}</template></ElTableColumn
+          ><ElTableColumn label="适用" width="90"
+            ><template #default="{ row }"
+              ><ElTag
+                size="small"
+                :type="row.businessType === 'night' ? 'warning' : 'success'"
+                >{{ row.businessType === "night" ? "夜宵" : "白天" }}</ElTag
+              ></template
+            ></ElTableColumn
           ><ElTableColumn label="面额"
             ><template #default="{ row }">{{
               row.kind === "platform" ? `¥${fenToYuan(row.amount)}` : "权益券"
@@ -534,6 +563,16 @@ watch([recPage, recPageSize], () => void loadRecords());
                   value="lottery" /><ElOption
                   label="新人注册"
                   value="signup" /></ElSelect></ElFormItem></ElCol
+          ><ElCol :xs="24" :sm="12"
+            ><ElFormItem label="适用业务"
+              ><ElSelect v-model="form.businessType" :disabled="!!editing"
+                ><ElOption label="白天券（即时送/预约达）" value="day" /><ElOption
+                  label="夜宵券（楼长夜宵店专用）"
+                  value="night" /></ElSelect
+              ><div v-if="editing" class="muted">
+                适用业务创建后不可改
+              </div></ElFormItem
+            ></ElCol
           ><ElCol :span="24"
             ><ElFormItem label="券名称"
               ><ElInput v-model="form.name" /></ElFormItem></ElCol
@@ -882,6 +921,10 @@ watch([recPage, recPageSize], () => void loadRecords());
 .marketing-tabs {
   flex: 1 1 auto;
   min-width: 0;
+}
+/* IKSW1F：白天券/夜宵券维度切换 */
+.marketing-biz {
+  flex: 0 0 auto;
 }
 .marketing-search {
   display: flex;

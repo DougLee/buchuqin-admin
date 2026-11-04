@@ -29,6 +29,8 @@ import { governanceViews } from "./modules/governance";
 import { marketingViews } from "./modules/marketing";
 import { financeViews } from "./modules/finance";
 import { organizationViews } from "./modules/organization";
+// 夜宵经营（IKSW1F）：菜单三页 + 店铺详情（/night-stores/:id 由 router 随菜单静态注册）
+import { nightViews, NightStoreDetailPage } from "./modules/night";
 // 组织管理（IKKRMS）：组织 B 平台端开通一条龙（列表/微信配置/开通向导）
 import Organizations from "./pages/OrganizationsPage.vue";
 function mergeViewRegistries(...registries: Record<string, Component>[]) {
@@ -51,7 +53,7 @@ const coreViews: Record<string, Component> = {
   "building-rank": BuildingRank,
   help: HelpCenter, changelog: Changelog,
 };
-export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, settingsViews, warehouseViews, governanceViews, marketingViews, financeViews, organizationViews);
+export const views = mergeViewRegistries(coreViews, catalogViews, fulfillmentViews, settingsViews, warehouseViews, governanceViews, marketingViews, financeViews, organizationViews, nightViews);
 // behavior-analytics：IKRGLV 道哥定稿仅超管可见——非超管前端即拦（双保险，
 // 后端另有 ctx.super 强制）
 export const superViews = new Set(["rbac-roles", "rbac-menus", "rbac-permissions", "behavior-analytics", "transfer-logs"]);

@@ -6,6 +6,7 @@ import Changelog from "./pages/ChangelogPage.vue";
 import AccessPage from "./pages/AccessPage.vue";
 import FramePage from "./pages/FramePage.vue";
 import { views, superViews } from "./view-catalog";
+import { NightStoreDetailPage } from "./modules/night";
 import { menuTree, sessionUser, loadRbac, isSuper, rbacLoaded } from "./session";
 export const router = createRouter({ history: createWebHashHistory(), routes: [
   { path: '/login', name: 'login', component: Login },
@@ -40,6 +41,14 @@ function synchronize() {
   // Existing purchase screen links to the report subpage; permission follows purchase.
   if (menus.some(m => m.viewPath === 'purchase') && !menus.some(m => m.path === '/reports')) {
     removers.push(router.addRoute({ path: '/reports', name: 'purchase-report', component: views.reports, meta: { dynamic: true } }));
+  }
+  // 夜宵店详情子路由（IKSW1F）：权限随夜宵店铺菜单；菜单行只注册 /night-stores，
+  // 详情页按行进入（/night-stores/:id），无菜单授权时此路由不出现。
+  if (menus.some(m => m.viewPath === 'night-stores')) {
+    removers.push(router.addRoute({
+      path: '/night-stores/:id', name: 'night-store-detail',
+      component: NightStoreDetailPage, meta: { dynamic: true, title: '夜宵店详情' },
+    }));
   }
   const current = router.currentRoute.value;
   if (current.meta.dynamic) {

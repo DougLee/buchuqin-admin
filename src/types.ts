@@ -407,6 +407,8 @@ export interface Coupon {
   used: number;
   /** 剩余可发；null = 不限量（IKDEN2）。 */
   remain: number | null;
+  /** IKSW1F：适用业务（day 白天券缺省 / night 夜宵券，双向隔离；创建后不可改）。 */
+  businessType?: "day" | "night";
 }
 
 export interface Building {
@@ -1500,4 +1502,184 @@ export interface PurchaseRecordCreateInput {
   /** 入库日期（YYYY-MM-DD，必填） */
   purchasedAt: string;
   remark?: string;
+}
+
+/* ---------- 夜宵经营（IKSW1F /admin/night/*）：与白天业务完全隔离 ---------- */
+/** 夜宵店列表行（GET /admin/night/stores）。 */
+export interface NightStoreRow {
+  id: string;
+  campusId: string;
+  buildingId: string;
+  buildingName: string;
+  /** 楼长；null = 招募中 */
+  manager: { id: string; name: string; staffNo: string } | null;
+  /** open 营业中 / paused 暂停 / closed 打烊 / suspended 停业 */
+  status: string;
+  /** 押金余额（分） */
+  deposit: number;
+  /** 佣金比例（万分比，2000=20%） */
+  commissionRate: number;
+  /** 距下一押金档差额（分） */
+  depositGapToNextTier: number;
+  todayOrders: number;
+  /** 今日销售额（分） */
+  todaySales: number;
+  openedAt: string | null;
+  closedAt: string | null;
+}
+/** 店铺内楼栋商品行（NightProduct + 主档摘要）。 */
+export interface NightStoreProductRow {
+  id: string;
+  catalogProductId: string;
+  stock: number;
+  /** 楼长上架选择 */
+  onShelf: boolean;
+  /** 后台售卖许可（false=强制停售） */
+  saleAllowed: boolean;
+  catalogProduct: { id: string; name: string; price: number; status: string };
+}
+/** 押金流水行（deposit 缴纳 / deduct 判责扣除 / refund 退出退还）。 */
+export interface NightDepositTxnRow {
+  id: string;
+  type: string;
+  amount: number;
+  payOrderNo: string | null;
+  operatorId: string | null;
+  remark: string;
+  createdAt: string;
+}
+/** 店铺详情（GET /admin/night/stores/:id）。 */
+export interface NightStoreDetail extends NightStoreRow {
+  /** 详情带楼长电话（列表行无） */
+  manager: { id: string; name: string; staffNo: string; phone?: string | null };
+  createdAt: string;
+  updatedAt: string;
+  products: NightStoreProductRow[];
+  depositTxns: NightDepositTxnRow[];
+  /** 佣金汇总：type(commission/deliveryFee) × status(estimated/pending/settled) → 金额（分） */
+  commissionSummary: Record<string, Record<string, number>>;
+}
+/** 夜主档商品行（Product nightCatalog=true）。 */
+export interface NightCatalogRow {
+  id: string;
+  name: string;
+  subtitle: string;
+  image: string;
+  /** 夜宵统一售价（分） */
+  price: number;
+  originalPrice: number;
+  barcode: string | null;
+  status: string;
+  updatedAt: string;
+}
+/** 夜宵库存流水行（stock 全量变动账本）。 */
+export interface NightStockTxnRow {
+  id: string;
+  storeId: string;
+  nightProductId: string;
+  type: string;
+  delta: number;
+  afterStock: number;
+  operatorId: string | null;
+  remark: string;
+  createdAt: string;
+}
+/** 校区夜宵配置（GET/PUT /admin/night/config）。 */
+export interface NightConfigRow {
+  campusId: string;
+  nightEnabled: boolean;
+  nightStartAt: string | null;
+  nightEndAt: string | null;
+  /** 待支付超时（分钟）；null=回落默认 15 */
+  nightPayTimeout: number | null;
+  /** 接单超时（分钟）；null=一期记录不自动关单 */
+  nightAcceptTimeout: number | null;
+  /** 夜间配送费（分）；null=回落白天口径 */
+  nightDeliveryFee: number | null;
+  closeStart?: string | null;
+  closeEnd?: string | null;
+}
+/** 夜宵订单商品行快照（items JSON）。 */
+export interface NightOrderLine {
+  nightProductId: string;
+  catalogProductId: string;
+  name: string;
+  image: string;
+  /** 夜宵售价（分） */
+  price: number;
+  quantity: number;
+}
+/** 夜宵订单行（GET /admin/night/orders）。 */
+export interface NightOrderRow {
+  id: string;
+  orderNo: string;
+  status: string;
+  statusText: string;
+  items: NightOrderLine[];
+  productAmount: number;
+  couponDiscount: number;
+  deliveryFee: number;
+  payableAmount: number;
+  commissionRate: number;
+  address: {
+    buildingId?: string;
+    buildingName?: string;
+    floor?: number;
+    room?: string;
+    contactName?: string;
+    phone?: string;
+  };
+  remark: string;
+  timeline: { key: string; title: string; time?: string }[];
+  couponSnapshot: { name?: string; amount?: number; threshold?: number } | null;
+  businessDate: string;
+  timeoutAt: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  completedAt: string | null;
+  cancelReason: string | null;
+  afterSaleStatus: string | null;
+  store: { id: string; buildingName: string };
+  user?: { id: string; nickname: string; phone: string } | null;
+}
+/** 夜宵订单详情（含佣金流水与楼长快照）。 */
+export interface NightOrderDetail extends NightOrderRow {
+  manager: { id: string; name: string; staffNo: string } | null;
+  commissionTxns: {
+    id: string;
+    type: string;
+    base: number | null;
+    rate: number | null;
+    amount: number;
+    status: string;
+    settleBatch: string | null;
+    remark: string;
+    createdAt: string;
+  }[];
+}
+/** 夜宵佣金周账单（GET /admin/night/settlements）。 */
+export interface NightSettlementBatch {
+  batch: string;
+  txnCount: number;
+  /** 批内商品佣金合计（分） */
+  commissionTotal: number;
+  /** 批内配送费合计（分） */
+  deliveryFeeTotal: number;
+  latestAt: string | null;
+}
+/** 出账结果（POST /admin/night/settlements/settle）。 */
+export interface NightSettleResult extends NightSettlementBatch {}
+/** 退出清算清单（GET /admin/night/stores/:id/liquidation）。 */
+export interface NightLiquidation {
+  store: { id: string; buildingName: string; status: string };
+  /** 押金余额（分） */
+  deposit: number;
+  stock: {
+    items: { id: string; name: string; stock: number; price: number; value: number }[];
+    totalValue: number;
+  };
+  openOrders: { status: string; count: number }[];
+  /** 佣金余额：'type:status' → 金额（分） */
+  commission: Record<string, number>;
+  hints: string[];
 }

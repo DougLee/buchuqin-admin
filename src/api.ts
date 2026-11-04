@@ -66,6 +66,17 @@ import type {
   StocktakeStatGroup,
   PurchaseRecordRow,
   PurchaseRecordCreateInput,
+  NightCatalogRow,
+  NightConfigRow,
+  NightLiquidation,
+  NightOrderDetail,
+  NightOrderRow,
+  NightSettleResult,
+  NightSettlementBatch,
+  NightStoreDetail,
+  NightStoreProductRow,
+  NightStoreRow,
+  NightStockTxnRow,
 } from "./types";
 
 interface ApiResult<T> {
@@ -1232,11 +1243,13 @@ export const api = {
       throw new Error(body?.message || `导入失败（${response.status}）`);
     return body.data;
   },
-  /** IKB5PA：status 过滤（active/paused，状态 Tab 用）。 */
-  coupons: (query?: ListQuery, status?: string) =>
+  /** IKB5PA：status 过滤（active/paused，状态 Tab 用）。
+   *  IKSW1F：businessType 过滤（day 白天券 / night 夜宵券，双向隔离）。 */
+  coupons: (query?: ListQuery, status?: string, businessType?: string) =>
     request<PagedResponse<Coupon>>(
       `/admin/coupons${withQuery(
         status ? `status=${status}` : "",
+        businessType ? `businessType=${businessType}` : "",
         listQuery(query),
       )}`,
     ),
@@ -1259,6 +1272,8 @@ export const api = {
     perUserLimit?: number;
     /** 定向券（领券中心不可见，仅定向发放） */
     targetedOnly?: boolean;
+    /** IKSW1F：适用业务（day 白天券缺省 / night 夜宵券）；创建后不可改 */
+    businessType?: "day" | "night";
   }) =>
     request<Coupon>("/admin/coupons", {
       method: "POST",
@@ -1745,4 +1760,206 @@ export const api = {
     }),
   deleteNotice: (id: string) =>
     request(`/admin/notices/${id}`, { method: "DELETE" }),
+
+  /* ---------- 夜宵经营（IKSW1F /admin/night/*，与白天业务完全隔离） ---------- */
+  /** 校区由通用 request 注入 ?campus=（campusScope 校验授权集）。 */
+  /** 店铺列表（status=open/paused/closed/suspended）。 */
+  nightStores: (status?: string, page = 1, pageSize = 20) =>
+    request<PagedResponse<NightStoreRow>>(
+      `/admin/night/stores${withQuery(
+        status ? `status=${status}` : "",
+        `page=${page}`,
+        `pageSize=${pageSize}`,
+      )}`,
+    ),
+  /** 店铺详情（含楼栋商品/押金流水近 50 条/佣金汇总）。 */
+  nightStoreDetail: (id: string) =>
+    request<NightStoreDetail>(`/admin/night/stores/${id}`),
+  /** 建店（campusId 缺省由后端 campusScope 解析）。 */
+  createNightStore: (data: {
+    campusId?: string;
+    buildingId: string;
+    managerStaffId?: string;
+    /** 佣金比例万分比（0~10000，显式 0 合法） */
+    commissionRate: number;
+  }) =>
+    request<NightStoreRow>("/admin/night/stores", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 编辑店铺（status 只收 closed/suspended，营业恢复走楼长开店）。 */
+  updateNightStore: (
+    id: string,
+    data: {
+      status?: "closed" | "suspended";
+      /** 换楼长：Staff id；null/''=解绑（招募中） */
+      managerStaffId?: string | null;
+      commissionRate?: number;
+    },
+  ) =>
+    request<NightStoreRow>(`/admin/night/stores/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  /** 夜主档列表（keyword 过滤名称）。 */
+  nightCatalog: (keyword?: string, page = 1, pageSize = 20) =>
+    request<PagedResponse<NightCatalogRow>>(
+      `/admin/night/catalog${withQuery(
+        keyword ? `keyword=${encodeURIComponent(keyword)}` : "",
+        `page=${page}`,
+        `pageSize=${pageSize}`,
+      )}`,
+    ),
+  /** 创建夜主档商品（price=夜宵统一售价，分）。 */
+  createNightCatalog: (data: {
+    campusId?: string;
+    name: string;
+    price: number;
+    originalPrice?: number;
+    image?: string;
+    subtitle?: string;
+    barcode?: string;
+  }) =>
+    request<NightCatalogRow>("/admin/night/catalog", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 编辑夜主档（status=on-sale/off-sale）。 */
+  updateNightCatalog: (
+    id: string,
+    data: {
+      name?: string;
+      price?: number;
+      originalPrice?: number;
+      image?: string;
+      subtitle?: string;
+      status?: "on-sale" | "off-sale";
+    },
+  ) =>
+    request<NightCatalogRow>(`/admin/night/catalog/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  /** 配商品：夜主档勾选生成楼栋行（跳过已存在）。 */
+  attachNightStoreProducts: (storeId: string, catalogProductIds: string[]) =>
+    request<{ attached: number; skipped: number }>(
+      `/admin/night/stores/${storeId}/products`,
+      { method: "POST", body: JSON.stringify({ catalogProductIds }) },
+    ),
+  /** 楼栋商品强制停售/恢复（saleAllowed 优先于楼长 onShelf）。 */
+  updateNightStoreProduct: (
+    storeId: string,
+    productId: string,
+    saleAllowed: boolean,
+  ) =>
+    request<NightStoreProductRow>(
+      `/admin/night/stores/${storeId}/products/${productId}`,
+      { method: "PATCH", body: JSON.stringify({ saleAllowed }) },
+    ),
+  /** 库存调整（delta 带方向；type=adjust/returnOut/loss/stocktake）。 */
+  adjustNightStock: (
+    storeId: string,
+    productId: string,
+    data: { delta: number; type: string; reason: string },
+  ) =>
+    request<NightStockTxnRow>(
+      `/admin/night/stores/${storeId}/products/${productId}/stock`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+  /** 库存流水（近 200 条，对账）。 */
+  nightStockTxns: (storeId: string, page = 1, pageSize = 20) =>
+    request<PagedResponse<NightStockTxnRow>>(
+      `/admin/night/stores/${storeId}/stock-txns${withQuery(
+        `page=${page}`,
+        `pageSize=${pageSize}`,
+      )}`,
+    ),
+  /** 校区夜宵配置读取。 */
+  nightConfig: () => request<NightConfigRow>("/admin/night/config"),
+  /** 校区夜宵配置写入（confirm=true 强警告二次确认放行）。 */
+  saveNightConfig: (data: {
+    campusId?: string;
+    nightEnabled: boolean;
+    nightStartAt?: string | null;
+    nightEndAt?: string | null;
+    nightPayTimeout?: number | null;
+    nightAcceptTimeout?: number | null;
+    nightDeliveryFee?: number | null;
+    confirm?: boolean;
+  }) =>
+    request<NightConfigRow>("/admin/night/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  /** 夜宵订单列表（storeId/status/date=营业日 YYYY-MM-DD）。 */
+  nightOrders: (filters: {
+    storeId?: string;
+    status?: string;
+    date?: string;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    request<PagedResponse<NightOrderRow>>(
+      `/admin/night/orders${withQuery(
+        filters.storeId ? `storeId=${filters.storeId}` : "",
+        filters.status ? `status=${filters.status}` : "",
+        filters.date ? `date=${filters.date}` : "",
+        `page=${filters.page ?? 1}`,
+        `pageSize=${filters.pageSize ?? 20}`,
+      )}`,
+    ),
+  /** 夜宵订单详情（含佣金流水/楼长快照）。 */
+  nightOrderDetail: (id: string) =>
+    request<NightOrderDetail>(`/admin/night/orders/${id}`),
+  /** 夜宵退款（productRefund 缺省=整单商品部分全额；分）。 */
+  nightOrderRefund: (
+    id: string,
+    data: {
+      productRefund?: number;
+      refundDeliveryFee?: boolean;
+      restock?: boolean;
+      reason: string;
+    },
+  ) =>
+    request<NightOrderDetail>(`/admin/night/orders/${id}/refund`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  /** 佣金周账单列表。 */
+  nightSettlements: () =>
+    request<NightSettlementBatch[]>("/admin/night/settlements"),
+  /** 周账单出账（storeIds 缺省=本校区全部待结算店铺）。 */
+  nightSettle: (storeIds?: string[]) =>
+    request<NightSettleResult>("/admin/night/settlements/settle", {
+      method: "POST",
+      body: JSON.stringify(storeIds?.length ? { storeIds } : {}),
+    }),
+  /** 批次标记打款（财务线下打款留痕）。 */
+  nightMarkBatchPaid: (batch: string, remark?: string) =>
+    request<{ batch: string; txnCount: number }>(
+      `/admin/night/settlements/${batch}/pay`,
+      { method: "POST", body: JSON.stringify({ remark: remark ?? "" }) },
+    ),
+  /** 押金判责扣除（后端校验不得扣到负数）。 */
+  nightDeductDeposit: (storeId: string, amount: number, reason: string) =>
+    request<{ txnId: string; deposit: number }>(
+      `/admin/night/stores/${storeId}/deposit/deduct`,
+      { method: "POST", body: JSON.stringify({ amount, reason }) },
+    ),
+  /** 押金退还（amount 缺省=全额退当前余额；原路退款分配）。 */
+  nightRefundDeposit: (storeId: string, amount?: number, reason?: string) =>
+    request<{
+      refunded: number;
+      allocations: { payOrderNo: string; amount: number; refundNo: string; status: string }[];
+      deposit: number;
+    }>(`/admin/night/stores/${storeId}/deposit/refund`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...(amount ? { amount } : {}),
+        ...(reason ? { reason } : {}),
+      }),
+    }),
+  /** 退出清算清单（剩余库存/未完订单/佣金余额/押金余额）。 */
+  nightLiquidation: (storeId: string) =>
+    request<NightLiquidation>(`/admin/night/stores/${storeId}/liquidation`),
 };
