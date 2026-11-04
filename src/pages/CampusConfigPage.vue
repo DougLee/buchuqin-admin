@@ -267,6 +267,8 @@ const deliveryForm = ref({
   autoOutboundDelay: 60,
   // IKRSIZ #108：楼长销售额展示开关（关=配送端工作台不下发销售额）
   managerSalesVisible: true,
+  // IKRSJ2：小票库位打印开关（关=小票全联不打库位行，含商家联）
+  receiptShowLocation: true,
   // #110/#91：到店前退款是否退配送费（默认 false=不退）
   refundFeeBeforeArrive: false,
 });
@@ -297,6 +299,9 @@ watch(bundle, (b) => {
     managerSalesVisible:
       (b.campus as { managerSalesVisible?: boolean }).managerSalesVisible ??
       true,
+    receiptShowLocation:
+      (b.campus as { receiptShowLocation?: boolean }).receiptShowLocation ??
+      true,
     // #110/#91：到店前退款退配送费（bundle.campus 已带该字段类型）
     refundFeeBeforeArrive: b.campus.refundDeliveryFeeBeforeArrive ?? false,
   };
@@ -322,6 +327,8 @@ async function saveDelivery() {
       autoOutboundDelaySeconds: deliveryForm.value.autoOutboundDelay,
       // IKRSIZ #108：楼长销售额展示开关（双链路 DTO 均收）
       managerSalesVisible: deliveryForm.value.managerSalesVisible,
+      // IKRSJ2：小票库位打印开关（双链路 DTO 均收）
+      receiptShowLocation: deliveryForm.value.receiptShowLocation,
       // #110/#91：到店前退款退配送费（双链路 DTO 均收，照 managerSalesVisible 先例）
       refundDeliveryFeeBeforeArrive: deliveryForm.value.refundFeeBeforeArrive,
       // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段（双链路 DTO 均收）
@@ -843,6 +850,15 @@ async function removeNotice(n: NoticeRow) {
                   v-model="deliveryForm.autoOutbound"
                   active-text="开启"
                   inactive-text="关闭" /></ElFormItem
+            ></ElCol>
+            <!-- IKRSJ2：小票库位打印开关——关=小票全联不打库位行（拣货靠
+                 品名大字+分拣序号），不支持库位管理的校区可关 -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="小票打印库位"
+                ><ElSwitch
+                  v-model="deliveryForm.receiptShowLocation"
+                  active-text="打印"
+                  inactive-text="不打印" /></ElFormItem
             ></ElCol>
             <ElCol v-if="deliveryForm.autoOutbound" :xs="24" :sm="12" :lg="8"
               ><ElFormItem label="支付后自动出库（秒）"

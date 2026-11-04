@@ -1130,6 +1130,8 @@ export const api = {
       clearanceLabel?: string;
       /** IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额） */
       managerSalesVisible?: boolean;
+      /** IKRSJ2：小票库位打印开关（关=小票全联不打库位行） */
+      receiptShowLocation?: boolean;
       /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
       autoOutboundEnabled?: boolean;
       autoOutboundDelaySeconds?: number;
@@ -1449,6 +1451,8 @@ export const api = {
     autoOutboundDelaySeconds?: number;
     /** IKRSIZ #108：楼长销售额展示开关（关=配送端工作台不下发销售额） */
     managerSalesVisible?: boolean;
+    /** IKRSJ2：小票库位打印开关（关=小票全联不打库位行） */
+    receiptShowLocation?: boolean;
     /** #110/#91：到店前退款是否退配送费（默认 false=不退） */
     refundDeliveryFeeBeforeArrive?: boolean;
     /** #88/#89：企微在线客服链接（空=小程序用旧客服弹层） */
