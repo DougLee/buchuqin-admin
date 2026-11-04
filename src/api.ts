@@ -1132,6 +1132,8 @@ export const api = {
       managerSalesVisible?: boolean;
       /** IKRSJ2：小票库位打印开关（关=小票全联不打库位行） */
       receiptShowLocation?: boolean;
+      /** 小票二维码打印开关（关=不打票尾二维码及文案行） */
+      receiptShowQrcode?: boolean;
       /** IKM55A：订单自动出库（校区级开关+延迟秒数） */
       autoOutboundEnabled?: boolean;
       autoOutboundDelaySeconds?: number;
@@ -1453,6 +1455,8 @@ export const api = {
     managerSalesVisible?: boolean;
     /** IKRSJ2：小票库位打印开关（关=小票全联不打库位行） */
     receiptShowLocation?: boolean;
+    /** 小票二维码打印开关（关=不打票尾二维码及文案行） */
+    receiptShowQrcode?: boolean;
     /** #110/#91：到店前退款是否退配送费（默认 false=不退） */
     refundDeliveryFeeBeforeArrive?: boolean;
     /** #88/#89：企微在线客服链接（空=小程序用旧客服弹层） */

@@ -269,6 +269,8 @@ const deliveryForm = ref({
   managerSalesVisible: true,
   // IKRSJ2：小票库位打印开关（关=小票全联不打库位行，含商家联）
   receiptShowLocation: true,
+  // 小票二维码打印开关（关=不打票尾二维码及文案行）
+  receiptShowQrcode: true,
   // #110/#91：到店前退款是否退配送费（默认 false=不退）
   refundFeeBeforeArrive: false,
 });
@@ -302,6 +304,8 @@ watch(bundle, (b) => {
     receiptShowLocation:
       (b.campus as { receiptShowLocation?: boolean }).receiptShowLocation ??
       true,
+    receiptShowQrcode:
+      (b.campus as { receiptShowQrcode?: boolean }).receiptShowQrcode ?? true,
     // #110/#91：到店前退款退配送费（bundle.campus 已带该字段类型）
     refundFeeBeforeArrive: b.campus.refundDeliveryFeeBeforeArrive ?? false,
   };
@@ -329,6 +333,8 @@ async function saveDelivery() {
       managerSalesVisible: deliveryForm.value.managerSalesVisible,
       // IKRSJ2：小票库位打印开关（双链路 DTO 均收）
       receiptShowLocation: deliveryForm.value.receiptShowLocation,
+      // 小票二维码打印开关（双链路 DTO 均收）
+      receiptShowQrcode: deliveryForm.value.receiptShowQrcode,
       // #110/#91：到店前退款退配送费（双链路 DTO 均收，照 managerSalesVisible 先例）
       refundDeliveryFeeBeforeArrive: deliveryForm.value.refundFeeBeforeArrive,
       // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段（双链路 DTO 均收）
@@ -379,6 +385,28 @@ async function saveReceiptLocation(value: boolean | string | number) {
     notify(next ? "库位已开启打印" : "库位已关闭打印");
   } catch (error) {
     deliveryForm.value.receiptShowLocation = prev;
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  }
+}
+
+/** 小票二维码打印开关即时保存（打印机 Tab），逻辑同 saveReceiptLocation */
+async function saveReceiptQrcode(value: boolean | string | number) {
+  const next = value === true;
+  const prev = deliveryForm.value.receiptShowQrcode;
+  deliveryForm.value.receiptShowQrcode = next;
+  try {
+    if (canManageCampus.value && bundle.value) {
+      await api.updateCampus(bundle.value.campus.id, {
+        receiptShowQrcode: next,
+      });
+    } else {
+      await api.updateDeliveryConfig({
+        receiptShowQrcode: next,
+      } as Parameters<typeof api.updateDeliveryConfig>[0]);
+    }
+    notify(next ? "二维码已开启打印" : "二维码已关闭打印");
+  } catch (error) {
+    deliveryForm.value.receiptShowQrcode = prev;
     notify(error instanceof Error ? error.message : "保存失败", true);
   }
 }
@@ -1156,6 +1184,16 @@ async function removeNotice(n: NoticeRow) {
         />
         <div class="muted" style="margin-top: 8px">
           开=小票显示每件商品的库位（如【库位:A-12】）；关=全联不打库位行。即时生效，下一单起按新设置打印。
+        </div>
+        <ElDivider style="margin: 16px 0" />
+        <ElSwitch
+          :model-value="deliveryForm.receiptShowQrcode"
+          active-text="打印"
+          inactive-text="不打印"
+          @change="saveReceiptQrcode($event as boolean | string | number)"
+        />
+        <div class="muted" style="margin-top: 8px">
+          开=小票票尾打印二维码（骑手扫码到店/核验订单码源）；关=不打二维码及文案行。即时生效，下一单起按新设置打印。
         </div>
       </ElCard>
     </template>
