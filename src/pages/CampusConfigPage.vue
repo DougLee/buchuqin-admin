@@ -1172,29 +1172,36 @@ async function removeNotice(n: NoticeRow) {
     <!-- 内容类 Tab：组合独立业务模块（按顶部当前校区） -->
     <template v-else-if="activeTab === 'printers'">
       <PrinterPage />
-      <!-- IKRSJ2：小票库位打印开关挪到打印机 Tab（道哥 2026-11-04）——
-           即时保存，无独立按钮；写权限同配送营业 Tab 双链路 -->
+      <!-- IKRSJ2：小票打印开关挪到打印机 Tab（道哥 2026-11-04）——
+           即时保存，无独立按钮；布局对齐配送营业 Tab（label 上/开关下两列） -->
       <ElCard v-if="canWrite('PATCH /admin/delivery-config') || canManageCampus" class="cc-card" style="margin-top: 16px">
-        <template #header><b>小票打印库位</b></template>
-        <ElSwitch
-          :model-value="deliveryForm.receiptShowLocation"
-          active-text="打印"
-          inactive-text="不打印"
-          @change="saveReceiptLocation($event as boolean | string | number)"
-        />
-        <div class="muted" style="margin-top: 8px">
-          开=小票显示每件商品的库位（如【库位:A-12】）；关=全联不打库位行。即时生效，下一单起按新设置打印。
-        </div>
-        <ElDivider style="margin: 16px 0" />
-        <ElSwitch
-          :model-value="deliveryForm.receiptShowQrcode"
-          active-text="打印"
-          inactive-text="不打印"
-          @change="saveReceiptQrcode($event as boolean | string | number)"
-        />
-        <div class="muted" style="margin-top: 8px">
-          开=小票票尾打印二维码（骑手扫码到店/核验订单码源）；关=不打二维码及文案行。即时生效，下一单起按新设置打印。
-        </div>
+        <template #header><b>小票打印设置</b></template>
+        <ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12">
+            <div class="receipt-switch__label">小票打印库位</div>
+            <ElSwitch
+              :model-value="deliveryForm.receiptShowLocation"
+              active-text="打印"
+              inactive-text="不打印"
+              @change="saveReceiptLocation($event as boolean | string | number)"
+            />
+            <div class="muted receipt-switch__tip">
+              开=小票显示每件商品的库位（如【库位:A-12】）；关=全联不打库位行。即时生效，下一单起按新设置打印。
+            </div>
+          </ElCol>
+          <ElCol :xs="24" :sm="12">
+            <div class="receipt-switch__label">小票打印二维码</div>
+            <ElSwitch
+              :model-value="deliveryForm.receiptShowQrcode"
+              active-text="打印"
+              inactive-text="不打印"
+              @change="saveReceiptQrcode($event as boolean | string | number)"
+            />
+            <div class="muted receipt-switch__tip">
+              开=票尾打印二维码（骑手扫码到店/核验订单码源）；关=不打二维码及文案行。即时生效，下一单起按新设置打印。
+            </div>
+          </ElCol>
+        </ElRow>
       </ElCard>
     </template>
     <template v-else-if="activeTab === 'wechat-groups'">
@@ -1336,5 +1343,15 @@ async function removeNotice(n: NoticeRow) {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+.receipt-switch__label {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.receipt-switch__tip {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>
