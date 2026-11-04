@@ -359,6 +359,30 @@ async function saveDelivery() {
   }
 }
 
+/** IKRSJ2：小票库位打印开关即时保存（打印机 Tab，无独立保存按钮）。
+ *  双链路同 saveDelivery——平台/组织角色走 updateCampus 全量 DTO（全字段
+ *  可选），校区角色走本校区 delivery-config；失败回显旧值。 */
+async function saveReceiptLocation(value: boolean | string | number) {
+  const next = value === true;
+  const prev = deliveryForm.value.receiptShowLocation;
+  deliveryForm.value.receiptShowLocation = next;
+  try {
+    if (canManageCampus.value && bundle.value) {
+      await api.updateCampus(bundle.value.campus.id, {
+        receiptShowLocation: next,
+      });
+    } else {
+      await api.updateDeliveryConfig({
+        receiptShowLocation: next,
+      } as Parameters<typeof api.updateDeliveryConfig>[0]);
+    }
+    notify(next ? "库位已开启打印" : "库位已关闭打印");
+  } catch (error) {
+    deliveryForm.value.receiptShowLocation = prev;
+    notify(error instanceof Error ? error.message : "保存失败", true);
+  }
+}
+
 /* ---------- 楼长结算（底薪+提成，平台角色） ---------- */
 const salaryForm = ref({
   baseSalary: 0,
@@ -851,15 +875,6 @@ async function removeNotice(n: NoticeRow) {
                   active-text="开启"
                   inactive-text="关闭" /></ElFormItem
             ></ElCol>
-            <!-- IKRSJ2：小票库位打印开关——关=小票全联不打库位行（拣货靠
-                 品名大字+分拣序号），不支持库位管理的校区可关 -->
-            <ElCol :xs="24" :sm="12" :lg="8"
-              ><ElFormItem label="小票打印库位"
-                ><ElSwitch
-                  v-model="deliveryForm.receiptShowLocation"
-                  active-text="打印"
-                  inactive-text="不打印" /></ElFormItem
-            ></ElCol>
             <ElCol v-if="deliveryForm.autoOutbound" :xs="24" :sm="12" :lg="8"
               ><ElFormItem label="支付后自动出库（秒）"
                 ><ElInputNumber
@@ -1129,6 +1144,20 @@ async function removeNotice(n: NoticeRow) {
     <!-- 内容类 Tab：组合独立业务模块（按顶部当前校区） -->
     <template v-else-if="activeTab === 'printers'">
       <PrinterPage />
+      <!-- IKRSJ2：小票库位打印开关挪到打印机 Tab（道哥 2026-11-04）——
+           即时保存，无独立按钮；写权限同配送营业 Tab 双链路 -->
+      <ElCard v-if="canWrite('PATCH /admin/delivery-config') || canManageCampus" class="cc-card" style="margin-top: 16px">
+        <template #header><b>小票打印库位</b></template>
+        <ElSwitch
+          :model-value="deliveryForm.receiptShowLocation"
+          active-text="打印"
+          inactive-text="不打印"
+          @change="saveReceiptLocation($event as boolean | string | number)"
+        />
+        <div class="muted" style="margin-top: 8px">
+          开=小票显示每件商品的库位（如【库位:A-12】）；关=全联不打库位行。即时生效，下一单起按新设置打印。
+        </div>
+      </ElCard>
     </template>
     <template v-else-if="activeTab === 'wechat-groups'">
       <WechatGroupPage />
