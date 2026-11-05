@@ -29,7 +29,7 @@
 
 -- ---------- 1. 目录：夜宵经营 ----------
 INSERT INTO "AdminMenu" ("id","code","parentId","name","type","perms","path","viewPath","keepAlive","icon","orderNum","isShow","status","createdAt","updatedAt")
-VALUES ('cm-night-dir','g.night',NULL,'夜宵经营',0,'','','',false,'',8,true,'active', now(), now())
+VALUES ('cm-night-dir','g.night',NULL,'夜宵经营',0,'','','',false,'',7,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------- 2. 菜单：夜宵店铺 ----------
@@ -101,3 +101,6 @@ VALUES (
   'POST /admin/night/settlements/settle,POST /admin/night/settlements/:batch/pay',
   '','',false,'',1,true,'active', now(), now())
 ON CONFLICT ("code") DO NOTHING;
+
+-- 夜宵经营插位后：系统组排序顺延 7→8（道哥 2026-11-05：夜宵经营置于财务系统与系统之间）
+UPDATE "AdminMenu" SET "orderNum" = 8 WHERE code = 'g.sys';
