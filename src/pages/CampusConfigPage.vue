@@ -10,6 +10,7 @@ import {
   switchableCampuses,
 } from "../session";
 import PrinterPage from "../modules/settings/printers/pages/PrinterPage.vue";
+import NightConfigDialog from "../modules/night/stores/pages/NightConfigDialog.vue";
 import WechatGroupPage from "../modules/settings/wechat-groups/pages/WechatGroupPage.vue";
 import HomeBannerPage from "../modules/marketing/banners/pages/HomeBannerPage.vue";
 import PayAdPage from "../modules/marketing/banners/pages/PayAdPage.vue";
@@ -365,6 +366,8 @@ async function saveDelivery() {
   }
 }
 
+/** IKSN20/夜宵配置弹窗开关（挪入校区配置页——道哥 2026-11-05） */
+const nightConfigOpen = ref(false);
 /** IKRSJ2：小票库位打印开关即时保存（打印机 Tab，无独立保存按钮）。
  *  双链路同 saveDelivery——平台/组织角色走 updateCampus 全量 DTO（全字段
  *  可选），校区角色走本校区 delivery-config；失败回显旧值。 */
@@ -894,6 +897,14 @@ async function removeNotice(n: NoticeRow) {
                   show-word-limit
                   placeholder="默认：下单后从你所在校区的校园仓出发，经配送员送到楼下，再由楼长送到你的寝室门口。" /></ElFormItem
             ></ElCol>
+            <!-- 夜宵设置入口（IKSN20 挪入校区配置——道哥 2026-11-05）：弹窗承载
+                 夜宵开关/场次/超时/夜间配送费（互斥缓冲二次确认逻辑在组件内） -->
+            <ElCol :xs="24" :sm="12" :lg="8"
+              ><ElFormItem label="夜宵设置"
+                ><ElButton @click="nightConfigOpen = true"
+                  >夜宵开关 / 场次 / 超时 / 配送费</ElButton
+                ></ElFormItem
+            ></ElCol>
             <!-- IKM55A 订单自动出库：开关+延迟秒数，仅即时达/预约达已支付单，
                  拣货中（人工介入）不抢跑；退款单天然跳过 -->
             <ElCol :xs="24" :sm="12" :lg="8"
@@ -1217,6 +1228,7 @@ async function removeNotice(n: NoticeRow) {
       <WheelPage embedded />
     </template>
   </div>
+<NightConfigDialog v-model="nightConfigOpen" />
 </template>
 
 <style scoped>

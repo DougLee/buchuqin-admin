@@ -12,7 +12,6 @@ import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { rateText, nightStoreStatus } from "../../night-shared";
 import NightCatalogPanel from "./NightCatalogPanel.vue";
-import NightConfigDialog from "./NightConfigDialog.vue";
 import type { Building, NightStoreRow, Staff } from "../../../../types";
 import { fenToYuan } from "../../../../utils/money";
 
@@ -164,8 +163,6 @@ async function submitCreate() {
   }
 }
 
-/* ---------- 夜宵配置 ---------- */
-const configOpen = ref(false);
 
 const router = useRouter();
 function goDetail(row: NightStoreRow) {
@@ -182,11 +179,6 @@ onMounted(load);
     description="楼长夜宵店：押金=进货额度，夜间营业赚佣金。与白天业务数据/券/订单完全隔离。"
   >
     <template #actions>
-      <ElButton
-        v-if="hasPerm('GET /admin/night/config')"
-        @click="configOpen = true"
-        >夜宵配置</ElButton
-      >
       <ElButton
         v-if="hasPerm('POST /admin/night/stores')"
         type="primary"
@@ -341,8 +333,6 @@ onMounted(load);
       </template>
     </ElDialog>
 
-    <!-- 校区夜宵配置 -->
-    <NightConfigDialog v-model="configOpen" />
   </AdminPageShell>
 </template>
 <style scoped>
