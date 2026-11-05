@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
@@ -7,15 +7,12 @@ import { NIGHT_TIME_OPTIONS } from "../../night-shared";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 
 /**
- * 校区夜宵配置弹窗（IKSW1F）：夜宵开关 + 场次时间 + 待支付/接单超时 + 夜间配送费。
- * 放在夜宵经营菜单（registry：GET/PUT /admin/night/config 归 night-stores 节点），
- * 不进校区配置页——避免校区运营角色被夜宵 perms 依赖卡住。
+ * 校区夜宵配置面板（IKSW1F，道哥 2026-11-05：独立 Tab 内嵌形态）：
+ * 夜宵开关 + 场次时间 + 待支付/接单超时 + 夜间配送费。
  * 互斥缓冲：夜宵开始早于校区闭店开始 → 后端 400 提示 confirm=true 强警告，
  * 前端识别后弹二次确认再带 confirm 重试。
+ * Tab 激活即挂载本组件 → onMounted 自动加载当前校区配置。
  */
-const props = defineProps<{ modelValue: boolean }>();
-const emit = defineEmits<{ (e: "update:modelValue", value: boolean): void }>();
-
 const loading = ref(false);
 const saving = ref(false);
 const loaded = ref(false);
@@ -30,24 +27,13 @@ const form = reactive({
   deliveryFee: 2,
 });
 
-const visible = ref(props.modelValue);
-watch(
-  () => props.modelValue,
-  (v) => {
-    visible.value = v;
-    if (v) void load();
-  },
-);
-watch(visible, (v) => emit("update:modelValue", v));
-
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
 }
 
 async function load() {
-  if (!effectiveCampusId.value) return;
+  if (!effectiveCampusId.value || !hasPerm("GET /admin/night/config")) return;
   loading.value = true;
-  loaded.value = false;
   try {
     const cfg = await api.nightConfig();
     form.nightEnabled = cfg.nightEnabled;
@@ -70,6 +56,7 @@ async function load() {
     loading.value = false;
   }
 }
+onMounted(load);
 
 async function save(confirm = false) {
   if (!effectiveCampusId.value) return;
@@ -94,7 +81,6 @@ async function save(confirm = false) {
       ...(confirm ? { confirm: true } : {}),
     });
     notify("夜宵配置已保存");
-    visible.value = false;
   } catch (e) {
     const message = e instanceof Error ? e.message : "保存失败";
     if (!confirm && message.includes("confirm=true")) {
@@ -111,7 +97,7 @@ async function save(confirm = false) {
         );
         await save(true);
       } catch {
-        /* 用户取消，停留弹窗 */
+        /* 用户取消，停留面板 */
       }
     } else {
       notify(message, "error");
@@ -122,15 +108,14 @@ async function save(confirm = false) {
 }
 </script>
 <template>
-  <ElDialog
-    v-model="visible"
-    title="校区夜宵配置"
-    width="min(620px, calc(100vw - 32px))"
-    align-center
-    :close-on-click-modal="false"
-  >
+  <div class="night-config-panel">
     <p v-if="!effectiveCampusId" class="config-hint">请先在顶部选择校区。</p>
-    <p v-else-if="loading && !loaded" class="config-hint">加载中…</p>
+    <p
+      v-else-if="!hasPerm('GET /admin/night/config')"
+      class="config-hint"
+    >
+      当前账号无夜宵配置权限（需授权「夜宵经营」相关节点）。
+    </p>
     <ElForm v-else label-position="top">
       <ElFormItem label="夜宵经营开关（关=全校区夜宵入口与下单停用）">
         <ElSwitch
@@ -183,21 +168,21 @@ async function save(confirm = false) {
         <p class="config-hint">
           若夜宵开始时刻早于校区闭店开始时刻，保存时会出现强警告——确认后放行并留审计痕。
         </p>
+        <ElButton
+          v-if="hasPerm('PUT /admin/night/config')"
+          type="primary"
+          :loading="saving"
+          @click="save(false)"
+          >保存夜宵配置</ElButton
+        >
       </template>
     </ElForm>
-    <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
-      <ElButton
-        v-if="effectiveCampusId && hasPerm('PUT /admin/night/config')"
-        type="primary"
-        :loading="saving"
-        @click="save(false)"
-        >保存配置</ElButton
-      >
-    </template>
-  </ElDialog>
+  </div>
 </template>
 <style scoped>
+.night-config-panel {
+  max-width: 720px;
+}
 .config-hint {
   margin: 0 0 8px;
   color: var(--muted);
