@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
@@ -16,6 +17,9 @@ import { fenToYuan, yuanToFen } from "../../../../utils/money";
 const loading = ref(false);
 const saving = ref(false);
 const loaded = ref(false);
+const loadError = ref('');
+const loadedCampus = ref('');
+let generation = 0;
 const form = reactive({
   nightEnabled: false,
   start: "22:00",
@@ -32,10 +36,16 @@ function notify(message: string, type: "success" | "error" = "success") {
 }
 
 async function load() {
+  const current = ++generation;
+  const campus = effectiveCampusId.value;
+  loaded.value = false;
+  loadedCampus.value = '';
+  loadError.value = '';
   if (!effectiveCampusId.value || !hasPerm("GET /admin/night/config")) return;
   loading.value = true;
   try {
     const cfg = await api.nightConfig();
+    if (current !== generation || campus !== effectiveCampusId.value) return;
     form.nightEnabled = cfg.nightEnabled;
     form.start = cfg.nightStartAt ?? "22:00";
     form.end = cfg.nightEndAt ?? "02:00";
@@ -49,17 +59,19 @@ async function load() {
       form.deliveryFeeMode = "custom";
       form.deliveryFee = Number(fenToYuan(cfg.nightDeliveryFee));
     }
+    loadedCampus.value = campus;
     loaded.value = true;
   } catch (e) {
-    notify(e instanceof Error ? e.message : "配置加载失败", "error");
+    if (current === generation) loadError.value = e instanceof Error ? e.message : '配置加载失败';
   } finally {
-    loading.value = false;
+    if (current === generation) loading.value = false;
   }
 }
 onMounted(load);
+watch(effectiveCampusId, load);
 
-async function save(confirm = false) {
-  if (!effectiveCampusId.value) return;
+async function save(confirm = false, targetCampus = effectiveCampusId.value) {
+  if (!targetCampus || targetCampus !== effectiveCampusId.value || loadedCampus.value !== targetCampus || !loaded.value || (saving.value && !confirm)) return;
   if (form.nightEnabled && form.start === form.end) {
     notify("夜宵开始与结束时刻不能相同", "error");
     return;
@@ -67,6 +79,7 @@ async function save(confirm = false) {
   saving.value = true;
   try {
     await api.saveNightConfig({
+      campusId: targetCampus,
       nightEnabled: form.nightEnabled,
       nightStartAt: form.start,
       nightEndAt: form.end,
@@ -80,7 +93,7 @@ async function save(confirm = false) {
             : null,
       ...(confirm ? { confirm: true } : {}),
     });
-    notify("夜宵店设置已保存");
+    if (targetCampus === effectiveCampusId.value) notify("夜宵店设置已保存");
   } catch (e) {
     const message = e instanceof Error ? e.message : "保存失败";
     if (!confirm && message.includes("confirm=true")) {
@@ -95,7 +108,7 @@ async function save(confirm = false) {
             cancelButtonText: "回去检查",
           },
         );
-        await save(true);
+        if (targetCampus === effectiveCampusId.value) await save(true, targetCampus);
       } catch {
         /* 用户取消，停留面板 */
       }
@@ -109,6 +122,7 @@ async function save(confirm = false) {
 </script>
 <template>
   <div class="night-config-panel">
+    <NightLoadError :message="loadError" :loading="loading" @retry="load" />
     <p v-if="!effectiveCampusId" class="config-hint">请先在顶部选择校区。</p>
     <p
       v-else-if="!hasPerm('GET /admin/night/config')"
@@ -116,7 +130,7 @@ async function save(confirm = false) {
     >
       当前账号无夜宵配置权限（需授权「夜宵经营」相关节点）。
     </p>
-    <ElForm v-else label-position="top">
+    <ElForm v-else label-position="top" :disabled="loading || !loaded || !!loadError">
       <ElFormItem label="夜宵经营开关（关=全校区夜宵入口与下单停用）">
         <ElSwitch
           v-model="form.nightEnabled"
@@ -168,6 +182,7 @@ async function save(confirm = false) {
         <p class="config-hint">
           若夜宵开始时刻早于校区闭店开始时刻，保存时会出现强警告——确认后放行并留审计痕。
         </p>
+      </template>
         <ElButton
           v-if="hasPerm('PUT /admin/night/config')"
           type="primary"
@@ -175,7 +190,6 @@ async function save(confirm = false) {
           @click="save(false)"
           >保存夜宵店设置</ElButton
         >
-      </template>
     </ElForm>
   </div>
 </template>

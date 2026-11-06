@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
@@ -10,6 +11,7 @@ import type {
   NightOfficialCandidate,
 } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
+import { fmtDateTime } from '../../../../utils/datetime';
 
 /**
  * 夜主档商品管理面板（IKSW1F）：Product 夜主档行（nightCatalog=true）的
@@ -19,6 +21,7 @@ import { fenToYuan, yuanToFen } from "../../../../utils/money";
  */
 const rows = ref<NightCatalogRow[]>([]);
 const loading = ref(false);
+const loadError = ref('');
 const saving = ref(false);
 const open = ref(false);
 const editing = ref<NightCatalogRow | null>(null);
@@ -88,6 +91,8 @@ async function importSelected() {
 }
 
 const form = reactive({
+  categoryId: '',
+  retailUnit: '件',
   name: "",
   price: 0,
   originalPrice: 0,
@@ -109,6 +114,7 @@ function asCatalog(row: unknown) {
 let loadGeneration = 0;
 async function load() {
   const generation = ++loadGeneration;
+  loadError.value = '';
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -129,7 +135,7 @@ async function load() {
       categories.value = r.categories ?? [];
     }
   } catch (e) {
-    notify(e instanceof Error ? e.message : "夜主档加载失败", "error");
+    if (generation === loadGeneration) loadError.value = e instanceof Error ? e.message : '夜主档加载失败';
   } finally {
     if (generation === loadGeneration) loading.value = false;
   }
@@ -138,6 +144,8 @@ async function load() {
 function edit(row?: NightCatalogRow) {
   editing.value = row ?? null;
   Object.assign(form, {
+    categoryId: row?.categoryId ?? '',
+    retailUnit: row?.retailUnit || '件',
     name: row?.name ?? "",
     price: Number(fenToYuan(row?.price ?? 0)),
     originalPrice: Number(fenToYuan(row?.originalPrice ?? 0)),
@@ -152,25 +160,29 @@ function edit(row?: NightCatalogRow) {
 async function save() {
   if (!form.name.trim()) return notify("请填写商品名称", "error");
   if (!(form.price > 0)) return notify("夜宵售价必须大于 0", "error");
+  if (!form.retailUnit.trim()) return notify('请填写零售单位', 'error');
   saving.value = true;
   try {
     const priceFen = yuanToFen(form.price);
-    const originalFen =
-      form.originalPrice > 0 ? yuanToFen(form.originalPrice) : undefined;
+    const originalFen = yuanToFen(form.originalPrice || 0);
     if (editing.value) {
       await api.updateNightCatalog(editing.value.id, {
+        categoryId: form.categoryId || undefined,
+        retailUnit: form.retailUnit.trim(),
         name: form.name.trim(),
         price: priceFen,
-        ...(originalFen ? { originalPrice: originalFen } : {}),
+        originalPrice: originalFen,
         image: form.image,
         subtitle: form.subtitle.trim(),
         status: form.status,
       });
     } else {
       await api.createNightCatalog({
+        categoryId: form.categoryId || undefined,
+        retailUnit: form.retailUnit.trim(),
         name: form.name.trim(),
         price: priceFen,
-        ...(originalFen ? { originalPrice: originalFen } : {}),
+        originalPrice: originalFen,
         image: form.image,
         subtitle: form.subtitle.trim(),
         barcode: form.barcode.trim() || undefined,
@@ -214,6 +226,7 @@ defineExpose({ reload: load });
   <div>
     <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
+      <NightLoadError :message="loadError" :loading="loading" @retry="load" />
       <section
         class="admin-filter-panel admin-filter-panel--split"
         aria-label="夜主档筛选"
@@ -368,7 +381,7 @@ defineExpose({ reload: load });
           </ElTableColumn>
           <ElTableColumn label="更新时间" min-width="150">
             <template #default="{ row }">{{
-              row.updatedAt ? row.updatedAt.replace("T", " ").slice(0, 16) : "—"
+              fmtDateTime(row.updatedAt)
             }}</template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="180" fixed="right">
@@ -488,6 +501,8 @@ defineExpose({ reload: load });
     >
       <ElForm label-position="top">
         <ElRow :gutter="16">
+          <ElCol :xs="24" :sm="12"><ElFormItem label="商品分类"><ElSelect v-model="form.categoryId" clearable filterable placeholder="留空使用夜宵专供分类" style="width:100%"><ElOption v-for="category in categories" :key="category.id" :value="category.id" :label="category.name" /></ElSelect></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="零售单位"><ElInput v-model="form.retailUnit" maxlength="20" placeholder="如：听、袋、份" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12">
             <ElFormItem label="商品名称">
               <ElInput v-model="form.name" maxlength="60" show-word-limit />

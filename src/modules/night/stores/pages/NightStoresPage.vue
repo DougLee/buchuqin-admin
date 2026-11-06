@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 import { api, fetchAllPages } from "../../../../api";
@@ -33,6 +34,8 @@ const STATUS_TABS = [
 const activeTab = ref("stores");
 const rows = ref<NightStoreRow[]>([]);
 const loading = ref(false);
+const loadError = ref('');
+let listGeneration = 0;
 const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
@@ -50,6 +53,8 @@ function asStore(row: unknown) {
 }
 
 async function load() {
+  const generation = ++listGeneration;
+  loadError.value = '';
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -62,12 +67,13 @@ async function load() {
       page.value,
       pageSize.value,
     );
+    if (generation !== listGeneration) return;
     rows.value = r.items;
     total.value = r.total;
   } catch (e) {
-    notify(e instanceof Error ? e.message : "夜宵店铺加载失败", "error");
+    if (generation === listGeneration) loadError.value = e instanceof Error ? e.message : '夜宵店铺加载失败';
   } finally {
-    loading.value = false;
+    if (generation === listGeneration) loading.value = false;
   }
 }
 
@@ -210,6 +216,7 @@ onMounted(load);
       </nav>
 
       <template v-if="activeTab === 'stores'">
+        <NightLoadError :message="loadError" :loading="loading" @retry="load" />
         <section class="admin-filter-panel" aria-label="夜宵店铺筛选">
           <ElSegmented
             v-model="status"
@@ -368,7 +375,9 @@ onMounted(load);
   cursor: pointer;
   font-size: 14px;
 }
-.night-tabs button.active {
+.night-tabs button.active,
+.night-tabs button.active:hover,
+.night-tabs button.active:focus-visible {
   background: #07883b;
   border-color: #07883b;
   color: #fff;

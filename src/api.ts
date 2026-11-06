@@ -1,6 +1,8 @@
 import { activeCampus, clearSession, getSessionGeneration, type RbacMe, type SessionUser } from "./session";
 import { compressToWebp } from "./utils/image";
 import type {
+  NightDepositTxnRow,
+  NightDepositRefundView,
   AccountGrant,
   AdminAccount,
   AdminCapability,
@@ -1263,6 +1265,7 @@ export const api = {
    *  partner 异业券 amount/threshold 固定传 0；
    *  IKDEN2：total 不传 = 不限量。 */
   createCoupon: (data: {
+    nightProductIds?: string[];
     name: string;
     amount: number;
     threshold: number;
@@ -1294,6 +1297,7 @@ export const api = {
   updateCoupon: (
     id: string,
     data: Partial<{
+      nightProductIds: string[];
       status: "active" | "paused";
       name: string;
       remark: string;
@@ -1834,6 +1838,8 @@ export const api = {
     image?: string;
     subtitle?: string;
     barcode?: string;
+    categoryId?: string;
+    retailUnit?: string;
   }) =>
     request<NightCatalogRow>("/admin/night/catalog", {
       method: "POST",
@@ -1848,6 +1854,8 @@ export const api = {
       originalPrice?: number;
       image?: string;
       subtitle?: string;
+      categoryId?: string;
+      retailUnit?: string;
       status?: "on-sale" | "off-sale";
     },
   ) =>
@@ -1908,6 +1916,8 @@ export const api = {
     }),
   /** 夜宵订单列表（storeId/status/date=营业日 YYYY-MM-DD）。 */
   nightOrders: (filters: {
+    keyword?: string;
+    afterSaleStatus?: string;
     storeId?: string;
     status?: string;
     date?: string;
@@ -1916,6 +1926,8 @@ export const api = {
   }) =>
     request<PagedResponse<NightOrderRow>>(
       `/admin/night/orders${withQuery(
+        filters.keyword ? `keyword=${encodeURIComponent(filters.keyword)}` : "",
+        filters.afterSaleStatus ? `afterSaleStatus=${encodeURIComponent(filters.afterSaleStatus)}` : "",
         filters.storeId ? `storeId=${filters.storeId}` : "",
         filters.status ? `status=${filters.status}` : "",
         filters.date ? `date=${filters.date}` : "",
@@ -1936,10 +1948,12 @@ export const api = {
       reason: string;
     },
   ) =>
-    request<NightOrderDetail>(`/admin/night/orders/${id}/refund`, {
+    request<{ id: string; refundId: string; refundStatus: string; refundAmount: number; message: string }>(`/admin/night/orders/${id}/refund`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  nightRefundSync: (id: string) => request<NightOrderDetail>(`/admin/night/orders/${id}/refund/sync`, { method: "POST" }),
+  nightRejectAfterSale: (id: string, reason: string) => request<NightOrderDetail>(`/admin/night/orders/${id}/after-sale/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   /** 佣金周账单列表。 */
   nightSettlements: () =>
     request<NightSettlementBatch[]>("/admin/night/settlements"),
@@ -1951,7 +1965,7 @@ export const api = {
     }),
   /** 批次标记打款（财务线下打款留痕）。 */
   nightMarkBatchPaid: (batch: string, remark?: string) =>
-    request<{ batch: string; txnCount: number }>(
+    request<{ batch: string; txnCount: number; alreadyPaid?: boolean }>(
       `/admin/night/settlements/${batch}/pay`,
       { method: "POST", body: JSON.stringify({ remark: remark ?? "" }) },
     ),
@@ -1962,18 +1976,18 @@ export const api = {
       { method: "POST", body: JSON.stringify({ amount, reason }) },
     ),
   /** 押金退还（amount 缺省=全额退当前余额；原路退款分配）。 */
-  nightRefundDeposit: (storeId: string, amount?: number, reason?: string) =>
-    request<{
-      refunded: number;
-      allocations: { payOrderNo: string; amount: number; refundNo: string; status: string }[];
-      deposit: number;
-    }>(`/admin/night/stores/${storeId}/deposit/refund`, {
+  nightRefundDeposit: (storeId: string, requestId: string, amount?: number, reason?: string) =>
+    request<NightDepositRefundView>(`/admin/night/stores/${storeId}/deposit/refund`, {
       method: "POST",
       body: JSON.stringify({
+        requestId,
         ...(amount ? { amount } : {}),
         ...(reason ? { reason } : {}),
       }),
     }),
+  nightDepositRefunds: (storeId: string, query: { page: number; pageSize: number }) => request<PagedResponse<NightDepositRefundView>>(`/admin/night/stores/${storeId}/deposit-refunds${withQuery(listQuery(query))}`),
+  nightDepositTransactions: (storeId: string, query: { page: number; pageSize: number }, kind?: string) => request<PagedResponse<NightDepositTxnRow>>(`/admin/night/stores/${storeId}/deposit-txns${withQuery(listQuery(query), kind ? `kind=${encodeURIComponent(kind)}` : '')}`),
+  nightDepositRefundSync: (storeId: string, requestId: string) => request<NightDepositRefundView>(`/admin/night/stores/${storeId}/deposit/refunds/${encodeURIComponent(requestId)}/sync`, { method: 'POST' }),
   /** 退出清算清单（剩余库存/未完订单/佣金余额/押金余额）。 */
   nightLiquidation: (storeId: string) =>
     request<NightLiquidation>(`/admin/night/stores/${storeId}/liquidation`),

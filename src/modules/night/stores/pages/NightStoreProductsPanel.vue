@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useRouter } from "vue-router";
 import { api, fetchAllPages } from "../../../../api";
@@ -25,12 +26,14 @@ const filters = reactive({
 });
 const loading = ref(false),
   busy = ref(false);
+const loadError = ref('');
 const page = ref(1),
   pageSize = ref(20),
   total = ref(0);
 let generation = 0;
 async function load() {
   const current = ++generation;
+  loadError.value = '';
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -49,7 +52,7 @@ async function load() {
       total.value = r.total;
     }
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : "楼栋商品加载失败");
+    if (current === generation) loadError.value = e instanceof Error ? e.message : '楼栋商品加载失败';
   } finally {
     if (generation === current) loading.value = false;
   }
@@ -225,6 +228,7 @@ async function attach() {
 </script>
 <template>
   <div>
+    <NightLoadError :message="loadError" :loading="loading" @retry="load" />
     <section
       class="admin-filter-panel product-filters"
       aria-label="楼栋商品筛选"

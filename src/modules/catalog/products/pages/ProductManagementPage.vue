@@ -89,13 +89,14 @@
           ><ElTableColumn label="图片" width="76"
             ><template #default="{ row }"
               ><ElImage
+                v-if="row.image"
                 :src="row.image"
                 fit="cover"
                 class="thumb"
                 :preview-src-list="[row.image]"
                 preview-teleported
                 hide-on-click-modal
-              /></template></ElTableColumn
+              /><span v-else class="muted">未上传</span></template></ElTableColumn
           ><ElTableColumn label="库位" width="100"
             ><template #default="{ row }"
               >{{ [product(row).location, product(row).locationCode].filter(Boolean).join("-") || "—" }}</template

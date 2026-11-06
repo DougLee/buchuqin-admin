@@ -409,6 +409,7 @@ export interface Coupon {
   remain: number | null;
   /** IKSW1F：适用业务（day 白天券缺省 / night 夜宵券，双向隔离；创建后不可改）。 */
   businessType?: "day" | "night";
+  nightProductIds?: string[];
 }
 
 export interface Building {
@@ -1550,6 +1551,16 @@ export interface NightDepositTxnRow {
   remark: string;
   createdAt: string;
 }
+export interface NightDepositRefundView {
+  requestId: string;
+  requested: number;
+  refunded: number;
+  pending: number;
+  failed: number;
+  deposit: number;
+  createdAt: string;
+  allocations: { id: string; payOrderNo: string; amount: number; status: string; errorMessage: string; completedAt: string | null; outRefundNo: string }[];
+}
 /** 店铺详情（GET /admin/night/stores/:id）。 */
 export interface NightStoreDetail extends NightStoreRow {
   /** 详情带楼长电话（列表行无） */
@@ -1605,6 +1616,9 @@ export interface NightStockTxnRow {
   id: string;
   storeId: string;
   nightProductId: string;
+  product?: { catalogProduct: { name: string } };
+  refId?: string | null;
+  refType?: string | null;
   type: string;
   delta: number;
   afterStock: number;
@@ -1658,7 +1672,7 @@ export interface NightOrderRow {
     phone?: string;
   };
   remark: string;
-  timeline: { key: string; title: string; time?: string }[];
+  timeline: { key: string; title: string; time?: string; description?: string; images?: string[]; proof?: { images: string[]; remark?: string } }[];
   couponSnapshot: { name?: string; amount?: number; threshold?: number } | null;
   businessDate: string;
   timeoutAt: string | null;
@@ -1667,6 +1681,7 @@ export interface NightOrderRow {
   completedAt: string | null;
   cancelReason: string | null;
   afterSaleStatus: string | null;
+refund?: { id: string; kind: string; fullProductRefund: boolean; status: string; amount: number; productAmount: number; deliveryFeeAmount: number; restock: boolean; reason: string; message: string; createdAt: string; completedAt: string | null } | null;
   store: { id: string; buildingName: string };
   user?: { id: string; nickname: string; phone: string } | null;
 }
@@ -1687,6 +1702,8 @@ export interface NightOrderDetail extends NightOrderRow {
 }
 /** 夜宵佣金周账单（GET /admin/night/settlements）。 */
 export interface NightSettlementBatch {
+  /** 财务人工打款登记，沿用既有流水留痕；不代表自动转账。 */
+  markedPaid?: boolean;
   batch: string;
   txnCount: number;
   /** 批内商品佣金合计（分） */

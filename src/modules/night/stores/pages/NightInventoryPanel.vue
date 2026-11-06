@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
+import { fmtDateTime } from '../../../../utils/datetime';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, fetchAllPages } from "../../../../api";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -16,6 +18,7 @@ const stock = ref<NightStockRequest[]>([]),
 const loading = ref(false),
   busy = ref(false),
   status = ref("");
+const loadError = ref('');
 const stockDetail = ref<NightStockRequest | null>(null),
   reportDetail = ref<NightInventoryReport | null>(null);
 const stockOpen = ref(false),
@@ -90,11 +93,11 @@ const kinds: Record<string, string> = {
   "receipt-shortage": "收货差异报损",
   "order-loss": "退款未回库报损",
 };
-const date = (v: string | null) =>
-  v ? new Date(v).toLocaleString("zh-CN", { hour12: false }) : "—";
+const date = (v: string | null) => fmtDateTime(v);
 let generation = 0;
 async function load() {
   const current = ++generation;
+  loadError.value = '';
   if (!effectiveCampusId.value && !props.storeId) {
     stock.value = [];
     reports.value = [];
@@ -140,7 +143,7 @@ async function load() {
       }
     }
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : "加载失败");
+    if (current === generation) loadError.value = e instanceof Error ? e.message : '加载失败';
   } finally {
     if (current === generation) loading.value = false;
   }
@@ -254,6 +257,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
 </script>
 <template>
   <div>
+    <NightLoadError :message="loadError" :loading="loading" @retry="load" />
     <section class="admin-filter-panel inventory-filter">
       <ElInput
         v-model="keyword"
@@ -394,7 +398,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
         {{
           total
         }}
-        条匹配记录，最多显示符合筛选条件的最近500条。日期按北京时间申请日期筛选。
+        条匹配记录，按当前筛选完整分页展示。日期按北京时间申请日期筛选。
       </p>
     </section>
     <ElDialog

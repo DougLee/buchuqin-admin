@@ -37,7 +37,17 @@ const form = reactive({
   targetedOnly: false,
   // IKSW1F：创建时选白天/夜宵；创建后不可改（后端 UpdateCouponDto 不收）
   businessType: "day" as "day" | "night",
+  nightProductIds: [] as string[],
 });
+const nightOptions = ref<Array<{ id: string; name: string }>>([]);
+const scopeLoading = ref(false);
+async function loadNightOptions() {
+  if (!effectiveCampusId.value || !hasPerm('GET /admin/night/catalog')) return;
+  scopeLoading.value = true;
+  try { nightOptions.value = await fetchAllPages(q => api.nightCatalog(undefined, q.page, q.pageSize), 100); }
+  catch (e) { notify(e instanceof Error ? e.message : '夜宵商品范围加载失败', 'error'); }
+  finally { scopeLoading.value = false; }
+}
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
 }
@@ -88,13 +98,16 @@ function edit(row?: Coupon) {
       (row as Coupon & { perUserLimit?: number })?.perUserLimit ?? 1,
     ),
     targetedOnly: !!(row as Coupon & { targetedOnly?: boolean })?.targetedOnly,
+    nightProductIds: [...(row?.nightProductIds ?? [])],
     // 新建默认跟随当前列表筛选（夜宵 Tab 下建券默认夜宵券）；编辑回显不可改
     businessType:
       (row?.businessType as "day" | "night" | undefined) ??
       (businessType.value === "night" ? "night" : "day"),
   });
   open.value = true;
+  if (form.businessType === 'night') void loadNightOptions();
 }
+watch(() => form.businessType, type => { if (type === 'night' && open.value) void loadNightOptions(); });
 async function save() {
   if (!form.name.trim()) return notify("请填写券名称", "error");
   if (form.kind === "platform" && form.amount <= 0)
@@ -111,6 +124,7 @@ async function save() {
       featuredAfterPay: form.featuredAfterPay,
       perUserLimit: Math.max(0, form.perUserLimit),
       targetedOnly: form.targetedOnly,
+      ...(form.businessType === 'night' ? { nightProductIds: form.nightProductIds } : {}),
     };
     if (editing.value) {
       await api.updateCoupon(editing.value.id, {
@@ -573,7 +587,15 @@ watch([recPage, recPageSize], () => void loadRecords());
                 适用业务创建后不可改
               </div></ElFormItem
             ></ElCol
-          ><ElCol :span="24"
+          ><ElCol v-if="form.businessType === 'night' && form.kind === 'platform'" :span="24">
+            <ElFormItem label="适用夜宵商品">
+              <ElSelect v-model="form.nightProductIds" multiple filterable clearable :loading="scopeLoading" :disabled="!!editing?.claimed || !hasPerm('GET /admin/night/catalog')" placeholder="留空表示本校区全部夜宵商品" style="width: 100%">
+                <ElOption v-for="product in nightOptions" :key="product.id" :value="product.id" :label="product.name" />
+                <ElOption v-for="id in form.nightProductIds.filter(id => !nightOptions.some(p => p.id === id))" :key="id" :value="id" :label="`历史商品 ${id}`" />
+              </ElSelect>
+              <span class="muted">仅适用商品金额计入门槛及抵扣；已发放后范围锁定。</span>
+            </ElFormItem>
+          </ElCol><ElCol :span="24"
             ><ElFormItem label="券名称"
               ><ElInput v-model="form.name" /></ElFormItem></ElCol
           ><ElCol v-if="form.kind === 'platform'" :xs="24" :sm="12"

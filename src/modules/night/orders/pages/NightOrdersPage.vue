@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, fetchAllPages } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
@@ -8,6 +9,7 @@ import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { nightOrderStatus } from "../../night-shared";
 import type { NightOrderDetail, NightOrderRow, NightStoreRow } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
+import { fmtDateTime } from '../../../../utils/datetime';
 
 /**
  * 夜宵订单列表（IKSW1F，菜单 night-orders）：全局筛选（店铺/状态/营业日）
@@ -22,18 +24,26 @@ const STATUS_TABS = [
   { key: "delivered", label: "已送达" },
   { key: "completed", label: "已完成" },
   { key: "cancelled", label: "已取消" },
+  { key: "cancelling", label: "取消退款中" },
   { key: "refunded", label: "已退款" },
+  { key: "exception", label: "支付异常" },
 ];
 
 const rows = ref<NightOrderRow[]>([]);
 const loading = ref(false);
+const loadError = ref('');
 const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
 const storeId = ref("");
 const status = ref("");
 const date = ref("");
+const keyword = ref('');
+const afterSaleStatus = ref('');
 const stores = ref<NightStoreRow[]>([]);
+let listGeneration = 0;
+let storesGeneration = 0;
+let detailGeneration = 0;
 
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
@@ -45,18 +55,22 @@ function asOrder(row: unknown) {
 }
 
 async function loadStores() {
+  const generation = ++storesGeneration;
   if (!effectiveCampusId.value) return;
   try {
-    stores.value = await fetchAllPages(
+    const result = await fetchAllPages(
       (q) => api.nightStores(undefined, q.page, q.pageSize),
       100,
     );
+    if (generation === storesGeneration) stores.value = result;
   } catch {
     /* 店铺下拉加载失败不阻断列表 */
   }
 }
 
 async function load() {
+  const generation = ++listGeneration;
+  loadError.value = '';
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -68,15 +82,18 @@ async function load() {
       storeId: storeId.value || undefined,
       status: status.value || undefined,
       date: date.value || undefined,
+      keyword: keyword.value.trim() || undefined,
+      afterSaleStatus: afterSaleStatus.value || undefined,
       page: page.value,
       pageSize: pageSize.value,
     });
+    if (generation !== listGeneration) return;
     rows.value = r.items;
     total.value = r.total;
   } catch (e) {
-    notify(e instanceof Error ? e.message : "夜宵订单加载失败", "error");
+    if (generation === listGeneration) loadError.value = e instanceof Error ? e.message : '夜宵订单加载失败';
   } finally {
-    loading.value = false;
+    if (generation === listGeneration) loading.value = false;
   }
 }
 
@@ -84,26 +101,43 @@ async function load() {
 const drawerOpen = ref(false);
 const detail = ref<NightOrderDetail | null>(null);
 const detailLoading = ref(false);
+const detailError = ref('');
+const detailTarget = ref<NightOrderRow | null>(null);
 async function openDetail(row: NightOrderRow) {
+  const generation = ++detailGeneration;
+  detailTarget.value = row;
+  detailError.value = '';
   drawerOpen.value = true;
   detail.value = null;
   detailLoading.value = true;
   try {
-    detail.value = await api.nightOrderDetail(row.id);
+    const result = await api.nightOrderDetail(row.id);
+    if (generation === detailGeneration) detail.value = result;
   } catch (e) {
-    notify(e instanceof Error ? e.message : "订单详情加载失败", "error");
+    if (generation === detailGeneration) detailError.value = e instanceof Error ? e.message : '订单详情加载失败';
   } finally {
-    detailLoading.value = false;
+    if (generation === detailGeneration) detailLoading.value = false;
   }
 }
 const items = computed(() => detail.value?.items ?? []);
 const timeline = computed(() => detail.value?.timeline ?? []);
+const rejecting = ref(false);
+async function rejectAfterSale() {
+  if (!detail.value || rejecting.value) return;
+  let reason: string;
+  try { reason = (await ElMessageBox.prompt('填写核实结果，用户将收到审核说明。此操作不退款，已完成订单恢复结算资格。', '驳回售后申请', { inputType: 'textarea', inputValidator: value => value?.trim().length >= 5 && value.trim().length <= 200 ? true : '请填写5至200字审核说明', confirmButtonText: '确认驳回' })).value.trim(); }
+  catch { return; }
+  rejecting.value = true;
+  try { detail.value = await api.nightRejectAfterSale(detail.value.id, reason); notify('审核结果已通知用户'); await load(); }
+  catch (e) { notify(e instanceof Error ? e.message : '审核失败', 'error'); }
+  finally { rejecting.value = false; }
+}
 
 /* ---------- 退款 ---------- */
 const refundOpen = ref(false);
 const refundForm = reactive({
   productRefund: 0,
-  mode: "full" as "full" | "partial",
+  mode: "full" as "full" | "partial" | "fee",
   refundDeliveryFee: false,
   restock: true,
   reason: "",
@@ -113,20 +147,31 @@ function openRefund(row: NightOrderRow) {
   void openDetailKeep(row);
   refundForm.mode = "full";
   refundForm.productRefund = 0;
-  refundForm.refundDeliveryFee = false;
-  refundForm.restock = true;
+  refundForm.refundDeliveryFee = row.status === 'exception';
+  refundForm.restock = row.status !== 'exception';
   refundForm.reason = "";
   refundOpen.value = true;
 }
 /** 打开详情（静默：退款弹窗打开时同步拉详情做金额上下文，失败不弹错）。 */
 async function openDetailKeep(row: NightOrderRow) {
+  const generation = ++detailGeneration;
   detailLoading.value = true;
   try {
-    detail.value = await api.nightOrderDetail(row.id);
+    const result = await api.nightOrderDetail(row.id);
+    if (generation !== detailGeneration) return;
+    detail.value = result;
+    if (detail.value.refund?.status === "failed") {
+      const prior = detail.value.refund;
+      refundForm.mode = prior.fullProductRefund ? "full" : prior.productAmount === 0 ? "fee" : "partial";
+      refundForm.productRefund = prior.productAmount / 100;
+      refundForm.refundDeliveryFee = prior.deliveryFeeAmount > 0;
+      refundForm.restock = prior.restock;
+      refundForm.reason = prior.reason;
+    }
   } catch {
     /* 详情失败不阻断退款弹窗 */
   } finally {
-    detailLoading.value = false;
+    if (generation === detailGeneration) detailLoading.value = false;
   }
 }
 /** 商品部分缺省上限 = 商品总额 − 券优惠（整单商品部分全额口径）。 */
@@ -134,7 +179,18 @@ const productRefundCap = computed(() =>
   detail.value ? detail.value.productAmount - detail.value.couponDiscount : 0,
 );
 const refundSaving = ref(false);
+watch(() => refundForm.mode, mode => { if (mode !== "full") refundForm.restock = false; if (mode === 'fee') refundForm.refundDeliveryFee = true; });
+const refundStateText = (state: string) => ({ requested: "等待提交", submitting: "渠道受理中", processing: "退款处理中", unknown: "结果待核对", succeeded: "退款已到账", failed: "退款未完成" }[state] || state);
+const syncing = ref(false);
+async function syncRefund() {
+  if (!detail.value || syncing.value) return;
+  syncing.value = true;
+  try { detail.value = await api.nightRefundSync(detail.value.id); await load(); }
+  catch (e) { notify(e instanceof Error ? e.message : "核对失败，请稍后重试", "error"); }
+  finally { syncing.value = false; }
+}
 async function submitRefund() {
+  if (refundSaving.value) return;
   if (!detail.value) {
     notify("订单详情尚未加载完成", "error");
     return;
@@ -150,6 +206,10 @@ async function submitRefund() {
     reason: refundForm.reason.trim(),
   };
   if (!body.reason) return notify("请填写退款原因", "error");
+  if (refundForm.mode === 'fee') {
+    if (!detail.value.deliveryFee) return notify('该订单没有配送费可退', 'error');
+    body.productRefund = 0; body.refundDeliveryFee = true; body.restock = false;
+  }
   if (refundForm.mode === "partial") {
     const amount = yuanToFen(refundForm.productRefund);
     if (!(amount >= 1)) return notify("退款金额必须大于 0", "error");
@@ -159,7 +219,7 @@ async function submitRefund() {
   }
   try {
     await ElMessageBox.confirm(
-      `将发起${refundForm.mode === "partial" ? "部分退款" : "整单商品退款"}${
+      `将发起${refundForm.mode === 'fee' ? '仅配送费退款' : refundForm.mode === "partial" ? "部分退款" : "整单商品退款"}${
         refundForm.refundDeliveryFee ? "（含配送费）" : ""
       }，退款商品${refundForm.restock ? "回库" : "不回库"}。佣金按比例联动冲减。确认退款？`,
       "夜宵订单退款",
@@ -170,8 +230,8 @@ async function submitRefund() {
   }
   refundSaving.value = true;
   try {
-    await api.nightOrderRefund(detail.value.id, body);
-    notify("退款已发起");
+    const result = await api.nightOrderRefund(detail.value.id, body);
+    notify(result.refundStatus === "succeeded" ? "退款已到账，库存与佣金已同步" : result.refundStatus === "failed" ? result.message || "退款未完成，订单和库存保持原状态" : "退款正在核对，请在详情查看进度", result.refundStatus === "failed" ? "error" : "success");
     refundOpen.value = false;
     drawerOpen.value = false;
     await load();
@@ -188,14 +248,15 @@ function itemSummary(row: NightOrderRow) {
     .join("、");
 }
 function fmtTime(value?: string | null) {
-  return value ? value.replace("T", " ").slice(0, 19) : "—";
+  return fmtDateTime(value);
 }
 
-watch([page, pageSize, storeId, status, effectiveCampusId], load);
-watch(date, () => {
+watch([page, pageSize], load);
+watch([storeId, status, date, afterSaleStatus], () => {
   page.value = 1;
   void load();
 });
+watch(effectiveCampusId, () => { storeId.value = ''; stores.value = []; page.value = 1; drawerOpen.value = false; detail.value = null; detailGeneration++; void load(); void loadStores(); });
 onMounted(() => {
   void load();
   void loadStores();
@@ -209,6 +270,7 @@ onMounted(() => {
   >
     <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <template v-else>
+      <NightLoadError :message="loadError" :loading="loading" @retry="load" />
       <section class="admin-filter-panel" aria-label="夜宵订单筛选">
         <ElSegmented
           v-model="status"
@@ -216,6 +278,8 @@ onMounted(() => {
           class="order-tabs"
         />
         <div class="order-filters">
+          <ElInput v-model="keyword" clearable placeholder="单号 / 用户 / 手机 / 楼栋 / 寝室" style="max-width: 290px" @keyup.enter="page = 1; load()" @clear="page = 1; load()" />
+          <ElButton @click="page = 1; load()">搜索</ElButton>
           <ElSelect
             v-model="storeId"
             clearable
@@ -237,6 +301,9 @@ onMounted(() => {
             placeholder="营业日（跨零点属前一晚）"
             clearable
           />
+          <ElSelect v-model="afterSaleStatus" clearable placeholder="全部售后状态" style="width: 170px">
+            <ElOption label="用户待处理售后" value="requested" /><ElOption label="退款处理中" value="refund-processing" /><ElOption label="售后已处理" value="resolved" /><ElOption label="售后已驳回" value="rejected" />
+          </ElSelect>
         </div>
       </section>
       <section class="admin-table-panel" aria-label="夜宵订单列表">
@@ -284,6 +351,8 @@ onMounted(() => {
               <ElTag :type="nightOrderStatus(row.status).tag">{{
                 row.statusText || nightOrderStatus(row.status).text
               }}</ElTag>
+              <ElTag v-if="row.afterSaleStatus === 'requested'" size="small" type="warning">待处理售后</ElTag>
+              <ElTag v-else-if="row.afterSaleStatus === 'refund-processing'" size="small" type="warning">退款核对中</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn label="营业日" width="100" prop="businessDate" />
@@ -296,7 +365,8 @@ onMounted(() => {
               <ElButton
                 v-if="
                   hasPerm('POST /admin/night/orders/:id/refund') &&
-                  ['pending-accept', 'delivering', 'delivered', 'completed'].includes(row.status)
+                  (!row.refund || (row.refund.status === 'failed' && row.refund.kind === 'admin')) &&
+                  ['pending-accept', 'delivering', 'delivered', 'completed', 'exception'].includes(row.status)
                 "
                 link
                 type="danger"
@@ -316,6 +386,7 @@ onMounted(() => {
 
     <!-- 详情抽屉 -->
     <ElDrawer v-model="drawerOpen" title="夜宵订单详情" size="min(680px, 92vw)">
+      <NightLoadError :message="detailError" :loading="detailLoading" @retry="detailTarget && openDetail(detailTarget)" />
       <p v-if="detailLoading && !detail" class="form-hint">加载中…</p>
       <template v-else-if="detail">
         <div class="detail-head">
@@ -365,10 +436,20 @@ onMounted(() => {
             <span>{{
               detail.afterSaleStatus === "requested"
                 ? "用户已申请售后"
-                : detail.afterSaleStatus
+                : detail.afterSaleStatus === 'refund-processing' ? '退款处理中' : detail.afterSaleStatus === 'resolved' ? '已处理' : detail.afterSaleStatus === 'rejected' ? '已驳回' : detail.afterSaleStatus
             }}</span>
           </div>
         </div>
+
+        <div v-if="detail.afterSaleStatus === 'requested'" style="display: flex; gap: 12px; margin-bottom: 16px">
+          <ElButton v-if="hasPerm('POST /admin/night/orders/:id/refund')" type="danger" @click="openRefund(detail)">核实后退款</ElButton>
+          <ElButton v-if="hasPerm('POST /admin/night/orders/:id/after-sale/reject')" :loading="rejecting" @click="rejectAfterSale">驳回并说明原因</ElButton>
+        </div>
+
+        <ElAlert v-if="detail.refund" :title="`${refundStateText(detail.refund.status)} · ¥${fenToYuan(detail.refund.amount)}`" :type="detail.refund.status === 'succeeded' ? 'success' : detail.refund.status === 'failed' ? 'error' : 'warning'" :closable="false" show-icon>
+          <p>{{ detail.refund.message || (detail.refund.status === 'succeeded' ? '退款已确认，相关库存、券和佣金已同步。' : '资金尚未确认到账，库存和佣金不会提前结算。') }}</p>
+          <ElButton v-if="!['succeeded', 'failed'].includes(detail.refund.status) && hasPerm('POST /admin/night/orders/:id/refund/sync')" :loading="syncing" @click="syncRefund">核对退款进度</ElButton>
+        </ElAlert>
 
         <h4 class="detail-section">商品快照</h4>
         <ElTable :data="items" row-key="nightProductId" size="small">
@@ -442,7 +523,11 @@ onMounted(() => {
           <li v-for="(step, i) in timeline" :key="`${step.key}-${i}`">
             <span class="timeline-dot" />
             <span class="timeline-title">{{ step.title }}</span>
-            <span v-if="step.time" class="muted">{{ fmtTime(step.time) }}</span>
+            <span v-if="step.time || step.key === 'submit'" class="muted">{{ fmtTime(step.time || detail.createdAt) }}</span>
+            <p v-if="step.description" style="white-space: pre-wrap; word-break: break-word; width: 100%">{{ step.description }}</p>
+            <div v-if="step.images?.length || step.proof?.images?.length" style="display: flex; flex-wrap: wrap; gap: 8px; width: 100%">
+              <ElImage v-for="url in step.images || step.proof?.images" :key="url" :src="url" :preview-src-list="step.images || step.proof?.images" preview-teleported fit="cover" style="width: 88px; height: 88px; border-radius: 12px" />
+            </div>
           </li>
         </ol>
       </template>
@@ -466,6 +551,7 @@ onMounted(() => {
             <ElRadioGroup v-model="refundForm.mode">
               <ElRadio value="full">整单（¥{{ fenToYuan(productRefundCap) }}）</ElRadio>
               <ElRadio value="partial">部分（自定金额）</ElRadio>
+              <ElRadio value="fee" :disabled="!detail.deliveryFee">仅退配送费</ElRadio>
             </ElRadioGroup>
           </ElFormItem>
           <ElFormItem v-if="refundForm.mode === 'partial'" label="退款金额（元）">
@@ -478,14 +564,17 @@ onMounted(() => {
           </ElFormItem>
           <ElFormItem label="配送费">
             <ElCheckbox v-model="refundForm.refundDeliveryFee"
+              :disabled="refundForm.mode === 'fee'"
               >同时退配送费（触发楼长侧佣金冲回）</ElCheckbox
             >
           </ElFormItem>
           <ElFormItem label="回库">
             <ElCheckbox v-model="refundForm.restock"
+              :disabled="refundForm.mode !== 'full' || detail.status === 'exception'"
               >退款商品回库（已送出/损耗场景取消勾选，只退钱不回库）</ElCheckbox
             >
           </ElFormItem>
+          <p class="form-hint">一期每单支持一次退款；部分退款不自动回库。渠道确认成功后才同步库存、优惠券与佣金。</p>
           <ElFormItem label="退款原因（留痕）">
             <ElInput
               v-model="refundForm.reason"
@@ -612,6 +701,7 @@ onMounted(() => {
 .timeline li {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 10px;
   padding: 6px 0 6px 18px;

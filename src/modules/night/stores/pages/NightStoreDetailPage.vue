@@ -3,7 +3,8 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { api, fetchAllPages } from "../../../../api";
-import { hasPerm } from "../../../../session";
+import { effectiveCampusId, hasPerm, sessionUser } from "../../../../session";
+import NightLoadError from '../../NightLoadError.vue';
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import {
   NIGHT_STOCK_TXN_TYPE,
@@ -13,6 +14,8 @@ import {
   rateText,
 } from "../../night-shared";
 import type {
+  NightDepositRefundView,
+  NightDepositTxnRow,
   NightCatalogRow,
   NightLiquidation,
   NightStockTxnRow,
@@ -21,6 +24,7 @@ import type {
   Staff,
 } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
+import { fmtDateTime } from "../../../../utils/datetime";
 
 /**
  * 夜宵店详情（IKSW1F，路由 /night-stores/:id）：区块化 Tab——
@@ -32,7 +36,10 @@ const router = useRouter();
 const storeId = String(route.params.id ?? "");
 const detail = ref<NightStoreDetail | null>(null);
 const loading = ref(false);
-const activeTab = ref(route.query.tab === "products" ? "products" : "basic");
+const loadError = ref('');
+let loadGeneration = 0;
+const initialTab = String(route.query.tab || 'basic');
+const activeTab = ref(['basic', 'products', 'deposit', 'commission', 'stock', 'liquidation'].includes(initialTab) ? initialTab : 'basic');
 const canWrite = computed(() => hasPerm("PATCH /admin/night/stores/:id"));
 
 function notify(message: string, type: "success" | "error" = "success") {
@@ -46,18 +53,30 @@ function asStoreProduct(row: unknown) {
 
 async function load() {
   if (!storeId) return;
+  const generation = ++loadGeneration;
+  loadError.value = '';
   loading.value = true;
   try {
-    detail.value = await api.nightStoreDetail(storeId);
+    const result = await api.nightStoreDetail(storeId);
+    if (generation !== loadGeneration) return;
+    detail.value = result;
     // 基础信息 Tab 的换楼长下拉（懒加载一次；loadManagers 自带 detail 判空与去重）
     void loadManagers();
   } catch (e) {
-    notify(e instanceof Error ? e.message : "店铺详情加载失败", "error");
+    if (generation === loadGeneration) loadError.value = e instanceof Error ? e.message : '店铺详情加载失败';
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 onMounted(load);
+watch(effectiveCampusId, (campus, previous) => {
+  if (!previous || campus === previous) return;
+  loadGeneration++;
+  detail.value = null;
+  refundOpen.value = false;
+  deductOpen.value = false;
+  void router.push('/night-stores');
+});
 
 function goBack() {
   void router.push("/night-stores");
@@ -313,7 +332,7 @@ async function toggleSaleAllowed(row: NightStoreProductRow) {
   }
 }
 
-/* ---------- 备货与流水（stock-txns 近 200 条，前端过滤+分页） ---------- */
+/* ---------- 完整库存流水：服务端分页拉取后筛选与浏览 ---------- */
 const txnsAll = ref<NightStockTxnRow[]>([]);
 const txnsLoading = ref(false);
 const txnTypeFilter = ref("");
@@ -348,7 +367,28 @@ watch(txnTypeFilter, () => {
 
 /* ---------- 押金 ---------- */
 const depositBalance = computed(() => detail.value?.deposit ?? 0);
-const depositTxns = computed(() => detail.value?.depositTxns ?? []);
+const depositTxns = ref<NightDepositTxnRow[]>([]);
+const depositTxnPage = ref(1);
+const depositTxnPageSize = ref(20);
+const depositTxnTotal = ref(0);
+const depositTxnKind = ref('');
+const depositTxnBusy = ref(false);
+let depositTxnGeneration = 0;
+async function loadDepositTxns() {
+  if (!hasPerm('GET /admin/night/stores/:id/deposit-txns')) return;
+  const generation = ++depositTxnGeneration;
+  depositTxnBusy.value = true;
+  try {
+    const result = await api.nightDepositTransactions(storeId, { page: depositTxnPage.value, pageSize: depositTxnPageSize.value }, depositTxnKind.value || undefined);
+    if (generation !== depositTxnGeneration) return;
+    depositTxns.value = result.items;
+    depositTxnTotal.value = result.total;
+  } catch (error) { if (generation === depositTxnGeneration) notify(error instanceof Error ? error.message : '押金流水加载失败', 'error'); }
+  finally { if (generation === depositTxnGeneration) depositTxnBusy.value = false; }
+}
+watch([depositTxnPage, depositTxnPageSize], () => { void loadDepositTxns(); });
+watch(depositTxnKind, () => { depositTxnPage.value = 1; void loadDepositTxns(); });
+watch(detail, () => { if (activeTab.value === 'deposit') { void loadDepositTxns(); void loadDepositRefunds(); } });
 const deductOpen = ref(false);
 const deductForm = reactive({ amount: 0, reason: "" });
 const deductSaving = ref(false);
@@ -396,22 +436,56 @@ const refundForm = reactive({
   reason: "",
 });
 const refundSaving = ref(false);
+const refundDraftKey = `night-deposit-refund:${sessionUser.value?.id}:${storeId}`;
+const refundRequestId = ref(sessionStorage.getItem(refundDraftKey) || '');
+const depositRefunds = ref<NightDepositRefundView[]>([]);
+const depositRefundPage = ref(1);
+const depositRefundPageSize = ref(10);
+const depositRefundTotal = ref(0);
+const refundHistoryBusy = ref(false);
+async function loadDepositRefunds() {
+  if (!hasPerm('GET /admin/night/stores/:id/deposit-refunds')) return;
+  refundHistoryBusy.value = true;
+  try {
+    const result = await api.nightDepositRefunds(storeId, { page: depositRefundPage.value, pageSize: depositRefundPageSize.value });
+    depositRefunds.value = result.items;
+    depositRefundTotal.value = result.total;
+  } catch (error) { notify(error instanceof Error ? error.message : '退押记录加载失败', 'error'); }
+  finally { refundHistoryBusy.value = false; }
+}
+watch(activeTab, tab => { if (tab === 'deposit') void load(); });
+watch([depositRefundPage, depositRefundPageSize], () => { void loadDepositRefunds(); });
+async function checkDepositRefund(value: unknown) {
+  const row = value as NightDepositRefundView;
+  if (refundHistoryBusy.value) return;
+  refundHistoryBusy.value = true;
+  try {
+    if (row.pending) await api.nightDepositRefundSync(storeId, row.requestId);
+    else if (row.failed) {
+      await ElMessageBox.confirm('沿用原申请，仅重试失败的分配款项。确认已核对渠道结果？', '重试退押', { type: 'warning' });
+      await api.nightRefundDeposit(storeId, row.requestId, row.requested);
+    }
+    await Promise.all([load(), loadDepositRefunds()]);
+  } catch (error) { if (error instanceof Error) notify(error.message, 'error'); }
+  finally { refundHistoryBusy.value = false; }
+}
 function openRefund() {
-  refundForm.mode = "full";
-  refundForm.amount = 0;
-  refundForm.reason = "";
+  refundForm.mode = refundRequestId.value ? 'partial' : 'full';
+  refundForm.amount = Number(sessionStorage.getItem(`${refundDraftKey}:amount`) || 0) / 100;
+  refundForm.reason = sessionStorage.getItem(`${refundDraftKey}:reason`) || '';
   refundOpen.value = true;
 }
 async function submitRefund() {
+  if (refundSaving.value) return;
   const amount =
-    refundForm.mode === "full" ? undefined : yuanToFen(refundForm.amount);
+    refundForm.mode === "full" ? depositBalance.value : yuanToFen(refundForm.amount);
   if (refundForm.mode === "partial" && !(amount && amount >= 1))
     return notify("退还金额必须大于 0", "error");
-  if (refundForm.mode === "partial" && (amount ?? 0) > depositBalance.value)
+  if (!refundRequestId.value && refundForm.mode === "partial" && (amount ?? 0) > depositBalance.value)
     return notify("退还金额超过押金余额", "error");
   try {
     await ElMessageBox.confirm(
-      `将按原路分配退还 ${refundForm.mode === "full" ? "全额" : `¥${fenToYuan(amount ?? 0)}`} 押金（微信原路退回，逐笔原子落账，中断可续）。确认退还？`,
+      refundRequestId.value ? '上次请求结果尚未确认，将使用原申请编号核对，避免重复退款。确认继续？' : `将按原路分配退还 ¥${fenToYuan(amount)} 押金，处理中预留额度，渠道确认成功后扣减余额。确认退还？`,
       "押金退还（退出清算）",
       {
         type: "warning",
@@ -424,17 +498,30 @@ async function submitRefund() {
   }
   refundSaving.value = true;
   try {
+    if (!refundRequestId.value) {
+      refundRequestId.value = `deposit-${crypto.randomUUID()}`;
+      sessionStorage.setItem(refundDraftKey, refundRequestId.value);
+      sessionStorage.setItem(`${refundDraftKey}:amount`, String(amount));
+      sessionStorage.setItem(`${refundDraftKey}:reason`, refundForm.reason.trim());
+    }
     const r = await api.nightRefundDeposit(
       storeId,
-      amount,
+      refundRequestId.value,
+      // An unknown response must check the original request even after the balance changes.
+      sessionStorage.getItem(`${refundDraftKey}:amount`) ? Number(sessionStorage.getItem(`${refundDraftKey}:amount`)) : amount,
       refundForm.reason.trim() || undefined,
     );
     notify(
-      `已发起退还 ¥${fenToYuan(r.refunded)}，剩余押金 ¥${fenToYuan(r.deposit)}`,
+      `已确认退还 ¥${fenToYuan(r.refunded)} · 处理中 ¥${fenToYuan(r.pending)}${r.failed ? ` · 失败待处理 ¥${fenToYuan(r.failed)}` : ''}`,
     );
+    sessionStorage.removeItem(refundDraftKey);
+    sessionStorage.removeItem(`${refundDraftKey}:amount`);
+    sessionStorage.removeItem(`${refundDraftKey}:reason`);
+    refundRequestId.value = '';
     refundOpen.value = false;
-    await load();
+    await Promise.all([load(), loadDepositRefunds()]);
   } catch (e) {
+    if (!sessionStorage.getItem(`${refundDraftKey}:amount`)) sessionStorage.setItem(`${refundDraftKey}:amount`, String(amount));
     notify(e instanceof Error ? e.message : "退还失败", "error");
   } finally {
     refundSaving.value = false;
@@ -521,6 +608,7 @@ const saving = ref(false);
         </p>
       </div>
     </div>
+    <NightLoadError :message="loadError" :loading="loading" @retry="load" />
     <p v-if="loading && !detail" class="form-hint">加载中…</p>
     <p v-else-if="!detail" class="form-hint">店铺不存在或无权访问。</p>
     <template v-else>
@@ -745,9 +833,10 @@ const saving = ref(false);
           <div class="deposit-balance">
             <span class="deposit-label">押金余额</span>
             <span class="deposit-amount">¥{{ fenToYuan(depositBalance) }}</span>
-            <span class="muted">押金=进货额度：库存×售价 ≤ 押金</span>
+            <span class="muted">历史库存货值、在途及待审核事项占用额度；退押处理中预留额度。</span>
           </div>
           <div class="deposit-ops">
+            <ElButton :loading="loading" @click="load">刷新账务</ElButton>
             <ElButton
               v-if="hasPerm('POST /admin/night/stores/:id/deposit/deduct')"
               type="danger"
@@ -764,8 +853,10 @@ const saving = ref(false);
             >
           </div>
         </div>
+        <ElSelect v-model="depositTxnKind" placeholder="全部押金类型" clearable style="width: 200px; margin-bottom: 16px"><ElOption label="缴纳" value="deposit" /><ElOption label="判责扣除" value="deduct" /><ElOption label="确认退还" value="refund" /></ElSelect>
         <ElTable
           :data="depositTxns"
+          v-loading="depositTxnBusy"
           row-key="id"
           empty-text="暂无押金流水（楼长在小程序端按 500 元档缴纳）"
         >
@@ -799,14 +890,25 @@ const saving = ref(false);
           <ElTableColumn label="事由/备注" min-width="200" prop="remark" />
           <ElTableColumn label="时间" min-width="150">
             <template #default="{ row }">{{
-              row.createdAt ? row.createdAt.replace("T", " ").slice(0, 16) : "—"
+              fmtDateTime(row.createdAt)
             }}</template>
           </ElTableColumn>
         </ElTable>
-        <p class="form-hint">
-          余额恒等式：押金 ≈ Σ缴纳 − Σ判责扣除 − Σ退还；仅展示最近 50
-          条，全量以流水账为准。
-        </p>
+        <AdminPagination v-model:page="depositTxnPage" v-model:page-size="depositTxnPageSize" :total="depositTxnTotal" />
+        <p class="form-hint">押金余额 = 累计缴纳 − 判责扣除 − 已确认退还；处理中申请单列如下。</p>
+        <template v-if="hasPerm('GET /admin/night/stores/:id/deposit-refunds')">
+          <h3>退押申请</h3>
+          <ElTable :data="depositRefunds" v-loading="refundHistoryBusy" row-key="requestId" empty-text="暂无退押申请">
+            <ElTableColumn label="申请时间" min-width="160"><template #default="{ row }">{{ fmtDateTime(row.createdAt) }}</template></ElTableColumn>
+            <ElTableColumn prop="requestId" label="申请编号" min-width="240" show-overflow-tooltip />
+            <ElTableColumn label="申请金额" min-width="110"><template #default="{ row }">¥{{ fenToYuan(row.requested) }}</template></ElTableColumn>
+            <ElTableColumn label="已确认退还" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.refunded) }}</template></ElTableColumn>
+            <ElTableColumn label="处理中" min-width="110"><template #default="{ row }">¥{{ fenToYuan(row.pending) }}</template></ElTableColumn>
+            <ElTableColumn label="失败待处理" min-width="120"><template #default="{ row }">¥{{ fenToYuan(row.failed) }}</template></ElTableColumn>
+            <ElTableColumn label="操作" min-width="120" fixed="right"><template #default="{ row }"><ElButton v-if="(row.pending || row.failed) && hasPerm('POST /admin/night/stores/:id/deposit/refunds/:requestId/sync')" link type="primary" :disabled="refundHistoryBusy" @click="checkDepositRefund(row)">{{ row.pending ? '核对原申请' : '重试失败款项' }}</ElButton><span v-else class="muted">已完成</span></template></ElTableColumn>
+          </ElTable>
+          <AdminPagination v-model:page="depositRefundPage" v-model:page-size="depositRefundPageSize" :total="depositRefundTotal" />
+        </template>
       </section>
 
       <!-- 佣金 -->
@@ -843,19 +945,17 @@ const saving = ref(false);
       <section v-else-if="activeTab === 'stock'" class="detail-panel">
         <div class="panel-toolbar">
           <span class="muted">
-            备货记录=楼长端下单入库（stockIn，一步制：下单即入账）；全部库存变动以流水留痕（近
-            200 条）。
+            备货提交只预占额度，校区审核出库后由楼长确认实收才入库。此处可追溯全部库存变动；备货审核在店铺列表的「备货审核与出库」中操作。
           </span>
-          <ElSegmented
+          <ElSelect
             v-model="txnTypeFilter"
-            :options="[
-              { label: '全部流水', value: '' },
-              { label: '备货入库', value: 'stockIn' },
-              { label: '销售出库', value: 'saleOut' },
-              { label: '退款回库', value: 'refundBack' },
-              { label: '后台调整', value: 'adjust' },
-            ]"
-          />
+            aria-label="库存流水类型"
+            class="txn-type-select"
+          >
+            <ElOption label="全部流水" value="" />
+            <ElOption v-for="(label, value) in NIGHT_STOCK_TXN_TYPE" :key="value" :label="label" :value="value" />
+          </ElSelect>
+          <ElButton :loading="txnsLoading" @click="loadTxns">刷新流水</ElButton>
         </div>
         <ElTable
           v-loading="txnsLoading"
@@ -863,6 +963,7 @@ const saving = ref(false);
           row-key="id"
           empty-text="暂无流水"
         >
+          <ElTableColumn label="商品" min-width="180"><template #default="{ row }">{{ row.product?.catalogProduct.name || row.nightProductId }}</template></ElTableColumn>
           <ElTableColumn label="类型" width="110">
             <template #default="{ row }">{{ txnTypeName(row.type) }}</template>
           </ElTableColumn>
@@ -875,9 +976,10 @@ const saving = ref(false);
           </ElTableColumn>
           <ElTableColumn label="变动后库存" width="110" prop="afterStock" />
           <ElTableColumn label="原因/备注" min-width="200" prop="remark" />
+          <ElTableColumn label="关联单据" min-width="160"><template #default="{ row }"><span :title="row.refId || ''">{{ row.refId ? row.refId.slice(-12).toUpperCase() : '—' }}</span></template></ElTableColumn>
           <ElTableColumn label="时间" min-width="150">
             <template #default="{ row }">{{
-              row.createdAt ? row.createdAt.replace("T", " ").slice(0, 16) : "—"
+              fmtDateTime(row.createdAt)
             }}</template>
           </ElTableColumn>
         </ElTable>
@@ -1164,13 +1266,11 @@ const saving = ref(false);
       :close-on-click-modal="false"
     >
       <p class="form-hint">
-        当前押金余额 ¥{{ fenToYuan(depositBalance) }}。按原路分配退还：FIFO
-        遍历缴纳流水逐笔微信原路退款，
-        累计不超过各笔实缴；逐笔原子落账，中断可续。
+        当前押金余额 ¥{{ fenToYuan(depositBalance) }}。按原缴纳顺序退还，处理中预留额度，确认成功后才扣减余额。结果未知时会核对原申请。
       </p>
       <ElForm label-position="top">
         <ElFormItem label="退还金额">
-          <ElRadioGroup v-model="refundForm.mode">
+          <ElRadioGroup v-model="refundForm.mode" :disabled="!!refundRequestId">
             <ElRadio value="full"
               >全额退（{{ fenToYuan(depositBalance) }} 元）</ElRadio
             >
@@ -1180,6 +1280,7 @@ const saving = ref(false);
         <ElFormItem v-if="refundForm.mode === 'partial'" label="退还金额（元）">
           <ElInputNumber
             v-model="refundForm.amount"
+            :disabled="!!refundRequestId"
             :min="0.01"
             :precision="2"
           />
@@ -1187,6 +1288,7 @@ const saving = ref(false);
         <ElFormItem label="事由（选填，留痕）">
           <ElInput
             v-model="refundForm.reason"
+            :disabled="!!refundRequestId"
             maxlength="200"
             placeholder="如：楼长退出清算"
           />
@@ -1234,7 +1336,9 @@ const saving = ref(false);
   cursor: pointer;
   font-size: 14px;
 }
-.detail-tabs button.active {
+.detail-tabs button.el-button.active,
+.detail-tabs button.el-button.active:hover,
+.detail-tabs button.el-button.active:focus-visible {
   background: #07883b;
   border-color: #07883b;
   color: #fff;
@@ -1255,6 +1359,7 @@ const saving = ref(false);
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
+.txn-type-select { width: 200px; max-width: 100%; }
 .muted {
   color: var(--muted);
   font-size: 12px;

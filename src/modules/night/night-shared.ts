@@ -26,6 +26,7 @@ export const NIGHT_ORDER_STATUS: Record<string, { text: string; tag: NightTagTyp
   delivered: { text: "已送达", tag: "success" },
   completed: { text: "已完成", tag: "success" },
   cancelled: { text: "已取消", tag: "info" },
+  cancelling: { text: "退款处理中", tag: "warning" },
   refunded: { text: "已退款", tag: "danger" },
   exception: { text: "支付异常", tag: "danger" },
 };
@@ -50,13 +51,15 @@ export const NIGHT_TIME_OPTIONS = Array.from(
 
 /** 库存流水类型 → 展示文案。 */
 export const NIGHT_STOCK_TXN_TYPE: Record<string, string> = {
-  stockIn: "备货入库",
-  saleOut: "销售出库",
-  refundBack: "退款回库",
+  stockIn: "实收进货",
+  saleOut: "订单预占",
+  refundBack: "取消/退货回库",
   adjust: "后台调整",
   returnOut: "退货出库",
-  loss: "报损",
-  stocktake: "盘点",
+  loss: "损耗确认",
+  stocktake: "盘盈入库",
+  reportFreeze: "申报冻结",
+  reportRelease: "驳回恢复",
 };
 
 /** 押金流水类型 → 展示文案与符号方向（deposit 增 / deduct、refund 减）。 */

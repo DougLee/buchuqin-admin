@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, fetchAllPages } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
+import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
+import { fmtDateTime } from '../../../../utils/datetime';
 import { fenToYuan } from "../../../../utils/money";
 import type { NightSettlementBatch, NightStoreRow } from "../../../../types";
 
@@ -14,7 +17,13 @@ import type { NightSettlementBatch, NightStoreRow } from "../../../../types";
  */
 const rows = ref<NightSettlementBatch[]>([]);
 const loading = ref(false);
+const loadError = ref('');
 const settling = ref(false);
+const page = ref(1), pageSize = ref(20), keyword = ref(''), paidFilter = ref('');
+const filtered = computed(() => rows.value.filter(row => (!keyword.value.trim() || row.batch.includes(keyword.value.trim())) && (!paidFilter.value || (paidFilter.value === 'paid' ? row.markedPaid : !row.markedPaid))));
+const displayed = computed(() => filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
+watch([keyword, paidFilter, pageSize], () => { page.value = 1; });
+let loadGeneration = 0;
 
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
@@ -26,17 +35,20 @@ function asBatch(row: unknown) {
 }
 
 async function load() {
+  const generation = ++loadGeneration;
+  loadError.value = '';
   if (!effectiveCampusId.value) {
     rows.value = [];
     return;
   }
   loading.value = true;
   try {
-    rows.value = await api.nightSettlements();
+    const result = await api.nightSettlements();
+    if (generation === loadGeneration) rows.value = result;
   } catch (e) {
-    notify(e instanceof Error ? e.message : "周账单加载失败", "error");
+    if (generation === loadGeneration) loadError.value = e instanceof Error ? e.message : '周账单加载失败';
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
@@ -61,6 +73,7 @@ async function openSettle() {
   }
 }
 async function submitSettle() {
+  if (settling.value) return;
   const storeIds =
     settleScope.value === "pick"
       ? Object.keys(settleChecked.value).filter((k) => settleChecked.value[k])
@@ -104,10 +117,11 @@ function openPay(row: NightSettlementBatch) {
   payOpen.value = true;
 }
 async function submitPay() {
+  if (paying.value) return;
   paying.value = true;
   try {
     const r = await api.nightMarkBatchPaid(payBatch.value, payRemark.value.trim());
-    notify(`批次 ${r.batch} 已标记打款（${r.txnCount} 笔留痕）`);
+    notify(r.alreadyPaid ? '该批次已登记打款，本次未重复追加' : `批次 ${r.batch} 已标记打款（${r.txnCount} 笔留痕）`);
     payOpen.value = false;
     await load();
   } catch (e) {
@@ -118,8 +132,9 @@ async function submitPay() {
 }
 
 function fmtTime(value?: string | null) {
-  return value ? value.replace("T", " ").slice(0, 16) : "—";
+  return fmtDateTime(value);
 }
+watch(effectiveCampusId, () => { rows.value = []; settleStores.value = []; settleOpen.value = false; payOpen.value = false; page.value = 1; void load(); });
 onMounted(load);
 </script>
 <template>
@@ -138,9 +153,11 @@ onMounted(load);
     </template>
     <div v-if="!effectiveCampusId" class="empty-hint">请先在顶部选择校区。</div>
     <section v-else class="admin-table-panel" aria-label="夜宵佣金周账单">
+      <NightLoadError :message="loadError" :loading="loading" @retry="load" />
+      <div class="batch-filters"><ElInput v-model="keyword" clearable placeholder="搜索批次号" style="max-width: 280px" /><ElSelect v-model="paidFilter" clearable placeholder="全部打款状态" style="width: 180px"><ElOption label="待登记打款" value="unpaid" /><ElOption label="已标记打款" value="paid" /></ElSelect><ElButton :loading="loading" @click="load">刷新</ElButton></div>
       <ElTable
         v-loading="loading"
-        :data="rows"
+        :data="displayed"
         row-key="batch"
         empty-text="暂无周账单——点右上角「周账单出账」把待结算佣金出成批次"
       >
@@ -166,8 +183,9 @@ onMounted(load);
         </ElTableColumn>
         <ElTableColumn label="操作" width="130" fixed="right">
           <template #default="{ row }">
+            <ElTag v-if="row.markedPaid" type="success">已标记打款</ElTag>
             <ElButton
-              v-if="hasPerm('POST /admin/night/settlements/:batch/pay')"
+              v-else-if="hasPerm('POST /admin/night/settlements/:batch/pay')"
               link
               type="primary"
               @click="openPay(asBatch(row))"
@@ -176,6 +194,7 @@ onMounted(load);
           </template>
         </ElTableColumn>
       </ElTable>
+      <AdminPagination v-model:page="page" v-model:page-size="pageSize" :total="filtered.length" />
       <p class="form-hint">
         出账规则：仅「已完成且无进行中售后」订单的待结算佣金进批次；预计佣金（estimated）不参与。
         标记打款为财务线下打款后的留痕操作，写批次流水备注。
@@ -249,6 +268,7 @@ onMounted(load);
   </AdminPageShell>
 </template>
 <style scoped>
+.batch-filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 16px; }
 .empty-hint {
   padding: 48px;
   text-align: center;
