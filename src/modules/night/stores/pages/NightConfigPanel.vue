@@ -80,7 +80,7 @@ async function save(confirm = false) {
             : null,
       ...(confirm ? { confirm: true } : {}),
     });
-    notify("夜宵配置已保存");
+    notify("夜宵店设置已保存");
   } catch (e) {
     const message = e instanceof Error ? e.message : "保存失败";
     if (!confirm && message.includes("confirm=true")) {
@@ -173,7 +173,7 @@ async function save(confirm = false) {
           type="primary"
           :loading="saving"
           @click="save(false)"
-          >保存夜宵配置</ElButton
+          >保存夜宵店设置</ElButton
         >
       </template>
     </ElForm>

@@ -50,7 +50,7 @@ const TABS = computed(() => {
     { key: "profile", label: "基础档案" },
     { key: "delivery", label: "配送与营业" },
     { key: "salary", label: "楼长结算" },
-    { key: "night-config", label: "夜宵设置" },
+    { key: "night-config", label: "夜宵店设置" },
     { key: "slots", label: "送达时段" },
     { key: "notices", label: "公告" },
   ];
