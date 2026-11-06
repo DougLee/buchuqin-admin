@@ -13,6 +13,7 @@ import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { rateText, nightStoreStatus } from "../../night-shared";
 import NightCatalogPanel from "./NightCatalogPanel.vue";
 import NightInventoryPanel from "./NightInventoryPanel.vue";
+import NightStoreProductsPanel from "./NightStoreProductsPanel.vue";
 import type { Building, NightStoreRow, Staff } from "../../../../types";
 import { fenToYuan } from "../../../../utils/money";
 
@@ -203,6 +204,7 @@ onMounted(load);
           @click="activeTab = 'catalog'"
           >夜宵商品库</ElButton
         >
+        <ElButton v-if="hasPerm('GET /admin/night/store-products')" text :class="{ active: activeTab === 'products' }" @click="activeTab = 'products'">楼栋商品管理</ElButton>
         <ElButton v-if="hasPerm('GET /admin/night/stock-orders')" text :class="{ active: activeTab === 'stock' }" @click="activeTab = 'stock'">备货审核与出库</ElButton>
         <ElButton v-if="hasPerm('GET /admin/night/inventory-reports')" text :class="{ active: activeTab === 'reports' }" @click="activeTab = 'reports'">盘点报损审核</ElButton>
       </nav>
@@ -263,6 +265,7 @@ onMounted(load);
       </template>
 
       <NightCatalogPanel v-else-if="activeTab === 'catalog'" ref="catalogPanel" />
+      <NightStoreProductsPanel v-else-if="activeTab === 'products'" />
       <NightInventoryPanel v-else-if="activeTab === 'stock' || activeTab === 'reports'" :kind="activeTab === 'stock' ? 'stock' : 'reports'" />
     </template>
 

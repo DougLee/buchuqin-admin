@@ -32,7 +32,7 @@ const router = useRouter();
 const storeId = String(route.params.id ?? "");
 const detail = ref<NightStoreDetail | null>(null);
 const loading = ref(false);
-const activeTab = ref("basic");
+const activeTab = ref(route.query.tab === "products" ? "products" : "basic");
 const canWrite = computed(() => hasPerm("PATCH /admin/night/stores/:id"));
 
 function notify(message: string, type: "success" | "error" = "success") {
@@ -78,8 +78,24 @@ async function loadManagers() {
   try {
     // 后端 assertManager：本校区在职 building-manager / intern-building-manager
     const [m1, m2] = await Promise.all([
-      fetchAllPages((q) => api.staff({ ...q, role: "building-manager", campusId: detail.value!.campusId }), 100),
-      fetchAllPages((q) => api.staff({ ...q, role: "intern-building-manager", campusId: detail.value!.campusId }), 100),
+      fetchAllPages(
+        (q) =>
+          api.staff({
+            ...q,
+            role: "building-manager",
+            campusId: detail.value!.campusId,
+          }),
+        100,
+      ),
+      fetchAllPages(
+        (q) =>
+          api.staff({
+            ...q,
+            role: "intern-building-manager",
+            campusId: detail.value!.campusId,
+          }),
+        100,
+      ),
     ]);
     managers.value = [...m1, ...m2];
   } catch (e) {
@@ -94,10 +110,12 @@ const managerChanged = computed(
 async function saveBasic() {
   if (!detail.value) return;
   const rate = Math.round(basicForm.commissionPercent * 100);
-  if (!(rate >= 0 && rate <= 10000)) return notify("佣金比例须在 0~100 之间", "error");
+  if (!(rate >= 0 && rate <= 10000))
+    return notify("佣金比例须在 0~100 之间", "error");
   saving.value = true;
   try {
-    const body: { commissionRate?: number; managerStaffId?: string | null } = {};
+    const body: { commissionRate?: number; managerStaffId?: string | null } =
+      {};
     if (rate !== detail.value.commissionRate) body.commissionRate = rate;
     if (managerChanged.value)
       body.managerStaffId = basicForm.managerStaffId || null;
@@ -110,7 +128,11 @@ async function saveBasic() {
         await ElMessageBox.confirm(
           "解绑后店铺进入「招募中」，学生端不可下单。确认解绑楼长？",
           "解绑楼长",
-          { type: "warning", confirmButtonText: "确认解绑", cancelButtonText: "取消" },
+          {
+            type: "warning",
+            confirmButtonText: "确认解绑",
+            cancelButtonText: "取消",
+          },
         );
       } catch {
         return;
@@ -120,7 +142,11 @@ async function saveBasic() {
         await ElMessageBox.confirm(
           "换绑将斩断原楼长与店铺的关联（交接语义：换人前应先完成清算）。确认换绑？",
           "换绑楼长",
-          { type: "warning", confirmButtonText: "确认换绑", cancelButtonText: "取消" },
+          {
+            type: "warning",
+            confirmButtonText: "确认换绑",
+            cancelButtonText: "取消",
+          },
         );
       } catch {
         return;
@@ -137,7 +163,10 @@ async function saveBasic() {
 }
 async function setStatus(status: "closed" | "suspended") {
   if (!detail.value) return;
-  const label = status === "suspended" ? "停业（学生端不可见）" : "恢复为打烊（楼长可自行开店）";
+  const label =
+    status === "suspended"
+      ? "停业（学生端不可见）"
+      : "恢复为打烊（楼长可自行开店）";
   try {
     await ElMessageBox.confirm(`确认将店铺置为「${label}」？`, "营业状态变更", {
       type: "warning",
@@ -161,6 +190,26 @@ async function setStatus(status: "closed" | "suspended") {
 
 /* ---------- 商品与库存 ---------- */
 const products = computed(() => detail.value?.products ?? []);
+const productKeyword = ref(""),
+  productFilter = ref("");
+const visibleProducts = computed(() =>
+  products.value.filter(
+    (p) =>
+      p.catalogProduct.name
+        .toLowerCase()
+        .includes(productKeyword.value.trim().toLowerCase()) &&
+      (!productFilter.value ||
+        (productFilter.value === "available"
+          ? p.stock > 0
+          : productFilter.value === "empty"
+            ? p.stock === 0
+            : productFilter.value === "frozen"
+              ? p.frozenStock > 0
+              : productFilter.value === "stopped"
+                ? !p.saleAllowed
+                : !p.onShelf)),
+  ),
+);
 const attachOpen = ref(false);
 const catalogRows = ref<NightCatalogRow[]>([]);
 const catalogLoading = ref(false);
@@ -193,7 +242,9 @@ async function submitAttach() {
   attachSaving.value = true;
   try {
     const r = await api.attachNightStoreProducts(storeId, ids);
-    notify(`已配置 ${r.attached} 个商品${r.skipped ? `（跳过已有 ${r.skipped} 个）` : ""}`);
+    notify(
+      `已配置 ${r.attached} 个商品${r.skipped ? `（跳过已有 ${r.skipped} 个）` : ""}`,
+    );
     attachOpen.value = false;
     await load();
   } catch (e) {
@@ -205,7 +256,9 @@ async function submitAttach() {
 
 /** 库存调整弹窗（delta 带方向 + 类型 + 原因）。 */
 const adjustOpen = ref(false);
-const adjustTarget = ref<{ id: string; name: string; stock: number } | null>(null);
+const adjustTarget = ref<{ id: string; name: string; stock: number } | null>(
+  null,
+);
 const adjustForm = reactive({
   delta: 0,
   type: "adjust",
@@ -251,7 +304,9 @@ const adjustSaving = ref(false);
 async function toggleSaleAllowed(row: NightStoreProductRow) {
   try {
     await api.updateNightStoreProduct(storeId, row.id, !row.saleAllowed);
-    notify(row.saleAllowed ? "已强制停售（优先于楼长上架选择）" : "已恢复售卖许可");
+    notify(
+      row.saleAllowed ? "已强制停售（优先于楼长上架选择）" : "已恢复售卖许可",
+    );
     await load();
   } catch (e) {
     notify(e instanceof Error ? e.message : "操作失败", "error");
@@ -312,7 +367,11 @@ async function submitDeduct() {
     await ElMessageBox.confirm(
       `判责扣除 ¥${fenToYuan(amount)} 将即时减少押金余额（押金=进货额度），并写入流水留痕。确认扣除？`,
       "押金判责扣除",
-      { type: "warning", confirmButtonText: "确认扣除", cancelButtonText: "取消" },
+      {
+        type: "warning",
+        confirmButtonText: "确认扣除",
+        cancelButtonText: "取消",
+      },
     );
   } catch {
     return;
@@ -331,7 +390,11 @@ async function submitDeduct() {
 }
 /** 押金退还（退出清算原路退；押金/清算两处共用）。 */
 const refundOpen = ref(false);
-const refundForm = reactive({ mode: "full" as "full" | "partial", amount: 0, reason: "" });
+const refundForm = reactive({
+  mode: "full" as "full" | "partial",
+  amount: 0,
+  reason: "",
+});
 const refundSaving = ref(false);
 function openRefund() {
   refundForm.mode = "full";
@@ -350,15 +413,25 @@ async function submitRefund() {
     await ElMessageBox.confirm(
       `将按原路分配退还 ${refundForm.mode === "full" ? "全额" : `¥${fenToYuan(amount ?? 0)}`} 押金（微信原路退回，逐笔原子落账，中断可续）。确认退还？`,
       "押金退还（退出清算）",
-      { type: "warning", confirmButtonText: "确认退还", cancelButtonText: "取消" },
+      {
+        type: "warning",
+        confirmButtonText: "确认退还",
+        cancelButtonText: "取消",
+      },
     );
   } catch {
     return;
   }
   refundSaving.value = true;
   try {
-    const r = await api.nightRefundDeposit(storeId, amount, refundForm.reason.trim() || undefined);
-    notify(`已发起退还 ¥${fenToYuan(r.refunded)}，剩余押金 ¥${fenToYuan(r.deposit)}`);
+    const r = await api.nightRefundDeposit(
+      storeId,
+      amount,
+      refundForm.reason.trim() || undefined,
+    );
+    notify(
+      `已发起退还 ¥${fenToYuan(r.refunded)}，剩余押金 ¥${fenToYuan(r.deposit)}`,
+    );
     refundOpen.value = false;
     await load();
   } catch (e) {
@@ -381,7 +454,8 @@ const commissionRows = computed(() => {
     status: s.key,
     commission: summary.commission?.[s.key] ?? 0,
     deliveryFee: summary.deliveryFee?.[s.key] ?? 0,
-    total: (summary.commission?.[s.key] ?? 0) + (summary.deliveryFee?.[s.key] ?? 0),
+    total:
+      (summary.commission?.[s.key] ?? 0) + (summary.deliveryFee?.[s.key] ?? 0),
   }));
 });
 
@@ -409,7 +483,11 @@ const liqCommissionRows = computed(() =>
     return {
       key,
       label: `${type === "commission" ? "商品佣金" : "配送费"}（${
-        status === "estimated" ? "预计" : status === "pending" ? "待结算" : "已结算"
+        status === "estimated"
+          ? "预计"
+          : status === "pending"
+            ? "待结算"
+            : "已结算"
       }）`,
       amount,
     };
@@ -435,7 +513,9 @@ const saving = ref(false);
           押金余额 ¥{{ fenToYuan(detail.deposit) }} · 佣金比例
           {{ rateText(detail.commissionRate) }}
           <template v-if="detail.manager">
-            · 楼长 {{ detail.manager.name }}（{{ detail.manager.staffNo }}）</template
+            · 楼长 {{ detail.manager.name }}（{{
+              detail.manager.staffNo
+            }}）</template
           >
           <template v-else>· 楼长招募中</template>
         </p>
@@ -479,7 +559,9 @@ const saving = ref(false);
               </ElFormItem>
             </ElCol>
             <ElCol :xs="24" :sm="12" :lg="8">
-              <ElFormItem label="楼长（换绑=解绑重绑，交接前应先清算；清空=解绑转招募中）">
+              <ElFormItem
+                label="楼长（换绑=解绑重绑，交接前应先清算；清空=解绑转招募中）"
+              >
                 <ElSelect
                   v-model="basicForm.managerStaffId"
                   filterable
@@ -527,7 +609,10 @@ const saving = ref(false);
             </ElCol>
             <ElCol :xs="24" :sm="12" :lg="8">
               <ElFormItem label="距下一押金档差额">
-                <ElInput :model-value="`¥${fenToYuan(detail.depositGapToNextTier)}`" disabled />
+                <ElInput
+                  :model-value="`¥${fenToYuan(detail.depositGapToNextTier)}`"
+                  disabled
+                />
               </ElFormItem>
             </ElCol>
           </ElRow>
@@ -546,7 +631,7 @@ const saving = ref(false);
       <section v-else-if="activeTab === 'products'" class="detail-panel">
         <div class="panel-toolbar">
           <span class="muted">
-            押金=进货额度约束：库存×夜宵售价 ≤ 押金余额（楼长备货时后端校验）。
+            库存按历史入库货值占用额度；备货待收、待配送和损耗冻结另行占用，调价不重估旧库存。
           </span>
           <ElButton
             v-if="hasPerm('POST /admin/night/stores/:id/products')"
@@ -555,12 +640,56 @@ const saving = ref(false);
             >配商品（从夜主档勾选）</ElButton
           >
         </div>
-        <ElTable :data="products" row-key="id" empty-text="尚未配置商品——点右上角从夜主档池勾选">
-          <ElTableColumn label="商品" min-width="200" prop="catalogProduct.name" />
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0">
+          <ElInput
+            v-model="productKeyword"
+            placeholder="搜索本楼商品名称"
+            clearable
+            style="width: 240px"
+          /><ElSelect
+            v-model="productFilter"
+            placeholder="全部库存 / 售卖状态"
+            clearable
+            style="width: 220px"
+            ><ElOption label="有可售库存" value="available" /><ElOption
+              label="可售库存为0"
+              value="empty" /><ElOption
+              label="有冻结库存"
+              value="frozen" /><ElOption
+              label="校区已停售"
+              value="stopped" /><ElOption
+              label="楼长已下架"
+              value="off" /></ElSelect
+          ><ElButton
+            @click="
+              productKeyword = '';
+              productFilter = '';
+            "
+            >重置筛选</ElButton
+          >
+        </div>
+        <ElTable
+          :data="visibleProducts"
+          row-key="id"
+          empty-text="没有符合筛选条件的商品，可调整条件或配置商品"
+        >
+          <ElTableColumn
+            label="商品"
+            min-width="200"
+            prop="catalogProduct.name"
+          />
           <ElTableColumn label="夜宵售价" width="110">
-            <template #default="{ row }">¥{{ fenToYuan(row.catalogProduct.price) }}</template>
+            <template #default="{ row }"
+              >¥{{ fenToYuan(row.catalogProduct.price) }}</template
+            >
           </ElTableColumn>
-          <ElTableColumn label="库存" width="90" prop="stock" />
+          <ElTableColumn label="可售" width="80" prop="stock" />
+          <ElTableColumn label="冻结" width="80" prop="frozenStock" />
+          <ElTableColumn label="历史货值" width="110"
+            ><template #default="{ row }"
+              >¥{{ fenToYuan(row.inventoryValue) }}</template
+            ></ElTableColumn
+          >
           <ElTableColumn label="楼长上架" width="100">
             <template #default="{ row }">
               <ElTag :type="row.onShelf ? 'success' : 'info'" size="small">{{
@@ -570,22 +699,36 @@ const saving = ref(false);
           </ElTableColumn>
           <ElTableColumn label="售卖许可" width="110">
             <template #default="{ row }">
-              <ElTag :type="row.saleAllowed ? 'success' : 'danger'" size="small">{{
-                row.saleAllowed ? "允许" : "强制停售"
-              }}</ElTag>
+              <ElTag
+                :type="row.saleAllowed ? 'success' : 'danger'"
+                size="small"
+                >{{ row.saleAllowed ? "允许" : "强制停售" }}</ElTag
+              >
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <ElButton
-                v-if="hasPerm('POST /admin/night/stores/:id/products/:productId/stock')"
+                v-if="
+                  hasPerm(
+                    'POST /admin/night/stores/:id/products/:productId/stock',
+                  )
+                "
                 link
                 type="primary"
-                @click="openAdjust(asStoreProduct(row).id, asStoreProduct(row).catalogProduct.name, asStoreProduct(row).stock)"
+                @click="
+                  openAdjust(
+                    asStoreProduct(row).id,
+                    asStoreProduct(row).catalogProduct.name,
+                    asStoreProduct(row).stock,
+                  )
+                "
                 >调整库存</ElButton
               >
               <ElButton
-                v-if="hasPerm('PATCH /admin/night/stores/:id/products/:productId')"
+                v-if="
+                  hasPerm('PATCH /admin/night/stores/:id/products/:productId')
+                "
                 link
                 :type="row.saleAllowed ? 'danger' : 'success'"
                 @click="toggleSaleAllowed(asStoreProduct(row))"
@@ -621,7 +764,11 @@ const saving = ref(false);
             >
           </div>
         </div>
-        <ElTable :data="depositTxns" row-key="id" empty-text="暂无押金流水（楼长在小程序端按 500 元档缴纳）">
+        <ElTable
+          :data="depositTxns"
+          row-key="id"
+          empty-text="暂无押金流水（楼长在小程序端按 500 元档缴纳）"
+        >
           <ElTableColumn label="类型" width="120">
             <template #default="{ row }">
               <ElTag
@@ -633,8 +780,16 @@ const saving = ref(false);
           </ElTableColumn>
           <ElTableColumn label="金额" width="120">
             <template #default="{ row }">
-              <span :class="depositTxnView(row.type).minus ? 'amount-minus' : 'amount-plus'">
-                {{ depositTxnView(row.type).minus ? "−" : "+" }}¥{{ fenToYuan(row.amount) }}
+              <span
+                :class="
+                  depositTxnView(row.type).minus
+                    ? 'amount-minus'
+                    : 'amount-plus'
+                "
+              >
+                {{ depositTxnView(row.type).minus ? "−" : "+" }}¥{{
+                  fenToYuan(row.amount)
+                }}
               </span>
             </template>
           </ElTableColumn>
@@ -648,18 +803,29 @@ const saving = ref(false);
             }}</template>
           </ElTableColumn>
         </ElTable>
-        <p class="form-hint">余额恒等式：押金 ≈ Σ缴纳 − Σ判责扣除 − Σ退还；仅展示最近 50 条，全量以流水账为准。</p>
+        <p class="form-hint">
+          余额恒等式：押金 ≈ Σ缴纳 − Σ判责扣除 − Σ退还；仅展示最近 50
+          条，全量以流水账为准。
+        </p>
       </section>
 
       <!-- 佣金 -->
       <section v-else-if="activeTab === 'commission'" class="detail-panel">
-        <ElTable :data="commissionRows" row-key="status" empty-text="暂无佣金流水">
+        <ElTable
+          :data="commissionRows"
+          row-key="status"
+          empty-text="暂无佣金流水"
+        >
           <ElTableColumn label="状态" min-width="200" prop="label" />
           <ElTableColumn label="商品佣金" width="130">
-            <template #default="{ row }">¥{{ fenToYuan(row.commission) }}</template>
+            <template #default="{ row }"
+              >¥{{ fenToYuan(row.commission) }}</template
+            >
           </ElTableColumn>
           <ElTableColumn label="配送费收入" width="130">
-            <template #default="{ row }">¥{{ fenToYuan(row.deliveryFee) }}</template>
+            <template #default="{ row }"
+              >¥{{ fenToYuan(row.deliveryFee) }}</template
+            >
           </ElTableColumn>
           <ElTableColumn label="小计" width="130">
             <template #default="{ row }">
@@ -677,7 +843,8 @@ const saving = ref(false);
       <section v-else-if="activeTab === 'stock'" class="detail-panel">
         <div class="panel-toolbar">
           <span class="muted">
-            备货记录=楼长端下单入库（stockIn，一步制：下单即入账）；全部库存变动以流水留痕（近 200 条）。
+            备货记录=楼长端下单入库（stockIn，一步制：下单即入账）；全部库存变动以流水留痕（近
+            200 条）。
           </span>
           <ElSegmented
             v-model="txnTypeFilter"
@@ -690,7 +857,12 @@ const saving = ref(false);
             ]"
           />
         </div>
-        <ElTable v-loading="txnsLoading" :data="txnsPaged" row-key="id" empty-text="暂无流水">
+        <ElTable
+          v-loading="txnsLoading"
+          :data="txnsPaged"
+          row-key="id"
+          empty-text="暂无流水"
+        >
           <ElTableColumn label="类型" width="110">
             <template #default="{ row }">{{ txnTypeName(row.type) }}</template>
           </ElTableColumn>
@@ -741,36 +913,45 @@ const saving = ref(false);
             <ElCol :xs="12" :sm="6">
               <div class="liq-stat">
                 <span class="liq-stat-label">未完订单</span>
-                <b>{{
-                  liq.openOrders.reduce((s, o) => s + o.count, 0)
-                }}
-                单</b>
+                <b>{{ liq.openOrders.reduce((s, o) => s + o.count, 0) }} 单</b>
               </div>
             </ElCol>
             <ElCol :xs="12" :sm="6">
               <div class="liq-stat">
                 <span class="liq-stat-label">佣金余额（合计）</span>
-                <b>¥{{
-                  fenToYuan(
-                    Object.values(liq.commission).reduce((s, v) => s + v, 0),
-                  )
-                }}</b>
+                <b
+                  >¥{{
+                    fenToYuan(
+                      Object.values(liq.commission).reduce((s, v) => s + v, 0),
+                    )
+                  }}</b
+                >
               </div>
             </ElCol>
           </ElRow>
           <div class="liq-block">
             <h3>剩余库存（含货值）</h3>
-            <ElTable :data="liq.stock.items" row-key="id" empty-text="无剩余库存">
+            <ElTable
+              :data="liq.stock.items"
+              row-key="id"
+              empty-text="无剩余库存"
+            >
               <ElTableColumn label="商品" min-width="180" prop="name" />
               <ElTableColumn label="库存" width="90" prop="stock" />
               <ElTableColumn label="夜宵售价" width="110">
-                <template #default="{ row }">¥{{ fenToYuan(row.price) }}</template>
+                <template #default="{ row }"
+                  >¥{{ fenToYuan(row.price) }}</template
+                >
               </ElTableColumn>
               <ElTableColumn label="货值" width="110">
-                <template #default="{ row }">¥{{ fenToYuan(row.value) }}</template>
+                <template #default="{ row }"
+                  >¥{{ fenToYuan(row.value) }}</template
+                >
               </ElTableColumn>
             </ElTable>
-            <p class="form-hint">清库存走「商品与库存」Tab 的库存调整（退货出库 / 报损）。</p>
+            <p class="form-hint">
+              清库存走「商品与库存」Tab 的库存调整（退货出库 / 报损）。
+            </p>
           </div>
           <div class="liq-block">
             <h3>未完订单</h3>
@@ -786,17 +967,27 @@ const saving = ref(false);
               </ElTableColumn>
               <ElTableColumn label="单数" width="100" prop="count" />
             </ElTable>
-            <p class="form-hint">未完订单处理完（配送完成或后台退款）才可退押金。</p>
+            <p class="form-hint">
+              未完订单处理完（配送完成或后台退款）才可退押金。
+            </p>
           </div>
           <div class="liq-block">
             <h3>佣金余额</h3>
-            <ElTable :data="liqCommissionRows" row-key="key" empty-text="无佣金余额">
+            <ElTable
+              :data="liqCommissionRows"
+              row-key="key"
+              empty-text="无佣金余额"
+            >
               <ElTableColumn label="类别" min-width="200" prop="label" />
               <ElTableColumn label="金额" width="130">
-                <template #default="{ row }">¥{{ fenToYuan(row.amount) }}</template>
+                <template #default="{ row }"
+                  >¥{{ fenToYuan(row.amount) }}</template
+                >
               </ElTableColumn>
             </ElTable>
-            <p class="form-hint">待结算佣金先在「夜宵结算」页出账、打款，再退押金。</p>
+            <p class="form-hint">
+              待结算佣金先在「夜宵结算」页出账、打款，再退押金。
+            </p>
           </div>
           <div class="liq-block">
             <h3>清算操作</h3>
@@ -851,11 +1042,19 @@ const saving = ref(false);
             <span class="attach-name">{{ c.name }}</span>
             <span class="muted">
               ¥{{ fenToYuan(c.price) }}
-              {{ attachedCatalogIds.has(c.id) ? "· 已配置" : c.status === "off-sale" ? "· 主档已下架" : "" }}
+              {{
+                attachedCatalogIds.has(c.id)
+                  ? "· 已配置"
+                  : c.status === "off-sale"
+                    ? "· 主档已下架"
+                    : ""
+              }}
             </span>
           </ElCheckbox>
         </div>
-        <p class="form-hint">新配楼栋行库存为 0，由楼长备货入库；初始上架状态由楼长控制。</p>
+        <p class="form-hint">
+          新配楼栋行库存为 0，由楼长备货入库；初始上架状态由楼长控制。
+        </p>
       </template>
       <template #footer>
         <ElButton @click="attachOpen = false">取消</ElButton>
@@ -878,7 +1077,9 @@ const saving = ref(false);
       align-center
       :close-on-click-modal="false"
     >
-      <p v-if="adjustTarget" class="form-hint">当前库存 {{ adjustTarget.stock }}</p>
+      <p v-if="adjustTarget" class="form-hint">
+        当前库存 {{ adjustTarget.stock }}
+      </p>
       <ElForm label-position="top">
         <ElRow :gutter="16">
           <ElCol :span="12">
@@ -926,10 +1127,16 @@ const saving = ref(false);
       align-center
       :close-on-click-modal="false"
     >
-      <p class="form-hint">当前押金余额 ¥{{ fenToYuan(depositBalance) }}（不得扣到负数）</p>
+      <p class="form-hint">
+        当前押金余额 ¥{{ fenToYuan(depositBalance) }}（不得扣到负数）
+      </p>
       <ElForm label-position="top">
         <ElFormItem label="扣除金额（元）">
-          <ElInputNumber v-model="deductForm.amount" :min="0.01" :precision="2" />
+          <ElInputNumber
+            v-model="deductForm.amount"
+            :min="0.01"
+            :precision="2"
+          />
         </ElFormItem>
         <ElFormItem label="判责事由（留痕）">
           <ElInput
@@ -957,21 +1164,32 @@ const saving = ref(false);
       :close-on-click-modal="false"
     >
       <p class="form-hint">
-        当前押金余额 ¥{{ fenToYuan(depositBalance) }}。按原路分配退还：FIFO 遍历缴纳流水逐笔微信原路退款，
+        当前押金余额 ¥{{ fenToYuan(depositBalance) }}。按原路分配退还：FIFO
+        遍历缴纳流水逐笔微信原路退款，
         累计不超过各笔实缴；逐笔原子落账，中断可续。
       </p>
       <ElForm label-position="top">
         <ElFormItem label="退还金额">
           <ElRadioGroup v-model="refundForm.mode">
-            <ElRadio value="full">全额退（{{ fenToYuan(depositBalance) }} 元）</ElRadio>
+            <ElRadio value="full"
+              >全额退（{{ fenToYuan(depositBalance) }} 元）</ElRadio
+            >
             <ElRadio value="partial">部分退</ElRadio>
           </ElRadioGroup>
         </ElFormItem>
         <ElFormItem v-if="refundForm.mode === 'partial'" label="退还金额（元）">
-          <ElInputNumber v-model="refundForm.amount" :min="0.01" :precision="2" />
+          <ElInputNumber
+            v-model="refundForm.amount"
+            :min="0.01"
+            :precision="2"
+          />
         </ElFormItem>
         <ElFormItem label="事由（选填，留痕）">
-          <ElInput v-model="refundForm.reason" maxlength="200" placeholder="如：楼长退出清算" />
+          <ElInput
+            v-model="refundForm.reason"
+            maxlength="200"
+            placeholder="如：楼长退出清算"
+          />
         </ElFormItem>
       </ElForm>
       <template #footer>

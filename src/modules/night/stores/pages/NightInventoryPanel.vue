@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { api } from "../../../../api";
+import { api, fetchAllPages } from "../../../../api";
+import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import { fenToYuan } from "../../../../utils/money";
 import type {
   NightStockRequest,
   NightInventoryReport,
+  NightStoreRow,
 } from "../../../../types";
 const props = defineProps<{ kind: "stock" | "reports"; storeId?: string }>();
 const stock = ref<NightStockRequest[]>([]),
@@ -18,6 +20,56 @@ const stockDetail = ref<NightStockRequest | null>(null),
   reportDetail = ref<NightInventoryReport | null>(null);
 const stockOpen = ref(false),
   reportOpen = ref(false);
+const keyword = ref(""),
+  storeFilter = ref(""),
+  reportKind = ref("");
+const dateRange = ref<string[] | null>(null);
+const stores = ref<NightStoreRow[]>([]);
+const page = ref(1),
+  pageSize = ref(20);
+const total = computed(() =>
+  props.kind === "stock" ? stock.value.length : reports.value.length,
+);
+const visibleStock = computed(() =>
+  stock.value.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value,
+  ),
+);
+const visibleReports = computed(() =>
+  reports.value.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value,
+  ),
+);
+async function loadStores() {
+  if (!effectiveCampusId.value) {
+    stores.value = [];
+    return;
+  }
+  const campus = effectiveCampusId.value;
+  try {
+    const rows = await fetchAllPages(
+      (q) => api.nightStores(undefined, q.page, q.pageSize),
+      100,
+    );
+    if (campus === effectiveCampusId.value) stores.value = rows;
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "楼栋选项加载失败");
+  }
+}
+function search() {
+  page.value = 1;
+  void load();
+}
+function resetFilters() {
+  keyword.value = "";
+  storeFilter.value = "";
+  reportKind.value = "";
+  dateRange.value = null;
+  status.value = "";
+  search();
+}
 const stockLabels: Record<string, string> = {
   requested: "待审核",
   approved: "已审核待出库",
@@ -46,16 +98,46 @@ async function load() {
   if (!effectiveCampusId.value && !props.storeId) {
     stock.value = [];
     reports.value = [];
+    loading.value = false;
     return;
   }
   loading.value = true;
   try {
     if (props.kind === "stock") {
-      const r = await api.nightStockRequests(status.value, props.storeId);
-      if (current === generation) stock.value = r;
+      const r = await api.nightStockRequests(
+        status.value,
+        props.storeId || storeFilter.value,
+        {
+          keyword: keyword.value.trim(),
+          from: dateRange.value?.[0],
+          to: dateRange.value?.[1],
+        },
+      );
+      if (current === generation) {
+        stock.value = r;
+        page.value = Math.min(
+          page.value,
+          Math.max(1, Math.ceil(r.length / pageSize.value)),
+        );
+      }
     } else {
-      const r = await api.nightInventoryReports(status.value, props.storeId);
-      if (current === generation) reports.value = r;
+      const r = await api.nightInventoryReports(
+        status.value,
+        props.storeId || storeFilter.value,
+        {
+          keyword: keyword.value.trim(),
+          from: dateRange.value?.[0],
+          to: dateRange.value?.[1],
+          kind: reportKind.value,
+        },
+      );
+      if (current === generation) {
+        reports.value = r;
+        page.value = Math.min(
+          page.value,
+          Math.max(1, Math.ceil(r.length / pageSize.value)),
+        );
+      }
     }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : "加载失败");
@@ -64,18 +146,22 @@ async function load() {
   }
 }
 watch([() => props.kind, () => props.storeId], () => {
-  status.value = "";
+  resetFilters();
   stockOpen.value = false;
   reportOpen.value = false;
-  load();
 });
 watch(effectiveCampusId, () => {
   stockOpen.value = false;
   reportOpen.value = false;
-  load();
+  storeFilter.value = "";
+  stores.value = [];
+  resetFilters();
+  void loadStores();
 });
-watch(status, load);
-onMounted(load);
+onMounted(() => {
+  void load();
+  void loadStores();
+});
 function showStock(row: NightStockRequest) {
   stockDetail.value = row;
   stockOpen.value = true;
@@ -169,8 +255,30 @@ async function review(row: NightInventoryReport, approved: boolean) {
 <template>
   <div>
     <section class="admin-filter-panel inventory-filter">
+      <ElInput
+        v-model="keyword"
+        style="width: 260px"
+        placeholder="单号 / 商品 / 楼栋 / 楼长 / 原因"
+        clearable
+        @keyup.enter="search"
+      />
+      <ElSelect
+        v-if="!props.storeId"
+        v-model="storeFilter"
+        placeholder="全部楼栋 / 楼长"
+        clearable
+        filterable
+        style="width: 210px"
+        @change="search"
+        ><ElOption
+          v-for="s in stores"
+          :key="s.id"
+          :label="`${s.buildingName} · ${s.manager?.name || '未绑定楼长'}`"
+          :value="s.id"
+      /></ElSelect>
       <ElSelect
         v-model="status"
+        @change="search"
         placeholder="全部状态"
         style="width: 200px"
         clearable
@@ -180,7 +288,31 @@ async function review(row: NightInventoryReport, approved: boolean) {
           :label="label"
           :value="key"
       /></ElSelect>
-      <ElButton :loading="loading" @click="load">刷新</ElButton>
+      <ElSelect
+        v-if="kind === 'reports'"
+        v-model="reportKind"
+        placeholder="全部申报类型"
+        clearable
+        style="width: 180px"
+        @change="search"
+        ><ElOption
+          v-for="(label, key) in kinds"
+          :key="key"
+          :label="label"
+          :value="key"
+      /></ElSelect>
+      <ElDatePicker
+        v-model="dateRange"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        start-placeholder="申请开始日期"
+        end-placeholder="申请结束日期"
+        range-separator="至"
+        style="width: 280px; flex-grow: 0"
+        @change="search"
+      />
+      <ElButton type="primary" :loading="loading" @click="search">查询</ElButton
+      ><ElButton @click="resetFilters">重置</ElButton>
       <span class="muted">{{
         kind === "stock"
           ? "审核通过将整单预留共享仓库库存；出库后由楼长确认实收。"
@@ -201,7 +333,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
             </tr>
           </thead>
           <tbody v-if="kind === 'stock'">
-            <tr v-for="row in stock" :key="row.id">
+            <tr v-for="row in visibleStock" :key="row.id">
               <td>
                 {{ date(row.createdAt)
                 }}<small>{{ row.id.slice(-10).toUpperCase() }}</small>
@@ -226,7 +358,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
             </tr>
           </tbody>
           <tbody v-else>
-            <tr v-for="row in reports" :key="row.id">
+            <tr v-for="row in visibleReports" :key="row.id">
               <td>
                 {{ date(row.createdAt)
                 }}<small>{{ row.id.slice(-10).toUpperCase() }}</small>
@@ -252,7 +384,18 @@ async function review(row: NightInventoryReport, approved: boolean) {
         v-if="!loading && !(kind === 'stock' ? stock.length : reports.length)"
         description="暂无记录"
       />
-      <p class="muted">显示最近500条记录，可按状态筛选。</p>
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+      />
+      <p class="muted">
+        共
+        {{
+          total
+        }}
+        条匹配记录，最多显示符合筛选条件的最近500条。日期按北京时间申请日期筛选。
+      </p>
     </section>
     <ElDialog
       v-model="stockOpen"

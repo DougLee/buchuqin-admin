@@ -106,6 +106,11 @@ export interface LoginResult {
   user: SessionUser;
 }
 
+function nightFilterQuery(filters: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  return query.toString();
+}
 let token = localStorage.getItem("adminToken") || "";
 
 /** 登出 / 会话失效时清空内存 token（localStorage 由 clearSession 处理）。 */
@@ -1764,11 +1769,12 @@ export const api = {
   /* ---------- 夜宵经营（IKSW1F /admin/night/*，与白天业务完全隔离） ---------- */
   nightCatalogCandidates: (keyword = "", page = 1) => request<PagedResponse<import("./types").NightOfficialCandidate>>(`/admin/night/catalog/candidates?keyword=${encodeURIComponent(keyword)}&page=${page}&pageSize=50`),
   importNightCatalog: (productIds: string[]) => request<{ importedCount: number; skippedCount: number }>("/admin/night/catalog/import", { method: "POST", body: JSON.stringify({ productIds }) }),
-  nightStockRequests: (status = "", storeId = "") => request<import("./types").NightStockRequest[]>(`/admin/night/stock-orders?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}`),
+  nightStockRequests: (status = "", storeId = "", filters: { keyword?: string; from?: string; to?: string } = {}) => request<import("./types").NightStockRequest[]>(`/admin/night/stock-orders?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}&${nightFilterQuery(filters)}`),
   reviewNightStock: (id: string, approved: boolean, reason: string) => request(`/admin/night/stock-orders/${id}/review`, { method: "POST", body: JSON.stringify({ approved, reason }) }),
   shipNightStock: (id: string) => request(`/admin/night/stock-orders/${id}/ship`, { method: "POST" }),
   cancelNightStock: (id: string, reason: string) => request(`/admin/night/stock-orders/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
-  nightInventoryReports: (status = "", storeId = "") => request<import("./types").NightInventoryReport[]>(`/admin/night/inventory-reports?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}`),
+  nightInventoryReports: (status = "", storeId = "", filters: { keyword?: string; from?: string; to?: string; kind?: string } = {}) => request<import("./types").NightInventoryReport[]>(`/admin/night/inventory-reports?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}&${nightFilterQuery(filters)}`),
+  nightBuildingProducts: (filters: { storeId?: string; keyword?: string; stock?: string; saleAllowed?: string; onShelf?: string; categoryId?: string } = {}, page = 1, pageSize = 20) => request<PagedResponse<import("./types").NightBuildingProductRow>>(`/admin/night/store-products?page=${page}&pageSize=${pageSize}&${nightFilterQuery(filters)}`),
   reviewNightInventory: (id: string, approved: boolean, reason: string) => request(`/admin/night/inventory-reports/${id}/review`, { method: "POST", body: JSON.stringify({ approved, reason }) }),
   /** 校区由通用 request 注入 ?campus=（campusScope 校验授权集）。 */
   /** 店铺列表（status=open/paused/closed/suspended）。 */
@@ -1810,10 +1816,11 @@ export const api = {
       body: JSON.stringify(data),
     }),
   /** 夜主档列表（keyword 过滤名称）。 */
-  nightCatalog: (keyword?: string, page = 1, pageSize = 20) =>
-    request<PagedResponse<NightCatalogRow>>(
+  nightCatalog: (keyword?: string, page = 1, pageSize = 20, filters: { status?: string; categoryId?: string; stock?: string; source?: string } = {}) =>
+    request<PagedResponse<NightCatalogRow> & { categories: Array<{ id: string; name: string }> }>(
       `/admin/night/catalog${withQuery(
         keyword ? `keyword=${encodeURIComponent(keyword)}` : "",
+        nightFilterQuery(filters),
         `page=${page}`,
         `pageSize=${pageSize}`,
       )}`,
