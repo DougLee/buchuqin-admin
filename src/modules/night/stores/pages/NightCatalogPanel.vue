@@ -5,7 +5,7 @@ import { api } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
-import type { NightCatalogRow } from "../../../../types";
+import type { NightCatalogRow, NightOfficialCandidate } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 
 /**
@@ -23,6 +23,24 @@ const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
 const keyword = ref("");
+const importOpen = ref(false), importLoading = ref(false);
+const candidates = ref<NightOfficialCandidate[]>([]);
+const candidateKeyword = ref(""), candidatePage = ref(1), candidateTotal = ref(0);
+const selectedIds = ref<string[]>([]);
+async function loadCandidates() {
+  importLoading.value = true;
+  try { const r = await api.nightCatalogCandidates(candidateKeyword.value, candidatePage.value); candidates.value = r.items; candidateTotal.value = r.total; }
+  catch (e) { notify(e instanceof Error ? e.message : "官方库加载失败", "error"); }
+  finally { importLoading.value = false; }
+}
+async function startImport() { candidatePage.value = 1; selectedIds.value = []; importOpen.value = true; await loadCandidates(); }
+function selectCandidate(id: string) { selectedIds.value = selectedIds.value.includes(id) ? selectedIds.value.filter(x => x !== id) : [...selectedIds.value, id]; }
+async function importSelected() {
+  if (!selectedIds.value.length || saving.value) return;
+  saving.value = true;
+  try { const r = await api.importNightCatalog(selectedIds.value); importOpen.value = false; notify(`已导入 ${r.importedCount} 种，跳过已存在 ${r.skippedCount} 种。请确认售价后上架。`); await load(); }
+  catch (e) { notify(e instanceof Error ? e.message : "导入失败", "error"); } finally { saving.value = false; }
+}
 
 const form = reactive({
   name: "",
@@ -43,7 +61,9 @@ function asCatalog(row: unknown) {
   return row as NightCatalogRow;
 }
 
+let loadGeneration = 0;
 async function load() {
+  const generation = ++loadGeneration;
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -56,12 +76,11 @@ async function load() {
       page.value,
       pageSize.value,
     );
-    rows.value = r.items;
-    total.value = r.total;
+    if (generation === loadGeneration) { rows.value = r.items; total.value = r.total; }
   } catch (e) {
     notify(e instanceof Error ? e.message : "夜主档加载失败", "error");
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
@@ -128,6 +147,7 @@ async function toggleStatus(row: NightCatalogRow) {
 }
 
 watch([page, pageSize, effectiveCampusId], load);
+watch(effectiveCampusId, () => { importOpen.value = false; open.value = false; selectedIds.value = []; });
 onMounted(load);
 
 defineExpose({ reload: load });
@@ -138,8 +158,8 @@ defineExpose({ reload: load });
     <template v-else>
       <section class="admin-filter-panel admin-filter-panel--split" aria-label="夜主档筛选">
         <div class="catalog-tip">
-          夜主档是全校区统一的夜宵商品资料池（名称 / 图 / 条码 / 统一售价）。
-          各夜宵店从这里勾选生成楼栋行，楼栋库存与售卖在各店铺详情内管理。
+          从官方库导入夜宵经营资料，确认夜宵售价后上架供楼长备货。
+          白天与夜宵共用校区实物仓库，导入不增加库存；各渠道售价、上下架独立。
         </div>
         <div class="catalog-search">
           <ElInput
@@ -161,11 +181,12 @@ defineExpose({ reload: load });
       </section>
       <section class="admin-table-panel" aria-label="夜主档列表">
         <div class="catalog-actions">
+          <ElButton v-if="hasPerm('POST /admin/night/catalog/import')" type="primary" @click="startImport">从官方商品库导入</ElButton>
           <ElButton
             v-if="hasPerm('POST /admin/night/catalog')"
             type="primary"
             @click="edit()"
-            >新建夜主档商品</ElButton
+            >手动补充商品</ElButton
           >
         </div>
         <ElTable v-loading="loading" :data="rows" row-key="id" empty-text="暂无夜主档商品——先建主档，再回各店铺配置楼栋商品">
@@ -192,6 +213,8 @@ defineExpose({ reload: load });
           <ElTableColumn label="条码" width="140">
             <template #default="{ row }">{{ row.barcode || "—" }}</template>
           </ElTableColumn>
+          <ElTableColumn label="共享仓库可用" width="125"><template #default="{ row }">{{ row.warehouseProductId ? row.warehouseAvailable : '未关联仓库' }}</template></ElTableColumn>
+          <ElTableColumn label="夜宵预留" width="100"><template #default="{ row }">{{ row.warehouseReserved }}</template></ElTableColumn>
           <ElTableColumn label="统一夜宵售价" width="130">
             <template #default="{ row }">¥{{ fenToYuan(row.price) }}</template>
           </ElTableColumn>
@@ -238,6 +261,13 @@ defineExpose({ reload: load });
         />
       </section>
     </template>
+    <ElDialog v-model="importOpen" title="从官方商品库导入夜宵商品" width="min(780px, calc(100vw - 32px))" :close-on-click-modal="false">
+      <ElAlert title="仅导入经营资料，不增加库存。导入后默认下架，请确认夜宵售价再上架。" type="info" :closable="false" />
+      <div class="catalog-search" style="margin: 18px 0"><ElInput v-model="candidateKeyword" placeholder="搜索官方商品名称" @keyup.enter="candidatePage = 1; loadCandidates()" /><ElButton @click="candidatePage = 1; loadCandidates()">查询</ElButton></div>
+      <div v-loading="importLoading" style="max-height: 430px; overflow: auto"><div v-for="c in candidates" :key="c.id" style="display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--el-border-color-lighter)"><ElCheckbox :model-value="selectedIds.includes(c.id)" @change="selectCandidate(c.id)" /><span style="flex: 1">{{ c.name }}</span><span>{{ c.barcode || '无条码' }}</span><span>建议零售价 ¥{{ fenToYuan(c.originalPrice) }}</span></div><ElEmpty v-if="!candidates.length && !importLoading" description="没有匹配的官方商品" /></div>
+      <div style="display: flex; gap: 16px; align-items: center; margin-top: 16px"><ElButton :disabled="candidatePage <= 1" @click="candidatePage--; loadCandidates()">上一页</ElButton><span>第 {{ candidatePage }} 页 · 共 {{ candidateTotal }} 种</span><ElButton :disabled="candidatePage * 50 >= candidateTotal" @click="candidatePage++; loadCandidates()">下一页</ElButton></div>
+      <template #footer><ElButton @click="importOpen = false">取消</ElButton><ElButton type="primary" :loading="saving" :disabled="!selectedIds.length || selectedIds.length > 100" @click="importSelected">导入已选 {{ selectedIds.length }} 种</ElButton></template>
+    </ElDialog>
     <ElDialog
       v-model="open"
       :title="editing ? '编辑夜主档商品' : '新建夜主档商品'"

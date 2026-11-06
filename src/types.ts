@@ -1561,6 +1561,10 @@ export interface NightStoreDetail extends NightStoreRow {
 }
 /** 夜主档商品行（Product nightCatalog=true）。 */
 export interface NightCatalogRow {
+  warehouseProductId: string | null;
+  warehouseAvailable: number;
+  warehouseReserved: number;
+  sourceProductId: string | null;
   id: string;
   name: string;
   subtitle: string;
@@ -1571,6 +1575,19 @@ export interface NightCatalogRow {
   barcode: string | null;
   status: string;
   updatedAt: string;
+}
+
+export interface NightOfficialCandidate { id: string; name: string; image: string; barcode: string | null; originalPrice: number; retailUnit: string }
+export interface NightStockRequest {
+  id: string; storeId: string; buildingName: string; managerName: string; status: string;
+  totalValue: number; heldValue: number; reason: string; createdAt: string;
+  reviewedAt: string | null; shippedAt: string | null; receivedAt: string | null;
+  items: Array<{ catalogProductId: string; name: string; quantity: number; price: number; receivedQuantity?: number }>;
+}
+export interface NightInventoryReport {
+  id: string; storeId: string; buildingName: string; managerName: string; status: string; kind: string;
+  heldValue: number; reason: string; reviewReason: string; photos: string[] | null; createdAt: string; reviewedAt: string | null;
+  items: Array<{ nightProductId: string; name: string; quantity: number; delta: number; value: number; bookQuantity: number; countedQuantity?: number }>;
 }
 /** 夜宵库存流水行（stock 全量变动账本）。 */
 export interface NightStockTxnRow {
