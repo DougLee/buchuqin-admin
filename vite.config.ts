@@ -14,8 +14,8 @@ export default defineConfig({
       dts: "src/components.d.ts",
     }),
     { name: 'local-night-preview-isolation', apply: 'serve', configureServer(server) {
-      if (['http://localhost:3150', 'http://127.0.0.1:3150'].includes(apiTarget)) server.middlewares.use((_req, res, next) => {
-        res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: ws://localhost:* ws://127.0.0.1:* http://localhost:3150 http://127.0.0.1:3150; img-src 'self' data: blob: http://localhost:3150 http://127.0.0.1:3150; frame-src 'none'");
+      if (['http://localhost:3150', 'http://127.0.0.1:3150', 'https://admin-test.buchuqin.com'].includes(apiTarget)) server.middlewares.use((_req, res, next) => {
+        res.setHeader('Content-Security-Policy', `default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: ws://localhost:* ws://127.0.0.1:* ${new URL(apiTarget).origin}; img-src 'self' data: blob: ${new URL(apiTarget).origin}; frame-src 'none'`);
         next();
       });
     } },
