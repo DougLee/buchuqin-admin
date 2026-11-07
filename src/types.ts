@@ -288,6 +288,7 @@ export interface StaffWriteBody {
 
 /** 首页 Banner（IK9RX2）：后台管理视图，color 为预置主题键或自定义 hex。 */
 export interface Banner {
+  businessType?: "day" | "night";
   id: string;
   campusId: string;
   /** IKAJSL：总部视角列表的投放范围（空 campusId = 全部校区）。 */
@@ -1435,6 +1436,7 @@ export interface DeliverySlotRow {
   capacity: number;
 }
 export interface NoticeRow {
+  businessType?: "day" | "night";
   id: string;
   campusId: string;
   content: string;
@@ -1574,6 +1576,8 @@ export interface NightStoreDetail extends NightStoreRow {
 }
 /** 夜主档商品行（Product nightCatalog=true）。 */
 export interface NightCatalogRow {
+  purchaseLimit?: string;
+  purchaseLimitQty?: number;
   categoryId: string;
   categoryName: string;
   retailUnit: string;
@@ -1585,6 +1589,10 @@ export interface NightCatalogRow {
   name: string;
   subtitle: string;
   image: string;
+  images?: string[] | null;
+  description?: string | null;
+  featured?: boolean;
+  featuredSort?: number;
   /** 夜宵统一售价（分） */
   price: number;
   originalPrice: number;
@@ -1672,7 +1680,7 @@ export interface NightOrderRow {
     phone?: string;
   };
   remark: string;
-  timeline: { key: string; title: string; time?: string; description?: string; images?: string[]; proof?: { images: string[]; remark?: string } }[];
+  timeline: { key: string; title: string; time?: string; description?: string; requestedAmount?: number; requestedItems?: { productId: string; name: string; quantity: number }[]; images?: string[]; proof?: { images: string[]; remark?: string } }[];
   couponSnapshot: { name?: string; amount?: number; threshold?: number } | null;
   businessDate: string;
   timeoutAt: string | null;
@@ -1728,3 +1736,6 @@ export interface NightLiquidation {
   commission: Record<string, number>;
   hints: string[];
 }
+
+/** Fields consumed by shared product selectors; night catalog rows need no fabricated day fields. */
+export type ProductPickerItem = Pick<Product, 'id' | 'name' | 'image' | 'price'> & Partial<Pick<Product, 'categoryId' | 'barcode' | 'procurementMode' | 'localPurchasePrice' | 'wholesalePrice' | 'unitsPerCase' | 'retailUnit' | 'wholesaleUnit' | 'availableStock' | 'stock'>>;

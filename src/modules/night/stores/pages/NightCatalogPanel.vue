@@ -98,6 +98,12 @@ const form = reactive({
   originalPrice: 0,
   subtitle: "",
   image: "",
+  images: [] as string[],
+  description: "",
+  featured: false,
+  featuredSort: 0,
+  purchaseLimit: "none",
+  purchaseLimitQty: 1,
   barcode: "",
   status: "on-sale" as "on-sale" | "off-sale",
 });
@@ -151,6 +157,12 @@ function edit(row?: NightCatalogRow) {
     originalPrice: Number(fenToYuan(row?.originalPrice ?? 0)),
     subtitle: row?.subtitle ?? "",
     image: row?.image ?? "",
+    images: row && Array.isArray(row.images) ? [...row.images] : [],
+    description: row?.description ?? "",
+    featured: row?.featured ?? false,
+    featuredSort: row?.featuredSort ?? 0,
+    purchaseLimit: row?.purchaseLimit ?? "none",
+    purchaseLimitQty: row?.purchaseLimitQty ?? 1,
     barcode: row?.barcode ?? "",
     status: row?.status === "off-sale" ? "off-sale" : "on-sale",
   });
@@ -173,6 +185,12 @@ async function save() {
         price: priceFen,
         originalPrice: originalFen,
         image: form.image,
+        images: form.images.filter(Boolean),
+        description: form.description.trim(),
+        featured: form.featured,
+        featuredSort: form.featuredSort,
+        purchaseLimit: form.purchaseLimit,
+        purchaseLimitQty: form.purchaseLimitQty,
         subtitle: form.subtitle.trim(),
         status: form.status,
       });
@@ -184,6 +202,12 @@ async function save() {
         price: priceFen,
         originalPrice: originalFen,
         image: form.image,
+        images: form.images.filter(Boolean),
+        description: form.description.trim(),
+        featured: form.featured,
+        featuredSort: form.featuredSort,
+        purchaseLimit: form.purchaseLimit,
+        purchaseLimitQty: form.purchaseLimitQty,
         subtitle: form.subtitle.trim(),
         barcode: form.barcode.trim() || undefined,
       });
@@ -541,6 +565,14 @@ defineExpose({ reload: load });
               <ImageUploadField v-model="form.image" />
             </ElFormItem>
           </ElCol>
+          <ElCol :span="24">
+            <ElFormItem label="商品介绍"><ElInput v-model="form.description" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="介绍口味、规格与食用建议" /></ElFormItem>
+            <ElFormItem label="详情图片（最多10张）"><div style="display: grid; gap: 12px; width: 100%"><div v-for="(_, index) in form.images" :key="index" style="display: flex; align-items: flex-start; gap: 8px"><ImageUploadField v-model="form.images[index]" /><ElButton @click="form.images.splice(index, 1)">移除</ElButton></div><ElButton :disabled="form.images.length >= 10" @click="form.images.push('')">添加详情图</ElButton></div></ElFormItem>
+          </ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="首页推荐"><ElSwitch v-model="form.featured" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="购买周期"><ElSelect v-model="form.purchaseLimit"><ElOption label="不限购" value="none"/><ElOption label="每人终身" value="once"/><ElOption label="每周（周一起）" value="weekly"/><ElOption label="每月" value="monthly"/></ElSelect></ElFormItem></ElCol>
+          <ElCol v-if="form.purchaseLimit !== 'none'" :xs="24" :sm="12"><ElFormItem label="周期内限购件数"><ElInputNumber v-model="form.purchaseLimitQty" :min="1" :max="9999" :precision="0"/></ElFormItem></ElCol>
+          <ElCol v-if="form.featured" :xs="24" :sm="12"><ElFormItem label="推荐顺序（小值优先）"><ElInputNumber v-model="form.featuredSort" :min="0" :max="9999" :precision="0" /></ElFormItem></ElCol>
           <ElCol v-if="editing" :xs="24" :sm="12">
             <ElFormItem label="上下架状态">
               <ElSelect v-model="form.status">

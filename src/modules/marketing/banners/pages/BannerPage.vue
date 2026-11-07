@@ -8,7 +8,7 @@ import { BANNER_COLOR_TEXT, BANNER_PLACEMENT_TEXT } from "../../../../dicts";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Banner , Product } from "../../../../types";
+import type { Banner, ProductPickerItem } from "../../../../types";
 import { resolveImageUrl } from "../../../../utils/image";
 
 const props = withDefaults(
@@ -24,6 +24,7 @@ const page = ref(1),
   total = ref(0),
   keyword = ref(""),
   status = ref("");
+const businessType = ref<"day" | "night">("day");
 const editing = ref<Banner | null>(null);
 const title = computed(() =>
   props.placement === "pay-success" ? "支付广告位" : "Banner 配置",
@@ -46,7 +47,7 @@ const form = reactive({
   linkUrl: "",
   status: "active",
 });
-const linkPages = [
+const dayLinkPages = [
   /** IKR14X：商品详情为哨兵值——选中时展开选品器（ProductPickerField），
    *  拣定商品回填真实路径；哨兵不落库（保存时 linkUrl 已是真实路径） */
   { value: "PRODUCT_DETAIL", label: "商品详情（选商品）" },
@@ -58,9 +59,10 @@ const linkPages = [
   { value: "pages/profile/index", label: "我的" },
   { value: "pages/campus/index", label: "楼栋选择" },
 ];
+const linkPages = computed(() => dayLinkPages);
 /* ---------- IKR14X 商品选品（复用 ProductPickerField 公共组件） ---------- */
-const PRODUCT_PATH_RE = /^pages\/product\/detail\?id=(.+)$/;
-const pickerProducts = ref<Product[]>([]);
+const PRODUCT_PATH_RE = /^pages\/(?:product\/detail\?id=|night\/buildings\?catalogProductId=)(.+)$/;
+const pickerProducts = ref<ProductPickerItem[]>([]);
 const pickerLoading = ref(false);
 /* IKR14X 数据源升级（道哥 10-28 实测选不到新商品）：一次性 pageSize=100
  * 截断——大校区在售 700+，新建商品不在前 100。改 remote（照促销页先例）：
@@ -109,9 +111,12 @@ const pickedProductId = computed(
 /** 选品器拣定 → 回填真实路径（保存链路零改动） */
 function pickProduct(value: string | Record<string, number>) {
   if (typeof value !== "string") return;
-  form.linkUrl = `pages/product/detail?id=${value}`;
+  form.linkUrl = businessType.value === "night" ? `pages/night/buildings?catalogProductId=${encodeURIComponent(value)}` : `pages/product/detail?id=${encodeURIComponent(value)}`;
 }
+let pickerGeneration = 0;
 async function loadPicker(append = false) {
+  const generation = ++pickerGeneration;
+  const channel = businessType.value;
   if (!effectiveCampusId.value) {
     pickerProducts.value = [];
     pickerTotal.value = 0;
@@ -120,7 +125,7 @@ async function loadPicker(append = false) {
   if (!append) pickerLoading.value = true;
   else pickerMore.value = true;
   try {
-    const r = await api.products(
+    const r = channel === 'night' ? await api.nightCatalog(pickerFilter.keyword || undefined, pickerPage.value, 100, { status: 'on-sale', categoryId: pickerFilter.categoryId === 'all' ? undefined : pickerFilter.categoryId }).then(result => ({ ...result, items: result.items.map(row => ({ ...row, stock: row.warehouseAvailable })) })) : await api.products(
       {
         page: pickerPage.value,
         pageSize: 100,
@@ -134,15 +139,15 @@ async function loadPicker(append = false) {
       },
       "campus",
     );
+    if (generation !== pickerGeneration || channel !== businessType.value) return;
     pickerProducts.value = append
       ? [...pickerProducts.value, ...r.items]
       : r.items;
     pickerTotal.value = r.total;
   } catch {
-    ElMessage.error("在售商品加载失败");
+    if (generation === pickerGeneration) ElMessage.error("在售商品加载失败");
   } finally {
-    pickerLoading.value = false;
-    pickerMore.value = false;
+    if (generation === pickerGeneration) { pickerLoading.value = false; pickerMore.value = false; }
   }
 }
 function onPickerFilter(f: { categoryId: string; keyword: string }) {
@@ -172,7 +177,9 @@ function asBanner(row: unknown) {
 function notify(message: string, type: "success" | "error" = "success") {
   ElMessage({ message, type, showClose: true });
 }
+let loadGeneration = 0;
 async function load() {
+  const generation = ++loadGeneration;
   loading.value = true;
   try {
     const result = await api.banners(
@@ -183,13 +190,15 @@ async function load() {
       },
       props.placement,
       status.value || undefined,
+      businessType.value,
     );
+    if (generation !== loadGeneration) return;
     rows.value = result.items;
     total.value = result.total;
   } catch (error) {
-    notify(error instanceof Error ? error.message : "Banner 加载失败", "error");
+    if (generation === loadGeneration) notify(error instanceof Error ? error.message : "Banner 加载失败", "error");
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 function openEditor(row?: Banner) {
@@ -233,7 +242,7 @@ async function save() {
   };
   try {
     if (editing.value) await api.updateBanner(editing.value.id, data);
-    else await api.createBanner(data);
+    else await api.createBanner({ ...data, businessType: businessType.value });
     editorOpen.value = false;
     notify(editing.value ? "Banner 已更新" : "Banner 已创建");
     await load();
@@ -272,7 +281,7 @@ async function remove(row: Banner) {
     notify(error instanceof Error ? error.message : "删除失败", "error");
   }
 }
-watch([page, pageSize, status, effectiveCampusId], load);
+watch([page, pageSize, status, effectiveCampusId, businessType], () => { rows.value = []; editorOpen.value = false; pickerGeneration++; pickerProducts.value = []; void load(); });
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
   timer = window.setTimeout(() => {
@@ -293,6 +302,7 @@ onMounted(load);
         >新建</ElButton
       ></template
     >
+    <ElSegmented v-model="businessType" :options="[{ label: '白天店', value: 'day' }, { label: '夜宵店', value: 'night' }]" aria-label="运营内容店铺" />
     <section class="admin-filter-panel" aria-label="Banner 筛选">
       <ElForm class="admin-filter-form" label-position="top"
         ><ElRow :gutter="12" align="bottom"

@@ -512,7 +512,8 @@ async function removeSlot(row: DeliverySlotRow) {
 }
 
 /* ---------- 公告 CRUD（IKHM1P） ---------- */
-const notices = computed<NoticeRow[]>(() => bundle.value?.notices ?? []);
+const noticeBusinessType = ref<'day' | 'night'>('day');
+const notices = computed<NoticeRow[]>(() => (bundle.value?.notices ?? []).filter(row => (row.businessType || 'day') === noticeBusinessType.value));
 const noticeForm = ref({
   content: "",
   startsAt: localInput(new Date()),
@@ -538,6 +539,7 @@ async function addNotice() {
   try {
     await api.createNotice({
       campusId: bundle.value.campus.id,
+      businessType: noticeBusinessType.value,
       content: noticeForm.value.content.trim(),
       startsAt: new Date(noticeForm.value.startsAt).toISOString(),
       endsAt: new Date(noticeForm.value.endsAt).toISOString(),
@@ -1082,6 +1084,7 @@ async function removeNotice(n: NoticeRow) {
       <NightConfigPanel />
     </section>
     <section v-else-if="activeTab === 'notices'" class="cc-panel">
+      <ElSegmented v-model="noticeBusinessType" :options="[{ label: '白天店公告', value: 'day' }, { label: '夜宵店公告', value: 'night' }]" aria-label="公告店铺" />
       <template v-if="bundle">
         <ElForm v-if="canWrite('POST /admin/notices')" label-position="top"
           ><ElRow :gutter="16" align="bottom">

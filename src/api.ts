@@ -1356,9 +1356,10 @@ export const api = {
   /** 首页 Banner（IK9RX2）：营销活动板块内 tab 管理。
    *  IKB5PB：placement 过滤（支付广告位菜单只看 pay-success）；
    *  IKB5PA：status 过滤（启用/隐藏 Tab）。 */
-  banners: (query?: ListQuery, placement?: string, status?: string) =>
+  banners: (query?: ListQuery, placement?: string, status?: string, businessType = "day") =>
     request<PagedResponse<Banner>>(
       `/admin/banners${withQuery(
+        `businessType=${businessType}`,
         placement ? `placement=${placement}` : "",
         status ? `status=${status}` : "",
         listQuery(query),
@@ -1425,10 +1426,10 @@ export const api = {
     request<RecruitIdcard>(`/admin/recruit-applications/${id}/idcard`),
   /** 促销活动（ADR-0006 / IKAHFF）：price 为促销价（分），无删除（留审计）。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗判定）。 */
-  promotions: (query?: ListQuery, state?: string) =>
+  promotions: (query?: ListQuery, state?: string, businessType: "day" | "night" = "day") =>
     request<PagedResponse<Promotion>>(
       `/admin/promotions${withQuery(
-        state ? `state=${state}` : "",
+        `businessType=${businessType}${state ? `&state=${state}` : ""}`,
         listQuery(query),
       )}`,
     ),
@@ -1745,6 +1746,7 @@ export const api = {
   deleteSlot: (id: string) =>
     request(`/admin/delivery-slots/${id}`, { method: "DELETE" }),
   createNotice: (data: {
+    businessType?: "day" | "night";
     campusId: string;
     content: string;
     startsAt: string;
@@ -1836,6 +1838,12 @@ export const api = {
     price: number;
     originalPrice?: number;
     image?: string;
+    images?: string[];
+    description?: string;
+    featured?: boolean;
+    featuredSort?: number;
+    purchaseLimit?: string;
+    purchaseLimitQty?: number;
     subtitle?: string;
     barcode?: string;
     categoryId?: string;
@@ -1853,6 +1861,12 @@ export const api = {
       price?: number;
       originalPrice?: number;
       image?: string;
+    images?: string[];
+    description?: string;
+    featured?: boolean;
+    featuredSort?: number;
+    purchaseLimit?: string;
+    purchaseLimitQty?: number;
       subtitle?: string;
       categoryId?: string;
       retailUnit?: string;

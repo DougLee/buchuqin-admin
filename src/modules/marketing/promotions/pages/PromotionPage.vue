@@ -7,10 +7,11 @@ import { effectiveCampusId, hasPerm } from "../../../../session";
 import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
-import type { Product, Promotion } from "../../../../types";
+import type { ProductPickerItem, Promotion } from "../../../../types";
+import { fmtDateTime } from "../../../../utils/datetime";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 const rows = ref<Promotion[]>([]),
-  products = ref<Product[]>([]),
+  products = ref<ProductPickerItem[]>([]),
   productsLoading = ref(false),
   loading = ref(false),
   saving = ref(false),
@@ -21,6 +22,8 @@ const rows = ref<Promotion[]>([]),
   total = ref(0),
   keyword = ref(""),
   state = ref("all");
+const businessType = ref<"day" | "night">("day");
+let loadGeneration = 0, candidateGeneration = 0;
 const form = reactive({
   productId: "",
   type: "seckill" as "seckill" | "clearance",
@@ -42,6 +45,8 @@ function stateText(p: Promotion) {
   return "进行中";
 }
 async function load() {
+  const generation = ++loadGeneration;
+  const campus = effectiveCampusId.value, channel = businessType.value;
   if (!effectiveCampusId.value) {
     rows.value = [];
     total.value = 0;
@@ -57,13 +62,15 @@ async function load() {
         campusId: effectiveCampusId.value,
       },
       state.value === "all" ? undefined : state.value,
+      channel,
     );
+    if (generation !== loadGeneration || campus !== effectiveCampusId.value || channel !== businessType.value) return;
     rows.value = r.items;
     total.value = r.total;
   } catch (e) {
     notify(e instanceof Error ? e.message : "活动加载失败", "error");
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 /** 商品候选集（道哥 2026-10-20 秒杀选不到新商品）：后端 pageSize 封顶 100，
@@ -78,6 +85,7 @@ const candTotal = ref(0);
 const loadingMore = ref(false);
 const hasMore = computed(() => products.value.length < candTotal.value);
 async function loadCandidates(append = false) {
+  const generation = ++candidateGeneration, campus = effectiveCampusId.value, channel = businessType.value;
   if (!effectiveCampusId.value) {
     products.value = [];
     candTotal.value = 0;
@@ -88,24 +96,15 @@ async function loadCandidates(append = false) {
   else loadingMore.value = true;
   try {
     const f = lastFilter;
-    const r = await api.products(
-      {
-        page: candPage.value,
-        pageSize: 100,
-        status: "on-sale",
-        categoryId: f.categoryId !== "all" ? f.categoryId : undefined,
-        keyword: f.keyword || undefined,
-        campusId: effectiveCampusId.value,
-      },
-      "campus",
-    );
+    const r = channel === 'night' ? await api.nightCatalog(f.keyword || undefined, candPage.value, 100, { categoryId: f.categoryId === 'all' ? undefined : f.categoryId, status: 'on-sale' }).then(result => ({ ...result, items: result.items.map(row => ({ ...row, stock: row.warehouseAvailable })) })) : await api.products(
+      { page: candPage.value, pageSize: 100, status: 'on-sale', categoryId: f.categoryId !== 'all' ? f.categoryId : undefined, keyword: f.keyword || undefined, campusId: campus }, 'campus');
+    if (generation !== candidateGeneration || campus !== effectiveCampusId.value || channel !== businessType.value) return;
     products.value = append ? [...products.value, ...r.items] : r.items;
     candTotal.value = r.total;
   } catch (e) {
     notify(e instanceof Error ? e.message : "在售商品加载失败", "error");
   } finally {
-    productsLoading.value = false;
-    loadingMore.value = false;
+    if (generation === candidateGeneration) { productsLoading.value = false; loadingMore.value = false; }
   }
 }
 function onFilterChange(f: { categoryId: string; keyword: string }) {
@@ -131,8 +130,8 @@ async function edit(row?: Promotion) {
     productId: row?.productId ?? "",
     type: row?.type ?? "seckill",
     price: Number(fenToYuan(row?.price ?? 0)),
-    startsAt: row?.startsAt?.slice(0, 16) ?? "",
-    endsAt: row?.endsAt?.slice(0, 16) ?? "",
+    startsAt: row?.startsAt ? fmtDateTime(row.startsAt).replace(" ", "T") : "",
+    endsAt: row?.endsAt ? fmtDateTime(row.endsAt).replace(" ", "T") : "",
   });
   open.value = true;
 }
@@ -184,6 +183,7 @@ async function toggle(row: Promotion) {
   }
 }
 watch([page, pageSize, state, effectiveCampusId], load);
+watch(businessType, () => { page.value = 1; products.value = []; candTotal.value = 0; void load(); });
 onMounted(load);
 </script>
 <template>
@@ -213,6 +213,7 @@ onMounted(load);
             :name="tab.key"
         /></ElTabs>
         <div class="admin-filter-form marketing-search">
+          <ElRadioGroup v-model="businessType" aria-label="经营渠道"><ElRadioButton value="day">白天店</ElRadioButton><ElRadioButton value="night">夜宵店</ElRadioButton></ElRadioGroup>
           <ElInput
             v-model="keyword"
             clearable
@@ -249,14 +250,8 @@ onMounted(load);
               row.product ? `¥${fenToYuan(row.product.price)}` : "—"
             }}</template></ElTableColumn
           ><ElTableColumn
-            prop="startsAt"
-            label="开始时间"
-            min-width="170"
-          /><ElTableColumn
-            prop="endsAt"
-            label="结束时间"
-            min-width="170"
-          /><ElTableColumn label="状态"
+            label="开始时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.startsAt) }}</template></ElTableColumn><ElTableColumn
+            label="结束时间" min-width="170"><template #default="{ row }">{{ fmtDateTime(row.endsAt) }}</template></ElTableColumn><ElTableColumn label="状态"
             ><template #default="{ row }"
               ><ElTag>{{ stateText(asPromotion(row)) }}</ElTag></template
             ></ElTableColumn
@@ -295,6 +290,7 @@ onMounted(load);
                   类别筛选+搜索+行式卡片，showCost 补显成本价（IKH15V 口径：
                   LOCAL=localPurchasePrice 回落批发价，其余=批发价）防亏本定价 -->
               <ProductPickerField
+                :stock-label="businessType === 'night' ? '共享仓可备' : '可售'"
                 remote
                 :items="products"
                 :loading="productsLoading"

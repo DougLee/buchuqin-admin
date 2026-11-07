@@ -302,7 +302,7 @@ onMounted(() => {
             clearable
           />
           <ElSelect v-model="afterSaleStatus" clearable placeholder="全部售后状态" style="width: 170px">
-            <ElOption label="用户待处理售后" value="requested" /><ElOption label="退款处理中" value="refund-processing" /><ElOption label="售后已处理" value="resolved" /><ElOption label="售后已驳回" value="rejected" />
+            <ElOption label="用户待处理售后" value="requested" /><ElOption label="退款处理中" value="refund-processing" /><ElOption label="售后已处理" value="resolved" /><ElOption label="售后已驳回" value="rejected" /><ElOption label="用户已撤销" value="withdrawn" />
           </ElSelect>
         </div>
       </section>
@@ -436,7 +436,7 @@ onMounted(() => {
             <span>{{
               detail.afterSaleStatus === "requested"
                 ? "用户已申请售后"
-                : detail.afterSaleStatus === 'refund-processing' ? '退款处理中' : detail.afterSaleStatus === 'resolved' ? '已处理' : detail.afterSaleStatus === 'rejected' ? '已驳回' : detail.afterSaleStatus
+                : detail.afterSaleStatus === 'refund-processing' ? '退款处理中' : detail.afterSaleStatus === 'resolved' ? '已处理' : detail.afterSaleStatus === 'rejected' ? '已驳回' : detail.afterSaleStatus === 'withdrawn' ? '用户已撤销' : detail.afterSaleStatus
             }}</span>
           </div>
         </div>
@@ -525,6 +525,8 @@ onMounted(() => {
             <span class="timeline-title">{{ step.title }}</span>
             <span v-if="step.time || step.key === 'submit'" class="muted">{{ fmtTime(step.time || detail.createdAt) }}</span>
             <p v-if="step.description" style="white-space: pre-wrap; word-break: break-word; width: 100%">{{ step.description }}</p>
+            <p v-if="step.requestedAmount != null" class="muted">申请商品退款 ¥{{ (step.requestedAmount / 100).toFixed(2) }}（实际以审核核定为准）</p>
+            <p v-if="step.requestedItems?.length" class="muted">{{ step.requestedItems.map(item => `${item.name} × ${item.quantity}`).join('、') }}</p>
             <div v-if="step.images?.length || step.proof?.images?.length" style="display: flex; flex-wrap: wrap; gap: 8px; width: 100%">
               <ElImage v-for="url in step.images || step.proof?.images" :key="url" :src="url" :preview-src-list="step.images || step.proof?.images" preview-teleported fit="cover" style="width: 88px; height: 88px; border-radius: 12px" />
             </div>

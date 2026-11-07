@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api } from "../api";
 import { hasPerm } from "../session";
 import { fenToYuan } from "../utils/money";
-import type { Product } from "../types";
+import type { ProductPickerItem } from "../types";
 /**
  * 商品选择器（IKGQ6Q，2026-09-18 道哥拍板组件化）：类别下拉 + 模糊搜索 +
  * 行式卡片列表，四处统一——
@@ -14,7 +14,8 @@ import type { Product } from "../types";
  * 视觉沿用 IKG7B9 已验收样式（36px 筛选行、行式卡片、绿系选中）+ 加载骨架。
  */
 const props = defineProps<{
-  items: Product[];
+  items: ProductPickerItem[];
+  stockLabel?: string;
   loading?: boolean;
   multiple?: boolean;
   /** 多选行件数输入禁用（订货单非草稿态只读） */
@@ -113,17 +114,17 @@ function togglePick(id: string) {
 /** IKH15V 成本口径（与后端支付快照一致，2026-10-16 秒杀定价补显升级）：
  *  LOCAL=自主采购取 localPurchasePrice（未录回落批发价快照），其余一律取
  *  wholesalePrice。无成本读权限（RBAC 输出层已裁剪）或未录时返回 null 不显示。 */
-function costOf(p: Product): number | null {
+function costOf(p: ProductPickerItem): number | null {
   if (p.procurementMode === "LOCAL")
     return p.localPurchasePrice ?? p.wholesalePrice ?? null;
   return p.wholesalePrice ?? null;
 }
 /** 行内成本片段（含前导「 · 」分隔），无成本返回空串。 */
-function costText(p: Product): string {
+function costText(p: ProductPickerItem): string {
   const c = costOf(p);
   return c == null ? "" : ` · 成本¥${fenToYuan(c)}`;
 }
-function unitText(p: Product): string {
+function unitText(p: ProductPickerItem): string {
   // 快照行 unitsPerCase 可能缺省（订货单旧快照），缺省视为无件概念
   const per = p.unitsPerCase ?? 1;
   return per > 1 ? ` · 1 件=${per}${p.retailUnit || "个"}` : "";
@@ -162,7 +163,7 @@ function unitText(p: Product): string {
           <span class="pp-item__meta"
             >现价 ¥{{ fenToYuan(p.price)
             }}<template v-if="showCost">{{ costText(p) }}</template
-            > · 可售 {{ p.availableStock ?? p.stock ?? 0 }}</span
+            > · {{ stockLabel || '可售' }} {{ p.availableStock ?? p.stock ?? 0 }}</span
           >
         </button>
         <div v-if="!filtered.length" class="pp-empty">
