@@ -31,6 +31,9 @@ const props = defineProps<{
   hasMore?: boolean;
   /** remote 分页：加载中 */
   loadingMore?: boolean;
+  /** IKTWMM 官方库导入形态：行内 meta 显条码+建议零售价（夜主档导入弹窗）；
+   *  缺省维持现价/单价口径，已接入五处不受影响 */
+  meta?: "official";
   modelValue: string | Record<string, number>;
 }>();
 const emit = defineEmits<{
@@ -129,6 +132,12 @@ function unitText(p: ProductPickerItem): string {
   const per = p.unitsPerCase ?? 1;
   return per > 1 ? ` · 1 件=${per}${p.retailUnit || "个"}` : "";
 }
+/** IKTWMM 官方库候选行 meta：条码+建议零售价（无条码明示「无」） */
+function officialMetaText(p: ProductPickerItem): string {
+  return `条码 ${p.barcode || "无"} · 建议零售价 ¥${fenToYuan(
+    p.originalPrice ?? p.price,
+  )}`;
+}
 </script>
 
 <template>
@@ -160,7 +169,10 @@ function unitText(p: ProductPickerItem): string {
           <img v-if="p.image" :src="p.image" alt="" />
           <span v-else class="pp-item__ph"></span>
           <span class="pp-item__name">{{ p.name }}</span>
-          <span class="pp-item__meta"
+          <span v-if="meta === 'official'" class="pp-item__meta">{{
+            officialMetaText(p)
+          }}</span>
+          <span v-else class="pp-item__meta"
             >现价 ¥{{ fenToYuan(p.price)
             }}<template v-if="showCost">{{ costText(p) }}</template
             > · {{ stockLabel || '可售' }} {{ p.availableStock ?? p.stock ?? 0 }}</span
@@ -191,7 +203,10 @@ function unitText(p: ProductPickerItem): string {
           <span v-else class="pp-item__ph"></span>
           <span class="pp-item__main">
             <span class="pp-item__name">{{ p.name }}</span>
-            <span class="pp-item__meta"
+            <span v-if="meta === 'official'" class="pp-item__meta">{{
+              officialMetaText(p)
+            }}</span>
+            <span v-else class="pp-item__meta"
               >单价 {{ fenToYuan(p.price) }}/{{ p.wholesaleUnit || "件"
               }}{{ unitText(p) }}</span
             >

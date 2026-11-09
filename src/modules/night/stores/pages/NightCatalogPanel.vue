@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import NightLoadError from '../../NightLoadError.vue';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import { effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
+import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import type {
   NightCatalogRow,
   NightOfficialCandidate,
@@ -42,36 +43,62 @@ function resetFilters() {
 }
 const importOpen = ref(false),
   importLoading = ref(false);
-const candidates = ref<NightOfficialCandidate[]>([]);
-const candidateKeyword = ref(""),
-  candidatePage = ref(1),
+const candidates = ref<(NightOfficialCandidate & { price: number })[]>([]);
+const candidatePage = ref(1),
   candidateTotal = ref(0);
-const selectedIds = ref<string[]>([]);
-async function loadCandidates() {
-  importLoading.value = true;
+/** IKTWMM：导入弹窗换统一商品选择器（remote 勾选形态）——
+ *  选中集用 {商品id:1} 勾选语义（组件 multiple+simple 约定），导入取键集 */
+const importSelection = ref<Record<string, number>>({});
+const candidateFilter = ref({ categoryId: "all", keyword: "" });
+const loadingMoreCandidates = ref(false);
+const selectedIds = computed(() => Object.keys(importSelection.value));
+const hasMoreCandidates = computed(
+  () => candidates.value.length < candidateTotal.value,
+);
+async function loadCandidates(opts?: { append?: boolean }) {
+  if (!opts?.append) importLoading.value = true;
   try {
     const r = await api.nightCatalogCandidates(
-      candidateKeyword.value,
+      candidateFilter.value.keyword,
       candidatePage.value,
+      50,
+      candidateFilter.value.categoryId === "all"
+        ? undefined
+        : candidateFilter.value.categoryId,
     );
-    candidates.value = r.items;
+    // 选择器 items 要 price（ProductPickerItem 必填）：官方候选行以建议零售价充当
+    const rows = r.items.map((c) => ({ ...c, price: c.originalPrice }));
+    candidates.value = opts?.append ? [...candidates.value, ...rows] : rows;
     candidateTotal.value = r.total;
   } catch (e) {
     notify(e instanceof Error ? e.message : "官方库加载失败", "error");
+    if (!opts?.append) candidates.value = [];
   } finally {
     importLoading.value = false;
   }
 }
 async function startImport() {
+  candidateFilter.value = { categoryId: "all", keyword: "" };
   candidatePage.value = 1;
-  selectedIds.value = [];
+  importSelection.value = {};
   importOpen.value = true;
   await loadCandidates();
 }
-function selectCandidate(id: string) {
-  selectedIds.value = selectedIds.value.includes(id)
-    ? selectedIds.value.filter((x) => x !== id)
-    : [...selectedIds.value, id];
+/** remote 模式：选择器防抖上抛类别/关键词，服务端过滤后重置首页 */
+function onCandidateFilter(f: { categoryId: string; keyword: string }) {
+  candidateFilter.value = f;
+  candidatePage.value = 1;
+  void loadCandidates();
+}
+async function onCandidateLoadMore() {
+  if (loadingMoreCandidates.value) return;
+  loadingMoreCandidates.value = true;
+  try {
+    candidatePage.value += 1;
+    await loadCandidates({ append: true });
+  } finally {
+    loadingMoreCandidates.value = false;
+  }
 }
 async function importSelected() {
   if (!selectedIds.value.length || saving.value) return;
@@ -238,7 +265,7 @@ watch([page, pageSize], load);
 watch(effectiveCampusId, () => {
   importOpen.value = false;
   open.value = false;
-  selectedIds.value = [];
+  importSelection.value = {};
   categories.value = [];
   resetFilters();
 });
@@ -445,65 +472,20 @@ defineExpose({ reload: load });
         type="info"
         :closable="false"
       />
-      <div class="catalog-search" style="margin: 18px 0">
-        <ElInput
-          v-model="candidateKeyword"
-          placeholder="搜索官方商品名称"
-          @keyup.enter="
-            candidatePage = 1;
-            loadCandidates();
-          "
-        /><ElButton
-          @click="
-            candidatePage = 1;
-            loadCandidates();
-          "
-          >查询</ElButton
-        >
-      </div>
-      <div v-loading="importLoading" style="max-height: 430px; overflow: auto">
-        <div
-          v-for="c in candidates"
-          :key="c.id"
-          style="
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 14px 0;
-            border-bottom: 1px solid var(--el-border-color-lighter);
-          "
-        >
-          <ElCheckbox
-            :model-value="selectedIds.includes(c.id)"
-            @change="selectCandidate(c.id)"
-          /><span style="flex: 1">{{ c.name }}</span
-          ><span>{{ c.barcode || "无条码" }}</span
-          ><span>建议零售价 ¥{{ fenToYuan(c.originalPrice) }}</span>
-        </div>
-        <ElEmpty
-          v-if="!candidates.length && !importLoading"
-          description="没有匹配的官方商品"
+      <div style="margin-top: 14px">
+        <ProductPickerField
+          v-model="importSelection"
+          :items="candidates"
+          :loading="importLoading"
+          :loading-more="loadingMoreCandidates"
+          :has-more="hasMoreCandidates"
+          multiple
+          simple
+          remote
+          meta="official"
+          @filter-change="onCandidateFilter"
+          @load-more="onCandidateLoadMore"
         />
-      </div>
-      <div
-        style="display: flex; gap: 16px; align-items: center; margin-top: 16px"
-      >
-        <ElButton
-          :disabled="candidatePage <= 1"
-          @click="
-            candidatePage--;
-            loadCandidates();
-          "
-          >上一页</ElButton
-        ><span>第 {{ candidatePage }} 页 · 共 {{ candidateTotal }} 种</span
-        ><ElButton
-          :disabled="candidatePage * 50 >= candidateTotal"
-          @click="
-            candidatePage++;
-            loadCandidates();
-          "
-          >下一页</ElButton
-        >
       </div>
       <template #footer
         ><ElButton @click="importOpen = false">取消</ElButton

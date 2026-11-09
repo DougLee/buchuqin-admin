@@ -1773,7 +1773,7 @@ export const api = {
     request(`/admin/notices/${id}`, { method: "DELETE" }),
 
   /* ---------- 夜宵经营（IKSW1F /admin/night/*，与白天业务完全隔离） ---------- */
-  nightCatalogCandidates: (keyword = "", page = 1) => request<PagedResponse<import("./types").NightOfficialCandidate>>(`/admin/night/catalog/candidates?keyword=${encodeURIComponent(keyword)}&page=${page}&pageSize=50`),
+  nightCatalogCandidates: (keyword = "", page = 1, pageSize = 50, categoryId?: string) => request<PagedResponse<import("./types").NightOfficialCandidate>>(`/admin/night/catalog/candidates?keyword=${encodeURIComponent(keyword)}&page=${page}&pageSize=${pageSize}${categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : ""}`),
   importNightCatalog: (productIds: string[]) => request<{ importedCount: number; skippedCount: number }>("/admin/night/catalog/import", { method: "POST", body: JSON.stringify({ productIds }) }),
   nightStockRequests: (status = "", storeId = "", filters: { keyword?: string; from?: string; to?: string } = {}) => request<import("./types").NightStockRequest[]>(`/admin/night/stock-orders?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}&${nightFilterQuery(filters)}`),
   reviewNightStock: (id: string, approved: boolean, reason: string) => request(`/admin/night/stock-orders/${id}/review`, { method: "POST", body: JSON.stringify({ approved, reason }) }),
