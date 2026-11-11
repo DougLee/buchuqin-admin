@@ -888,17 +888,19 @@ export const api = {
     ),
   /** IKHZKA 审核：approve=批准并发起微信原路退回；reject=拒绝回滚订单。
    *  v2：amounts=部分退款各行核定金额（分）。
-   *  #110/#91：refundDeliveryFee=退配送费开关（仅 approve 传，不传=后端按规则默认）。 */
+   *  #110/#91：refundDeliveryFee=退配送费开关（仅 approve 传，不传=后端按规则默认）。
+   *  IKUISI：totalAmount=整单退款（无商品行）核定金额（分），存量锁超额死锁单下调救活。 */
   auditRefund: (
     id: string,
     action: "approve" | "reject",
     remark?: string,
     amounts?: Array<{ itemId: string; amount: number }>,
     refundDeliveryFee?: boolean,
+    totalAmount?: number,
   ) =>
     request<{ id: string; status: string }>(`/admin/refunds/${id}/audit`, {
       method: "POST",
-      body: JSON.stringify({ action, remark, amounts, refundDeliveryFee }),
+      body: JSON.stringify({ action, remark, amounts, refundDeliveryFee, totalAmount }),
     }),
   /** IKHZKA v2：客服按商品发起部分退款并即时批准（金额可核定，单位分）。 */
   createOrderRefund: (
@@ -908,6 +910,8 @@ export const api = {
       productIds?: string[];
       amounts?: Array<{ productId: string; amount: number }>;
       remark?: string;
+      /** IKUISI：整单退款金额（分）——弹窗填写值显式上送（此前被静默丢弃） */
+      amount?: number;
     },
   ) =>
     request<{ id: string; status: string }>(`/admin/orders/${orderId}/refunds`, {

@@ -321,10 +321,42 @@ function goodsAmountOf(order: Order) {
   return order.productAmount ?? order.payableAmount - (order.deliveryFee ?? 0);
 }
 
-/** 当前可退余额（元）= 商品额 − 已退（含处理中） */
+/** 当前可退余额（元）= 商品额 − 已退（含处理中）。
+ *  IKUISI：未送达整单退款单改实付口径——已到店上限=实付（含运费）、
+ *  未到店=实付−运费（券后商品额可能大于实付，旧口径显示误导且超额必被
+ *  审核上限拦截）；送达后按行退款仍用商品额口径（行上限语义，零变化） */
+const UNSHIPPED_REFUND_STATUSES = [
+  "paid",
+  "picking",
+  "waiting-first-mile",
+  "arrived",
+  "first-mile",
+  "waiting-handover",
+  "last-mile",
+];
+const UNSHIPPED_ARRIVED_STATUSES = [
+  "arrived",
+  "first-mile",
+  "waiting-handover",
+  "last-mile",
+];
+function unshippedRefundCapFen(order: Order): number {
+  const paid = order.payableAmount ?? 0;
+  const fee = order.deliveryFee ?? 0;
+  return Math.max(
+    0,
+    UNSHIPPED_ARRIVED_STATUSES.includes(order.status) ? paid : paid - fee,
+  );
+}
 const refundAvailableYuan = computed(() =>
   refundOrder.value
-    ? Math.max(0, (goodsAmountOf(refundOrder.value) - refundReserved.value) / 100)
+    ? Math.max(
+        0,
+        (UNSHIPPED_REFUND_STATUSES.includes(refundOrder.value.status)
+          ? unshippedRefundCapFen(refundOrder.value)
+          : goodsAmountOf(refundOrder.value)) -
+          refundReserved.value,
+      ) / 100
     : 0,
 );
 
@@ -431,17 +463,10 @@ async function submitRefund() {
     return;
   }
   // 已支付未履约完成单（道哥 2026-10-31 定稿）：整单退款申请——不带商品行，
-  // 金额=商品额，进售后审核队列（批准才原路退，配送费按审核开关）。
+  // 金额=弹窗核定值（IKUISI：显式上送，此前被静默丢弃、后端锁定商品额未
+  // 扣券导致券后单审核死锁），进售后审核队列（批准才原路退）。
   // 未出库（paid/picking）与已出库未送达都可发起，与后端白名单同口径。
-  const unshipped = [
-    "paid",
-    "picking",
-    "waiting-first-mile",
-    "arrived",
-    "first-mile",
-    "waiting-handover",
-    "last-mile",
-  ].includes(order.status);
+  const unshipped = UNSHIPPED_REFUND_STATUSES.includes(order.status);
   const lines = (order.items ?? [])
     .map((item) => ({
       productId: item.product.id ?? "",
@@ -457,6 +482,7 @@ async function submitRefund() {
     if (unshipped) {
       await api.createOrderRefund(order.id, {
         remark: refundForm.reason.trim(),
+        amount: totalFen,
       });
       refundOpen.value = false;
       notify("已提交整单退款申请，请到售后退款页审核");

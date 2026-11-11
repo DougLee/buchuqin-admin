@@ -123,6 +123,9 @@ const remark = ref("");
 const submitting = ref(false);
 /** v2 部分退款：审核核定的各行金额（itemId → 元字符串，提交时转分） */
 const itemAmounts = ref<Record<string, string>>({});
+/** IKUISI：整单退款（无商品行）核定金额（元字符串）——存量券后锁超额
+ * 死锁单（锁定商品额 > 实付上限）在审核处下调救活；上限内可改 */
+const totalAmountYuan = ref("");
 
 /* ---------- 退配送费开关（#110/#91）----------
  * 默认规则：订单已到店（arrived 及之后的配送链状态）默认退；
@@ -169,6 +172,11 @@ function startAudit(mode: "approve" | "reject") {
     itemAmounts.value = Object.fromEntries(
       detail.value.items.map((i) => [i.id, (i.amount / 100).toFixed(2)]),
     );
+  // IKUISI：整单退款核定金额默认=申请锁定值，审核员可在上限内下调
+  totalAmountYuan.value =
+    mode === "approve" && !detail.value?.items.length
+      ? ((detail.value?.amount ?? 0) / 100).toFixed(2)
+      : "";
 }
 async function submitAudit() {
   if (!detail.value || !auditMode.value) return;
@@ -191,6 +199,10 @@ async function submitAudit() {
       amounts,
       // 退配送费开关仅批准时上送；拒绝时 undefined（JSON 序列化自动剔除）
       auditMode.value === "approve" ? refundDeliveryFee.value : undefined,
+      // IKUISI：整单退款核定金额仅批准且无行时上送（超限由后端上限校验拦截）
+      auditMode.value === "approve" && !detail.value.items.length
+        ? Math.round(Number(totalAmountYuan.value || detail.value.amount) * 100)
+        : undefined,
     );
     toast.value =
       auditMode.value === "approve"
@@ -478,6 +490,20 @@ watch(operationalCampusId, () => {
                   v-model="refundDeliveryFee"
                   active-text="退配送费"
                   inactive-text="不退配送费"
+                />
+              </div>
+            </ElCol>
+            <!-- IKUISI：整单退款（无商品行）核定金额——券后锁超额死锁单在此下调救活 -->
+            <ElCol v-if="auditMode === 'approve' && !detail.items.length" :span="24">
+              <div class="as-fee-row">
+                <span style="font-size: 13px">核定退款金额（元）</span>
+                <ElInput
+                  v-model="totalAmountYuan"
+                  class="as-amounts__input"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  style="width: 140px"
                 />
               </div>
             </ElCol>
