@@ -400,7 +400,8 @@ async function pollNewOrders() {
   }
 }
 onMounted(pollNewOrders);
-setInterval(pollNewOrders, 30_000);
+const orderPollingTimer = setInterval(pollNewOrders, 30_000);
+onBeforeUnmount(() => clearInterval(orderPollingTimer));
 function dismissNotify(key: string) {
   notifyCards.value = notifyCards.value.filter((c) => c.key !== key);
 }

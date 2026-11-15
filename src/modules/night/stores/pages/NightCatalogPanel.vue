@@ -9,7 +9,7 @@ import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import type {
   NightCatalogRow,
-  NightOfficialCandidate,
+  ProductPickerItem,
 } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 import { fmtDateTime } from '../../../../utils/datetime';
@@ -43,7 +43,9 @@ function resetFilters() {
 }
 const importOpen = ref(false),
   importLoading = ref(false);
-const candidates = ref<(NightOfficialCandidate & { price: number })[]>([]);
+const candidates = ref<ProductPickerItem[]>([]);
+const candidateCategories = ref<Array<{ id: string; name: string }>>([]);
+let candidateGeneration = 0;
 const candidatePage = ref(1),
   candidateTotal = ref(0);
 /** IKTWMM：导入弹窗换统一商品选择器（remote 勾选形态）——
@@ -56,25 +58,29 @@ const hasMoreCandidates = computed(
   () => candidates.value.length < candidateTotal.value,
 );
 async function loadCandidates(opts?: { append?: boolean }) {
-  if (!opts?.append) importLoading.value = true;
+  const append = !!opts?.append;
+  const generation = ++candidateGeneration;
+  const campus = effectiveCampusId.value;
+  const requestedPage = append ? candidatePage.value + 1 : 1;
+  const current = () => generation === candidateGeneration && campus === effectiveCampusId.value && importOpen.value;
+  if (!append) { importLoading.value = true; loadingMoreCandidates.value = false; }
   try {
     const r = await api.nightCatalogCandidates(
-      candidateFilter.value.keyword,
-      candidatePage.value,
-      50,
-      candidateFilter.value.categoryId === "all"
-        ? undefined
-        : candidateFilter.value.categoryId,
+      candidateFilter.value.keyword, requestedPage, 50,
+      candidateFilter.value.categoryId === "all" ? undefined : candidateFilter.value.categoryId,
     );
-    // 选择器 items 要 price（ProductPickerItem 必填）：官方候选行以建议零售价充当
-    const rows = r.items.map((c) => ({ ...c, price: c.originalPrice }));
-    candidates.value = opts?.append ? [...candidates.value, ...rows] : rows;
+    if (!current()) return;
+    const rows: ProductPickerItem[] = r.items.map(c => ({ ...c, wholesalePrice: c.wholesalePrice ?? undefined }));
+    candidates.value = append ? [...candidates.value, ...rows] : rows;
+    candidateCategories.value = r.categories ?? [];
     candidateTotal.value = r.total;
+    candidatePage.value = requestedPage;
   } catch (e) {
+    if (!current()) return;
     notify(e instanceof Error ? e.message : "官方库加载失败", "error");
-    if (!opts?.append) candidates.value = [];
+    if (!append) { candidates.value = []; candidateTotal.value = 0; }
   } finally {
-    importLoading.value = false;
+    if (current()) { importLoading.value = false; loadingMoreCandidates.value = false; }
   }
 }
 async function startImport() {
@@ -91,14 +97,9 @@ function onCandidateFilter(f: { categoryId: string; keyword: string }) {
   void loadCandidates();
 }
 async function onCandidateLoadMore() {
-  if (loadingMoreCandidates.value) return;
+  if (loadingMoreCandidates.value || importLoading.value || !hasMoreCandidates.value) return;
   loadingMoreCandidates.value = true;
-  try {
-    candidatePage.value += 1;
-    await loadCandidates({ append: true });
-  } finally {
-    loadingMoreCandidates.value = false;
-  }
+  await loadCandidates({ append: true });
 }
 async function importSelected() {
   if (!selectedIds.value.length || saving.value) return;
@@ -262,7 +263,14 @@ async function toggleStatus(row: NightCatalogRow) {
 }
 
 watch([page, pageSize], load);
+watch(importOpen, (visible) => {
+  if (visible) return;
+  candidateGeneration++;
+  importLoading.value = false; loadingMoreCandidates.value = false;
+});
 watch(effectiveCampusId, () => {
+  candidateGeneration++;
+  candidates.value = []; candidateCategories.value = []; candidateTotal.value = 0;
   importOpen.value = false;
   open.value = false;
   importSelection.value = {};
@@ -474,8 +482,10 @@ defineExpose({ reload: load });
       />
       <div style="margin-top: 14px">
         <ProductPickerField
+          v-if="importOpen"
           v-model="importSelection"
           :items="candidates"
+          :category-options="candidateCategories"
           :loading="importLoading"
           :loading-more="loadingMoreCandidates"
           :has-more="hasMoreCandidates"

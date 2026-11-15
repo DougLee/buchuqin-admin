@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { api } from "../api";
 import { hasPerm } from "../session";
 import { fenToYuan } from "../utils/money";
@@ -15,6 +15,7 @@ import type { ProductPickerItem } from "../types";
  */
 const props = defineProps<{
   items: ProductPickerItem[];
+  categoryOptions?: Array<{ id: string; name: string }>;
   stockLabel?: string;
   loading?: boolean;
   multiple?: boolean;
@@ -53,7 +54,7 @@ const catId = ref("all");
 const keyword = ref("");
 const adminCats = ref<{ id: string; name: string }[]>([]);
 onMounted(async () => {
-  if (!hasPerm("GET /admin/categories")) return;
+  if (props.categoryOptions !== undefined || !hasPerm("GET /admin/categories")) return;
   try {
     adminCats.value = (await api.adminCategories()).map((c) => ({
       id: c.id,
@@ -71,9 +72,9 @@ const categories = computed(() => {
     const c = (p as { category?: { name?: string } }).category;
     if (p.categoryId && c?.name) seen.set(p.categoryId, c.name);
   }
-  const base = seen.size
+  const base = props.categoryOptions ?? (seen.size
     ? [...seen.entries()].map(([id, name]) => ({ id, name }))
-    : adminCats.value;
+    : adminCats.value);
   return [{ id: "all", name: "全部类别" }, ...base];
 });
 const filtered = computed(() => {
@@ -95,6 +96,8 @@ watch([catId, keyword], ([cat, kw]) => {
     emit("filter-change", { categoryId: cat, keyword: kw.trim() });
   }, 300);
 });
+
+onUnmounted(() => { if (filterTimer) clearTimeout(filterTimer); });
 
 function selectOne(id: string) {
   emit("update:modelValue", id);
@@ -132,11 +135,13 @@ function unitText(p: ProductPickerItem): string {
   const per = p.unitsPerCase ?? 1;
   return per > 1 ? ` · 1 件=${per}${p.retailUnit || "个"}` : "";
 }
-/** IKTWMM 官方库候选行 meta：条码+建议零售价（无条码明示「无」） */
+/** IKTWMM 官方库候选行 meta：条码+售价+成本价（道哥 2026-11-09 改）；
+ *  成本口径同 showCost 的 costOf，无 cost.read（接口已剥字段）或未录不显示 */
 function officialMetaText(p: ProductPickerItem): string {
-  return `条码 ${p.barcode || "无"} · 建议零售价 ¥${fenToYuan(
-    p.originalPrice ?? p.price,
-  )}`;
+  const cost = costOf(p);
+  return `条码 ${p.barcode || "无"} · 售价 ¥${fenToYuan(p.price)}${
+    cost == null ? "" : ` · 成本 ¥${fenToYuan(cost)}`
+  }`;
 }
 </script>
 

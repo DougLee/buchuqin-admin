@@ -1601,7 +1601,7 @@ export interface NightCatalogRow {
   updatedAt: string;
 }
 
-export interface NightOfficialCandidate { id: string; name: string; image: string; barcode: string | null; originalPrice: number; retailUnit: string; unitsPerCase?: number; category?: { name: string } }
+export interface NightOfficialCandidate { id: string; name: string; image: string; barcode: string | null; price: number; originalPrice: number; retailUnit: string; unitsPerCase?: number; category?: { name: string }; procurementMode?: 'HQ' | 'LOCAL' | null; localPurchasePrice?: number | null; wholesalePrice?: number | null }
 export interface NightStockRequest {
   id: string; storeId: string; buildingName: string; managerName: string; status: string;
   totalValue: number; heldValue: number; reason: string; createdAt: string;
