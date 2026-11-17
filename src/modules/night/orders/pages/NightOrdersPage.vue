@@ -121,6 +121,11 @@ async function openDetail(row: NightOrderRow) {
 }
 const items = computed(() => detail.value?.items ?? []);
 const timeline = computed(() => detail.value?.timeline ?? []);
+async function reloadDetail(id: string, generation: number) {
+  if (generation !== detailGeneration || detail.value?.id !== id) return;
+  const result = await api.nightOrderDetail(id);
+  if (generation === detailGeneration && detail.value?.id === id) detail.value = result;
+}
 const rejecting = ref(false);
 async function rejectAfterSale() {
   if (!detail.value || rejecting.value) return;
@@ -128,7 +133,8 @@ async function rejectAfterSale() {
   try { reason = (await ElMessageBox.prompt('填写核实结果，用户将收到审核说明。此操作不退款，已完成订单恢复结算资格。', '驳回售后申请', { inputType: 'textarea', inputValidator: value => value?.trim().length >= 5 && value.trim().length <= 200 ? true : '请填写5至200字审核说明', confirmButtonText: '确认驳回' })).value.trim(); }
   catch { return; }
   rejecting.value = true;
-  try { detail.value = await api.nightRejectAfterSale(detail.value.id, reason); notify('审核结果已通知用户'); await load(); }
+  const id = detail.value.id, generation = detailGeneration;
+  try { await api.nightRejectAfterSale(id, reason); await reloadDetail(id, generation); notify('审核结果已通知用户'); await load(); }
   catch (e) { notify(e instanceof Error ? e.message : '审核失败', 'error'); }
   finally { rejecting.value = false; }
 }
@@ -185,7 +191,8 @@ const syncing = ref(false);
 async function syncRefund() {
   if (!detail.value || syncing.value) return;
   syncing.value = true;
-  try { detail.value = await api.nightRefundSync(detail.value.id); await load(); }
+  const id = detail.value.id, generation = detailGeneration;
+  try { await api.nightRefundSync(id); await reloadDetail(id, generation); await load(); }
   catch (e) { notify(e instanceof Error ? e.message : "核对失败，请稍后重试", "error"); }
   finally { syncing.value = false; }
 }
@@ -311,6 +318,7 @@ onMounted(() => {
           v-loading="loading"
           :data="rows"
           row-key="id"
+          @row-click="(row) => openDetail(asOrder(row))"
           empty-text="暂无夜宵订单"
         >
           <ElTableColumn label="单号" min-width="170">
@@ -361,7 +369,7 @@ onMounted(() => {
           </ElTableColumn>
           <ElTableColumn label="操作" width="150" fixed="right">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="openDetail(asOrder(row))">详情</ElButton>
+              <ElButton link type="primary" @click.stop="openDetail(asOrder(row))">详情</ElButton>
               <ElButton
                 v-if="
                   hasPerm('POST /admin/night/orders/:id/refund') &&
@@ -370,7 +378,7 @@ onMounted(() => {
                 "
                 link
                 type="danger"
-                @click="openRefund(asOrder(row))"
+                @click.stop="openRefund(asOrder(row))"
                 >退款</ElButton
               >
             </template>
@@ -385,7 +393,7 @@ onMounted(() => {
     </template>
 
     <!-- 详情抽屉 -->
-    <ElDrawer v-model="drawerOpen" title="夜宵订单详情" size="min(680px, 92vw)">
+    <ElDialog v-model="drawerOpen" title="夜宵订单详情" width="min(860px, calc(100vw - 32px))" align-center>
       <NightLoadError :message="detailError" :loading="detailLoading" @retry="detailTarget && openDetail(detailTarget)" />
       <p v-if="detailLoading && !detail" class="form-hint">加载中…</p>
       <template v-else-if="detail">
@@ -458,6 +466,7 @@ onMounted(() => {
             <template #default="{ row }">¥{{ fenToYuan(row.price) }}</template>
           </ElTableColumn>
           <ElTableColumn label="数量" width="70" prop="quantity" />
+          <ElTableColumn v-if="'profit' in detail" label="成本 / 件" width="100"><template #default="{ row }">{{ row.unitGrossCost == null ? '—' : '¥' + fenToYuan(row.unitGrossCost) }}</template></ElTableColumn>
           <ElTableColumn label="小计" width="100">
             <template #default="{ row }">¥{{ fenToYuan(row.price * row.quantity) }}</template>
           </ElTableColumn>
@@ -487,6 +496,10 @@ onMounted(() => {
           </template>
         </p>
 
+        <section v-if="'profit' in detail" class="amount-grid" aria-label="订单毛利">
+          <template v-if="detail.profit"><div class="amount-cell"><span>商品成本</span><b>¥{{ fenToYuan(detail.profit.cost) }}</b></div><div class="amount-cell"><span>商品毛利</span><b>¥{{ fenToYuan(detail.profit.productGrossProfit) }}</b></div><div class="amount-cell"><span>楼长商品佣金</span><b>¥{{ fenToYuan(detail.profit.managerCommission) }}</b></div><div class="amount-cell amount-cell--main"><span>{{ detail.profit.estimated ? '预计校区毛利' : '校区毛利' }}</span><b>¥{{ fenToYuan(detail.profit.campusGrossProfit) }}</b></div><p class="form-hint">按订单成本快照及成功退款计算，配送费全额归楼长，不计入校区毛利。</p></template>
+          <p v-else class="form-hint">毛利 —（未支付或历史成本快照不完整，不按现价倒算）</p>
+        </section>
         <h4 class="detail-section">佣金流水</h4>
         <ElTable :data="detail.commissionTxns" row-key="id" size="small" empty-text="暂无佣金流水">
           <ElTableColumn label="类别" width="100">
@@ -534,7 +547,7 @@ onMounted(() => {
         </ol>
       </template>
       <p v-else class="form-hint">详情加载失败。</p>
-    </ElDrawer>
+    </ElDialog>
 
     <!-- 退款弹窗 -->
     <ElDialog

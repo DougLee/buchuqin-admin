@@ -13,6 +13,7 @@ import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { rateText, nightStoreStatus } from "../../night-shared";
 import NightCatalogPanel from "./NightCatalogPanel.vue";
+import NightOpeningPanel from "./NightOpeningPanel.vue";
 import NightInventoryPanel from "./NightInventoryPanel.vue";
 import NightStoreProductsPanel from "./NightStoreProductsPanel.vue";
 import type { Building, NightStoreRow, Staff } from "../../../../types";
@@ -211,6 +212,7 @@ onMounted(load);
           >夜宵商品库</ElButton
         >
         <ElButton v-if="hasPerm('GET /admin/night/store-products')" text :class="{ active: activeTab === 'products' }" @click="activeTab = 'products'">楼栋商品管理</ElButton>
+        <ElButton v-if="hasPerm('GET /admin/night/opening-requests')" text :class="{ active: activeTab === 'opening' }" @click="activeTab = 'opening'">临时营业审批</ElButton>
         <ElButton v-if="hasPerm('GET /admin/night/stock-orders')" text :class="{ active: activeTab === 'stock' }" @click="activeTab = 'stock'">备货审核与出库</ElButton>
         <ElButton v-if="hasPerm('GET /admin/night/inventory-reports')" text :class="{ active: activeTab === 'reports' }" @click="activeTab = 'reports'">盘点报损审核</ElButton>
       </nav>
@@ -271,6 +273,7 @@ onMounted(load);
         </section>
       </template>
 
+      <NightOpeningPanel v-else-if="activeTab === 'opening'" />
       <NightCatalogPanel v-else-if="activeTab === 'catalog'" ref="catalogPanel" />
       <NightStoreProductsPanel v-else-if="activeTab === 'products'" />
       <NightInventoryPanel v-else-if="activeTab === 'stock' || activeTab === 'reports'" :kind="activeTab === 'stock' ? 'stock' : 'reports'" />

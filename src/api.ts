@@ -321,6 +321,8 @@ export async function downloadRoomTemplate(buildingId: string): Promise<void> {
 }
 
 export const api = {
+  nightOpeningRequests: (status = 'pending') => request<import('./types').NightOpeningRequest[]>(`/admin/night/opening-requests?status=${encodeURIComponent(status)}`),
+  nightReviewOpening: (id: string, approved: boolean, reason: string) => request(`/admin/night/opening-requests/${id}/review`, { method: 'POST', body: JSON.stringify({ approved, reason }) }),
   /** IKAJSL：hq 不带 campus = 跨校区汇总；带 campus = 单校区明细 */
   dashboard: (
     campusId?: string,
@@ -1781,7 +1783,7 @@ export const api = {
   cancelNightStock: (id: string, reason: string) => request(`/admin/night/stock-orders/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
   nightInventoryReports: (status = "", storeId = "", filters: { keyword?: string; from?: string; to?: string; kind?: string } = {}) => request<import("./types").NightInventoryReport[]>(`/admin/night/inventory-reports?status=${encodeURIComponent(status)}&storeId=${encodeURIComponent(storeId)}&${nightFilterQuery(filters)}`),
   nightBuildingProducts: (filters: { storeId?: string; keyword?: string; stock?: string; saleAllowed?: string; onShelf?: string; categoryId?: string } = {}, page = 1, pageSize = 20) => request<PagedResponse<import("./types").NightBuildingProductRow>>(`/admin/night/store-products?page=${page}&pageSize=${pageSize}&${nightFilterQuery(filters)}`),
-  reviewNightInventory: (id: string, approved: boolean, reason: string) => request(`/admin/night/inventory-reports/${id}/review`, { method: "POST", body: JSON.stringify({ approved, reason }) }),
+  reviewNightInventory: (id: string, approved: boolean, reason: string, liability?: { responsibility: "platform" | "manager"; compensationAmount: number }) => request(`/admin/night/inventory-reports/${id}/review`, { method: "POST", body: JSON.stringify({ approved, reason, ...liability }) }),
   /** 校区由通用 request 注入 ?campus=（campusScope 校验授权集）。 */
   /** 店铺列表（status=open/paused/closed/suspended）。 */
   nightStores: (status?: string, page = 1, pageSize = 20) =>

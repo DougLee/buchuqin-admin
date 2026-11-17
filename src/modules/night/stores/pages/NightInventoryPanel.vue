@@ -6,7 +6,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { api, fetchAllPages } from "../../../../api";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import { effectiveCampusId, hasPerm } from "../../../../session";
-import { fenToYuan } from "../../../../utils/money";
+import { printNightStock } from "../../../../utils/printNightStock";
+import { fenToYuan, yuanToFen } from "../../../../utils/money";
 import type {
   NightStockRequest,
   NightInventoryReport,
@@ -23,6 +24,11 @@ const stockDetail = ref<NightStockRequest | null>(null),
   reportDetail = ref<NightInventoryReport | null>(null);
 const stockOpen = ref(false),
   reportOpen = ref(false);
+const responsibility = ref<"platform" | "manager">("platform");
+const compensation = ref(0);
+const lossValue = computed(() => (reportDetail.value?.items || []).filter(i => ['receipt-shortage','order-loss'].includes(reportDetail.value?.kind || '') || i.delta < 0).reduce((sum, i) => sum + i.value, 0));
+watch(reportDetail, row => { responsibility.value = row?.responsibility || 'platform'; compensation.value = (row?.compensationAmount || 0) / 100; });
+watch(responsibility, value => { if (value === 'platform') compensation.value = 0; });
 const keyword = ref(""),
   storeFilter = ref(""),
   reportKind = ref("");
@@ -243,7 +249,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
   if (reason === null || campus !== effectiveCampusId.value) return;
   busy.value = true;
   try {
-    await api.reviewNightInventory(row.id, approved, reason);
+    await api.reviewNightInventory(row.id, approved, reason, { responsibility: responsibility.value, compensationAmount: approved && responsibility.value === "manager" ? yuanToFen(compensation.value) : 0 });
     reportOpen.value = false;
     ElMessage.success("处理成功");
     await load();
@@ -462,7 +468,7 @@ async function review(row: NightInventoryReport, approved: boolean) {
       </template>
       <template #footer
         ><template v-if="stockDetail"
-          ><ElButton @click="stockOpen = false">关闭</ElButton
+          ><ElButton @click="stockOpen = false">关闭</ElButton><ElButton v-if="['approved','shipped','received'].includes(stockDetail.status)" @click="printNightStock(stockDetail)">打印拣货 / 交接单</ElButton
           ><template
             v-if="
               stockDetail.status === 'requested' &&
@@ -547,6 +553,11 @@ async function review(row: NightInventoryReport, approved: boolean) {
         </div>
         <p>申报说明：{{ reportDetail.reason }}</p>
         <p>审核说明：{{ reportDetail.reviewReason || "—" }}</p>
+        <ElForm v-if="reportDetail.status === 'pending' && lossValue > 0" label-width="100px">
+          <ElFormItem label="责任方"><ElRadioGroup v-model="responsibility"><ElRadio value="platform">平台责任（不扣款）</ElRadio><ElRadio value="manager" :disabled="!hasPerm('POST /admin/night/stores/:id/deposit/deduct')">楼长责任</ElRadio></ElRadioGroup></ElFormItem>
+          <ElFormItem v-if="responsibility === 'manager'" label="楼长承担"><ElInputNumber v-model="compensation" :min="0" :max="lossValue / 100" :precision="2" /><ElButton text @click="compensation = lossValue / 100">按损失货值全额承担</ElButton><span>元；上限 ¥{{ fenToYuan(lossValue) }}</span></ElFormItem>
+        </ElForm>
+        <p v-else-if="reportDetail.responsibility">责任方：{{ reportDetail.responsibility === 'manager' ? '楼长' : '平台' }} · 楼长承担 ¥{{ fenToYuan(reportDetail.compensationAmount || 0) }}</p>
         <div class="photos">
           <ElImage
             v-for="url in reportDetail.photos || []"

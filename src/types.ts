@@ -1615,6 +1615,7 @@ export interface NightBuildingProductRow {
   stock: number; frozenStock: number; inventoryValue: number; onShelf: boolean; saleAllowed: boolean; purchasable: boolean;
 }
 export interface NightInventoryReport {
+  responsibility?: "platform" | "manager" | null; compensationAmount?: number; depositTxnId?: string | null;
   id: string; storeId: string; buildingName: string; managerName: string; status: string; kind: string;
   heldValue: number; reason: string; reviewReason: string; photos: string[] | null; createdAt: string; reviewedAt: string | null;
   items: Array<{ nightProductId: string; name: string; quantity: number; delta: number; value: number; bookQuantity: number; countedQuantity?: number }>;
@@ -1651,6 +1652,7 @@ export interface NightConfigRow {
 }
 /** 夜宵订单商品行快照（items JSON）。 */
 export interface NightOrderLine {
+  unitGrossCost?: number;
   nightProductId: string;
   catalogProductId: string;
   name: string;
@@ -1695,6 +1697,7 @@ refund?: { id: string; kind: string; fullProductRefund: boolean; status: string;
 }
 /** 夜宵订单详情（含佣金流水与楼长快照）。 */
 export interface NightOrderDetail extends NightOrderRow {
+  profit?: { cost: number; netProductRevenue: number; productGrossProfit: number; managerCommission: number; campusGrossProfit: number; estimated: boolean } | null;
   manager: { id: string; name: string; staffNo: string } | null;
   commissionTxns: {
     id: string;
@@ -1739,3 +1742,5 @@ export interface NightLiquidation {
 
 /** Fields consumed by shared product selectors; night catalog rows need no fabricated day fields. */
 export type ProductPickerItem = Pick<Product, 'id' | 'name' | 'image' | 'price'> & Partial<Pick<Product, 'categoryId' | 'barcode' | 'originalPrice' | 'procurementMode' | 'localPurchasePrice' | 'wholesalePrice' | 'unitsPerCase' | 'retailUnit' | 'wholesaleUnit' | 'availableStock' | 'stock'>>;
+
+export interface NightOpeningRequest { id: string; storeId: string; managerStaffId: string; buildingName: string; managerName: string; startAt: string; endAt: string; reason: string; status: 'pending' | 'approved' | 'rejected'; reviewReason: string; createdAt: string; }
