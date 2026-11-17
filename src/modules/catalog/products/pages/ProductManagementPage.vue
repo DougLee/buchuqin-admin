@@ -677,6 +677,9 @@ function edit(row?: Product) {
     locationCode: row?.locationCode ?? "",
     stock: row?.stock ?? 0,
     status: (row?.status as "on-sale" | "off-sale") ?? "off-sale",
+    // IKW070 限购周期回填：漏重置导致上一单选的值残留到下一个商品编辑框
+    //（表单残影，操作员误以为全部商品被连坐限购），必须随行数据回显
+    purchaseLimit: row?.purchaseLimit ?? "none",
   });
   open.value = true;
 }
@@ -731,6 +734,10 @@ async function save() {
               : {}),
           }
         : {}),
+      // IKW070 限购周期补提交（IKQZY7 漏发字段）：选值从未落库，后端 UpdateDto
+      // IsIn 校验齐全，带视角条件与选择器渲染范围一致（官方库行恒 none 不携带）。
+      // purchaseLimitQty 维持后端默认 1（UI 无该输入，暂不支持改件数）
+      ...(!official.value ? { purchaseLimit: form.purchaseLimit } : {}),
       // 库存只读（道哥 2026-11-02）：编辑不再提交 stock，调整统一走库存管理
       //（盘点/入库）；新建的初始库存由 createProduct 承接
     };
