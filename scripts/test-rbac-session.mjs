@@ -179,3 +179,17 @@ test('session response ordering', async t => {
     assert.equal(m.hasPerm('PATCH /admin/products/123/status'), false);
   });
 });
+
+test('night enrollment narrows existing grants and campus changes clear the old visibility', () => {
+  reset();m.applySession({id:'A',campusId:'campus-A',role:'rbac'});
+  const permissions=['GET /admin/night/stores','GET /admin/night/config','POST /admin/night/orders/:id/refund'];
+  m.applyRbac({...me(permissions),nightAccess:{authorized:false,enrolled:true,enabled:false},menus:[]});
+  assert.equal(m.hasPerm('GET /admin/night/stores'),false);
+  m.applyRbac({...me(permissions),nightAccess:{authorized:true,enrolled:true,enabled:true},menus:[]});
+  assert.equal(m.hasPerm('GET /admin/night/config'),true);
+  m.applyRbac({...me(permissions),nightAccess:{authorized:false,enrolled:false,enabled:false,history:true},menus:[]});
+  assert.equal(m.hasPerm('POST /admin/night/orders/order/refund'),true);
+  assert.equal(m.hasPerm('GET /admin/night/config'),false);
+  m.activeCampus.value='campus-B';assert.equal(m.nightEnabled.value,false);assert.equal(m.nightAccess.value.history,undefined);
+  reset();
+});

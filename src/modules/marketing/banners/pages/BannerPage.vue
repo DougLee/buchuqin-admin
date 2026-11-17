@@ -5,7 +5,7 @@ import { api } from "../../../../api";
 import ImageUploadField from "../../../../components/ImageUploadField.vue";
 import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import { BANNER_COLOR_TEXT, BANNER_PLACEMENT_TEXT } from "../../../../dicts";
-import { effectiveCampusId, hasPerm } from "../../../../session";
+import { nightEnabled, effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { Banner, ProductPickerItem } from "../../../../types";
@@ -281,6 +281,7 @@ async function remove(row: Banner) {
     notify(error instanceof Error ? error.message : "删除失败", "error");
   }
 }
+watch(nightEnabled, enabled => { if (!enabled) businessType.value = "day"; });
 watch([page, pageSize, status, effectiveCampusId, businessType], () => { rows.value = []; editorOpen.value = false; pickerGeneration++; pickerProducts.value = []; void load(); });
 watch(keyword, () => {
   if (timer) clearTimeout(timer);
@@ -302,7 +303,7 @@ onMounted(load);
         >新建</ElButton
       ></template
     >
-    <ElSegmented v-model="businessType" :options="[{ label: '白天店', value: 'day' }, { label: '夜宵店', value: 'night' }]" aria-label="运营内容店铺" />
+    <ElSegmented v-if="nightEnabled" v-model="businessType" :options="[{ label: '白天店', value: 'day' }, { label: '夜宵店', value: 'night' }]" aria-label="运营内容店铺" />
     <section class="admin-filter-panel" aria-label="Banner 筛选">
       <ElForm class="admin-filter-form" label-position="top"
         ><ElRow :gutter="12" align="bottom"

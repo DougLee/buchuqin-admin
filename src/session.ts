@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
 /**
  * 会话与权限（RBAC 蛋词体系，2026-09-19，对齐 dancikeji cool-admin）：
@@ -39,7 +39,9 @@ export interface MeMenu {
 }
 
 /** GET /admin/rbac/permmenu 返回的授权上下文。 */
+export interface NightAccess { authorized: boolean; enrolled: boolean; enabled: boolean; history?: boolean }
 export interface RbacMe {
+  nightAccess?: NightAccess;
   account: {
     id: string;
     username: string;
@@ -201,6 +203,8 @@ export const roleLabel = computed(
 export const patterns = ref<Set<string>>(new Set());
 /** 可见菜单树扁平行（permmenu.menus；侧栏与路由显隐的唯一依据）。 */
 export const menuTree = ref<MeMenu[]>([]);
+export const nightAccess = ref<NightAccess>({ authorized: false, enrolled: false, enabled: false });
+export const nightEnabled = computed(() => nightAccess.value.enabled);
 export const isSuper = ref(false);
 export const isPlatform = ref(false);
 /** 账号固有数据边界；不能由角色授权 scope 推导。 */
@@ -270,6 +274,10 @@ export function hasPlatformPerm(pattern: string): boolean {
   return hasPerm(pattern, platformPatterns.value);
 }
 export function hasPerm(pattern: string, grants = patterns.value): boolean {
+  if (pattern.includes('/admin/night/') && !nightEnabled.value) {
+    const history = /^(GET \/admin\/night\/(stores(?:\/[^/]+(?:\/(stock-txns|deposit-txns|deposit-refunds|liquidation))?)?|orders(?:\/[^/]+)?|stock-orders|inventory-reports|settlements)|POST \/admin\/night\/(stock-orders\/[^/]+\/(review|ship|cancel)|inventory-reports\/[^/]+\/review|orders\/[^/]+\/(refund(?:\/sync)?|after-sale\/reject)|stores\/[^/]+\/deposit\/(deduct|refund|refunds\/[^/]+\/sync)|settlements\/(settle|[^/]+\/pay)))$/.test(pattern);
+    if (!nightAccess.value.history || !history) return false;
+  }
   if (isSuper.value) return true;
   const separator = pattern.indexOf(" ");
   if (separator < 0) return false;
@@ -334,12 +342,14 @@ export function applyRbac(me: RbacMe) {
     me.platformPerms,
     me.menus,
     me.super,
+    me.nightAccess,
   ]);
   if (signature !== authorizationSignature) {
     authorizationSignature = signature;
     authorizationEpoch.value++;
   }
 
+  nightAccess.value = me.nightAccess ?? { authorized: false, enrolled: false, enabled: false };
   patterns.value = new Set(me.perms ?? []);
   platformPatterns.value = new Set(me.platformPerms ?? []);
   menuTree.value = Array.isArray(me.menus) ? me.menus : [];
@@ -402,6 +412,7 @@ export async function loadRbac(): Promise<boolean> {
     isPlatform.value = false;
     accountOrgLevel.value = "campus";
     accountOrganizationId.value = null;
+    nightAccess.value = { authorized: false, enrolled: false, enabled: false };
     rbacLoaded.value = false;
     capabilities.value = [];
     return false;
@@ -420,6 +431,7 @@ export function clearSession() {
   isPlatform.value = false;
   accountOrgLevel.value = "campus";
   accountOrganizationId.value = null;
+  nightAccess.value = { authorized: false, enrolled: false, enabled: false };
   rbacRoles.value = [];
   switchableCampuses.value = [];
   activeCampus.value = "";
@@ -430,3 +442,9 @@ export function clearSession() {
     localStorage.removeItem(key),
   );
 }
+
+// Changing the selected campus must not reuse the previous campus enrollment.
+watch(activeCampus, () => {
+  nightAccess.value = { authorized: false, enrolled: false, enabled: false };
+  menuTree.value = menuTree.value.filter(m => m.code !== "g.night" && !m.code.startsWith("night-"));
+}, { flush: "sync" });

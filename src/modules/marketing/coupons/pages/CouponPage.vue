@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api, fetchAllPages } from "../../../../api";
 import { COUPON_STATUS_TABS } from "../../../../dicts/status-tab";
-import { effectiveCampusId, hasPerm } from "../../../../session";
+import { nightEnabled, effectiveCampusId, hasPerm } from "../../../../session";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
 import type { AdminUser, Building, Coupon, CouponRecord } from "../../../../types";
@@ -317,6 +317,7 @@ async function confirmIssue() {
   }
 }
 watch([page, pageSize, status, businessType, effectiveCampusId], load);
+watch(nightEnabled, enabled => { if (!enabled) { businessType.value = "day"; form.businessType = "day"; open.value = false; } });
 onMounted(load);
 /* ---------- IKRSJ0 #99：领取记录（领取/核销流水，弹层直查+导出） ---------- */
 const recordsOpen = ref(false),
@@ -455,6 +456,7 @@ watch([recPage, recPageSize], () => void loadRecords());
         /></ElTabs>
         <!-- IKSW1F：适用业务维度（白天券/夜宵券双向隔离；空=全部不过滤） -->
         <ElSegmented
+          v-if="nightEnabled"
           v-model="businessType"
           class="marketing-biz"
           :options="[
@@ -491,7 +493,7 @@ watch([recPage, recPageSize], () => void loadRecords());
             ><template #default="{ row }">{{
               row.kind === "platform" ? "金额券" : "异业券"
             }}</template></ElTableColumn
-          ><ElTableColumn label="适用" width="90"
+          ><ElTableColumn v-if="nightEnabled" label="适用" width="90"
             ><template #default="{ row }"
               ><ElTag
                 size="small"
@@ -578,7 +580,7 @@ watch([recPage, recPageSize], () => void loadRecords());
                   label="新人注册"
                   value="signup" /></ElSelect></ElFormItem></ElCol
           ><ElCol :xs="24" :sm="12"
-            ><ElFormItem label="适用业务"
+            ><ElFormItem v-if="nightEnabled" label="适用业务"
               ><ElSelect v-model="form.businessType" :disabled="!!editing"
                 ><ElOption label="白天券（即时送/预约达）" value="day" /><ElOption
                   label="夜宵券（楼长夜宵店专用）"

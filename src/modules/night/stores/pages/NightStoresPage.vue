@@ -207,6 +207,7 @@ onMounted(load);
         >
         <ElButton
           text
+          v-if="hasPerm('GET /admin/night/catalog')"
           :class="{ active: activeTab === 'catalog' }"
           @click="activeTab = 'catalog'"
           >夜宵商品库</ElButton

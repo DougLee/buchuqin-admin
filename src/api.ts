@@ -1028,6 +1028,7 @@ export const api = {
   /* ---------- 组织维护 + 开通（IKKRMS，超管） ---------- */
   /** 新建组织：name/shortName/wxAppId 必填唯一（登记后 AppID→组织映射即生效）。 */
   createOrganization: (data: {
+    nightEnabled?: boolean;
     name: string;
     shortName: string;
     wxAppId: string;
@@ -1058,6 +1059,7 @@ export const api = {
   updateOrganization: (
     id: string,
     data: Partial<{
+      nightEnabled: boolean;
       name: string;
       shortName: string;
       wxAppId: string | null;
@@ -1127,6 +1129,7 @@ export const api = {
   updateCampus: (
     id: string,
     data: Partial<{
+      nightEnabled: boolean;
       organizationId: string;
       name: string;
       shortName: string;

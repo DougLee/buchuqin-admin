@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../../../api";
 import { PROMOTION_STATE_TABS } from "../../../../dicts/status-tab";
-import { effectiveCampusId, hasPerm } from "../../../../session";
+import { nightEnabled, effectiveCampusId, hasPerm } from "../../../../session";
 import ProductPickerField from "../../../../components/ProductPickerField.vue";
 import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import AdminPagination from "../../../../shared/ui/AdminPagination.vue";
@@ -183,6 +183,7 @@ async function toggle(row: Promotion) {
   }
 }
 watch([page, pageSize, state, effectiveCampusId], load);
+watch(nightEnabled, enabled => { if (!enabled) businessType.value = "day"; });
 watch(businessType, () => { page.value = 1; products.value = []; candTotal.value = 0; void load(); });
 onMounted(load);
 </script>
@@ -213,7 +214,7 @@ onMounted(load);
             :name="tab.key"
         /></ElTabs>
         <div class="admin-filter-form marketing-search">
-          <ElRadioGroup v-model="businessType" aria-label="经营渠道"><ElRadioButton value="day">白天店</ElRadioButton><ElRadioButton value="night">夜宵店</ElRadioButton></ElRadioGroup>
+          <ElRadioGroup v-if="nightEnabled" v-model="businessType" aria-label="经营渠道"><ElRadioButton value="day">白天店</ElRadioButton><ElRadioButton value="night">夜宵店</ElRadioButton></ElRadioGroup>
           <ElInput
             v-model="keyword"
             clearable

@@ -5,6 +5,7 @@ import { api, uploadImage } from "../api";
 import { fenToYuan, yuanToFen } from "../utils/money";
 import {
   effectiveCampusId,
+  nightEnabled,
   hasPerm,
   hasPlatformPerm,
   switchableCampuses,
@@ -50,7 +51,7 @@ const TABS = computed(() => {
     { key: "profile", label: "基础档案" },
     { key: "delivery", label: "配送与营业" },
     { key: "salary", label: "楼长结算" },
-    { key: "night-config", label: "夜宵店设置" },
+    ...(nightEnabled.value && hasPerm("GET /admin/night/config") ? [{ key: "night-config", label: "夜宵店设置" }] : []),
     { key: "slots", label: "送达时段" },
     { key: "notices", label: "公告" },
   ];
@@ -512,6 +513,7 @@ async function removeSlot(row: DeliverySlotRow) {
 }
 
 /* ---------- 公告 CRUD（IKHM1P） ---------- */
+watch(nightEnabled, enabled => { if (!enabled) { noticeBusinessType.value = "day"; if (activeTab.value === "night-config") activeTab.value = "profile"; } });
 const noticeBusinessType = ref<'day' | 'night'>('day');
 const notices = computed<NoticeRow[]>(() => (bundle.value?.notices ?? []).filter(row => (row.businessType || 'day') === noticeBusinessType.value));
 const noticeForm = ref({
@@ -1084,7 +1086,7 @@ async function removeNotice(n: NoticeRow) {
       <NightConfigPanel />
     </section>
     <section v-else-if="activeTab === 'notices'" class="cc-panel">
-      <ElSegmented v-model="noticeBusinessType" :options="[{ label: '白天店公告', value: 'day' }, { label: '夜宵店公告', value: 'night' }]" aria-label="公告店铺" />
+      <ElSegmented v-if="nightEnabled" v-model="noticeBusinessType" :options="[{ label: '白天店公告', value: 'day' }, { label: '夜宵店公告', value: 'night' }]" aria-label="公告店铺" />
       <template v-if="bundle">
         <ElForm v-if="canWrite('POST /admin/notices')" label-position="top"
           ><ElRow :gutter="16" align="bottom">

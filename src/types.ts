@@ -65,6 +65,7 @@ export interface Campus {
 
 /** 组织（IKKRMM 基线只读）：列表行为平台聚合口径，微信敏感凭据后端只回布尔位。 */
 export interface AdminOrganization {
+  nightEnabled: boolean;
   id: string;
   name: string;
   shortName: string;
@@ -1447,6 +1448,7 @@ export interface NoticeRow {
   updatedAt: string;
 }
 export interface CampusConfigBundle {
+  nightAccess: import("./session").NightAccess;
   campus: CampusConfigCampus;
   slots: DeliverySlotRow[];
   notices: NoticeRow[];

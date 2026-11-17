@@ -75,6 +75,7 @@ const drawerSaving = ref(false);
 const drawerError = ref("");
 const editing = ref<AdminOrganization | null>(null); // null = 新建
 const form = ref({
+  nightEnabled: false,
   name: "",
   shortName: "",
   wxAppId: "",
@@ -122,6 +123,7 @@ async function onGzhQrcodeChange(upload: UploadFile) {
 function openCreate() {
   editing.value = null;
   form.value = {
+    nightEnabled: false,
     name: "",
     shortName: "",
     wxAppId: "",
@@ -154,6 +156,7 @@ function openCreate() {
 function openEdit(row: AdminOrganization) {
   editing.value = row;
   form.value = {
+    nightEnabled: row.nightEnabled === true,
     name: row.name,
     shortName: row.shortName,
     wxAppId: row.wxAppId ?? "",
@@ -215,6 +218,7 @@ async function submitDrawer() {
   if (gzhAppId && !WX_APPID_RE.test(gzhAppId))
     return (drawerError.value = "服务号 AppID 须为 wx 开头 18 位（wx+16 位十六进制）");
   const base = {
+    nightEnabled: form.value.nightEnabled,
     name: form.value.name.trim(),
     shortName: form.value.shortName.trim(),
     wxAppId: appid || null,
@@ -244,6 +248,7 @@ async function submitDrawer() {
       notify("组织已更新");
     } else {
       await api.createOrganization({
+        nightEnabled: base.nightEnabled,
         name: base.name,
         shortName: base.shortName,
         wxAppId: appid,
@@ -359,7 +364,8 @@ function organizationRow(row: unknown): AdminOrganization {
           全局唯一。敏感凭据只写不回读——留空=保留现状，填写=覆盖，勾选清除=置空。
         </p>
         <ElForm label-position="top"><ElRow :gutter="16">
-          <ElCol :xs="24" :sm="12"><ElFormItem label="组织名称"><ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" /></ElFormItem></ElCol>
+          <ElCol :xs="24" :sm="12"><ElFormItem label="夜宵经营授权"><ElSwitch v-model="form.nightEnabled" :disabled="!isSuper" /><p class="form-hint">授权后，组织管理员可为下属校区开通夜宵服务。</p></ElFormItem>
+          <ElFormItem label="组织名称"><ElInput v-model="form.name" placeholder="2-50 字，如：某某餐饮管理公司" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="组织简称"><ElInput v-model="form.shortName" placeholder="1-20 字，如：某食社" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem :label="`用户端小程序 AppID${editing ? '（清空=回落平台 env 兜底）' : ''}`"><ElInput v-model="form.wxAppId" placeholder="wx 开头 18 位" /></ElFormItem></ElCol>
           <ElCol :xs="24" :sm="12"><ElFormItem label="履约端小程序 AppID"><ElInput v-model="form.deliveryWxAppId" placeholder="骑手小程序 wx 开头 18 位" /></ElFormItem></ElCol>

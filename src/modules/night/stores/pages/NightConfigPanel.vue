@@ -131,13 +131,7 @@ async function save(confirm = false, targetCampus = effectiveCampusId.value) {
       当前账号无夜宵配置权限（需授权「夜宵经营」相关节点）。
     </p>
     <ElForm v-else label-position="top" :disabled="loading || !loaded || !!loadError">
-      <ElFormItem label="夜宵经营开关（关=全校区夜宵入口与下单停用）">
-        <ElSwitch
-          v-model="form.nightEnabled"
-          active-text="开启"
-          inactive-text="关闭"
-        />
-      </ElFormItem>
+      <p class="form-hint">本校区已开通夜宵服务。开通状态由组织管理员在校区管理中维护。</p>
       <template v-if="form.nightEnabled">
         <ElRow :gutter="16">
           <ElCol :xs="24" :sm="12">

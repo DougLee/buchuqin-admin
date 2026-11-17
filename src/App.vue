@@ -21,6 +21,7 @@ import {
   sessionUser,
 } from "./session";
 import { isUnread as changelogUnread } from "./changelog";
+watch(activeCampus, () => { if (sessionUser.value) void loadRbac(); });
 const route = useRoute(),
   router = useRouter(),
   collapsed = ref(false),

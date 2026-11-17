@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../../../api";
 import {
+  isSuper,
+  loadRbac,
   accountOrganizationId,
   accountOrgLevel,
   hasPerm,
@@ -11,6 +13,8 @@ import AdminPageShell from "../../../../shared/ui/AdminPageShell.vue";
 import type { AdminOrganization, Campus } from "../../../../types";
 import { fenToYuan, yuanToFen } from "../../../../utils/money";
 type CampusRow = Campus & {
+  nightEnabled?: boolean;
+  nightAccess?: import("../../../../session").NightAccess;
   deliveryFeeInstant?: number;
   deliveryFeeScheduled?: number;
   deliveryThreshold?: number;
@@ -35,6 +39,24 @@ const form = reactive({
   threshold: 10,
   baseSalary: 0,
 });
+const enrolling = ref("");
+const showNightEnrollment = computed(() => rows.value.some(row => row.nightAccess?.authorized));
+const canEnrollNight = computed(() => hasPerm("PATCH /admin/campuses/:id") && (isSuper.value || accountOrgLevel.value === "org"));
+async function enrollNight(row: CampusRow) {
+  if (!row.nightAccess?.authorized || !canEnrollNight.value || enrolling.value) return;
+  const enabled = !row.nightEnabled;
+  if (!enabled) {
+    try { await ElMessageBox.confirm("关闭后停止新增夜宵经营，已有订单、收货及账务继续处理。", "关闭夜宵服务", { type: "warning" }); }
+    catch { return; }
+  }
+  enrolling.value = row.id;
+  try {
+    await api.updateCampus(row.id, { nightEnabled: enabled });
+    await Promise.all([load(), loadRbac()]);
+    notify(enabled ? "本校区已开通夜宵服务，可配置营业时间和店铺" : "本校区已关闭夜宵服务");
+  } catch (error) { notify(error instanceof Error ? error.message : "开通状态更新失败", "error"); }
+  finally { enrolling.value = ""; }
+}
 const isPlatformAccount = computed(() => accountOrgLevel.value === "platform");
 function asCampus(row: unknown) {
   return row as CampusRow;
@@ -189,7 +211,7 @@ onMounted(load);
           prop="buildings"
           label="楼栋"
           width="90"
-        /><ElTableColumn prop="users" label="用户" width="90" /><ElTableColumn
+        /><ElTableColumn prop="users" label="用户" width="90" /><ElTableColumn v-if="showNightEnrollment" label="夜宵服务" min-width="160"><template #default="{ row }"><template v-if="row.nightAccess?.authorized && row.type !== 'hq'"><ElTag :type="row.nightEnabled ? 'success' : 'info'">{{ row.nightEnabled ? '已开通' : '未开通' }}</ElTag><ElButton v-if="canEnrollNight" link :loading="enrolling === row.id" :disabled="!!enrolling" @click="enrollNight(asCampus(row))">{{ row.nightEnabled ? '关闭' : '开通' }}</ElButton></template><span v-else>—</span></template></ElTableColumn><ElTableColumn
           label="操作"
           width="100"
           ><template #default="{ row }"
