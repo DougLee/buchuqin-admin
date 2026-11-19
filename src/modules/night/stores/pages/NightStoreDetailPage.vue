@@ -284,10 +284,10 @@ const adjustForm = reactive({
   reason: "",
 });
 const ADJUST_TYPES = [
-  { value: "adjust", label: "后台调整（修正差异）" },
-  { value: "returnOut", label: "退货出库（退供应商）" },
-  { value: "loss", label: "报损（损耗核销）" },
-  { value: "stocktake", label: "盘点（按差异±）" },
+  { value: "adjust", label: "后台调整（正数从共享仓调拨进店）" },
+  { value: "returnOut", label: "退货出库（退回共享仓）" },
+  { value: "loss", label: "报损（损耗核销，不回仓）" },
+  { value: "stocktake", label: "盘点（按差异±，账面纠偏）" },
 ];
 function openAdjust(id: string, name: string, stock: number) {
   adjustTarget.value = { id, name, stock };
@@ -299,6 +299,11 @@ function openAdjust(id: string, name: string, stock: number) {
 async function submitAdjust() {
   if (!adjustTarget.value) return;
   if (!adjustForm.delta) return notify("调整数量不能为 0", "error");
+  if (adjustForm.delta > 0 && (adjustForm.type === "returnOut" || adjustForm.type === "loss"))
+    return notify(
+      adjustForm.type === "returnOut" ? "退货出库仅支持调减（负数）" : "报损仅支持调减（负数）",
+      "error",
+    );
   if (!adjustForm.reason.trim()) return notify("请填写调整原因", "error");
   if (adjustTarget.value.stock + adjustForm.delta < 0)
     return notify("调整后库存不能为负数", "error");
@@ -1181,6 +1186,10 @@ const saving = ref(false);
     >
       <p v-if="adjustTarget" class="form-hint">
         当前库存 {{ adjustTarget.stock }}
+      </p>
+      <p class="form-hint">
+        <!-- IKWL2G 库存守恒：调整与共享仓联动 -->
+        正数「后台调整」= 从共享仓调拨进店（仓扣减，可用不足整笔拒绝）；「退货出库」= 退回共享仓（仓入库）；报损/盘点不动共享仓。货值占用押金额度。
       </p>
       <ElForm label-position="top">
         <ElRow :gutter="16">
