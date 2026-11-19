@@ -1649,6 +1649,8 @@ export interface NightConfigRow {
   nightAcceptTimeout: number | null;
   /** 夜间配送费（分）；null=回落白天口径 */
   nightDeliveryFee: number | null;
+  /** 楼长押金档位（分，IKWLHZ，默认 50000=500 元） */
+  nightDeposit: number;
   closeStart?: string | null;
   closeEnd?: string | null;
 }

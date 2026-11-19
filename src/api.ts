@@ -1931,6 +1931,8 @@ export const api = {
     nightPayTimeout?: number | null;
     nightAcceptTimeout?: number | null;
     nightDeliveryFee?: number | null;
+    /** 楼长押金档位（分，IKWLHZ，默认 50000=500 元） */
+    nightDeposit?: number;
     confirm?: boolean;
   }) =>
     request<NightConfigRow>("/admin/night/config", {

@@ -29,6 +29,8 @@ const form = reactive({
   /** 元；null = 回落白天口径 */
   deliveryFeeMode: "custom" as "custom" | "default" | "free",
   deliveryFee: 2,
+  /** IKWLHZ 楼长押金档位（元，默认 500）；缴纳按此档递增 */
+  depositTier: 500,
 });
 
 function notify(message: string, type: "success" | "error" = "success") {
@@ -59,6 +61,7 @@ async function load() {
       form.deliveryFeeMode = "custom";
       form.deliveryFee = Number(fenToYuan(cfg.nightDeliveryFee));
     }
+    form.depositTier = Number(fenToYuan(cfg.nightDeposit ?? 50000));
     loadedCampus.value = campus;
     loaded.value = true;
   } catch (e) {
@@ -91,6 +94,7 @@ async function save(confirm = false, targetCampus = effectiveCampusId.value) {
           : form.deliveryFeeMode === "free"
             ? 0
             : null,
+      nightDeposit: yuanToFen(form.depositTier),
       ...(confirm ? { confirm: true } : {}),
     });
     if (targetCampus === effectiveCampusId.value) notify("夜宵店设置已保存");
@@ -170,6 +174,18 @@ async function save(confirm = false, targetCampus = effectiveCampusId.value) {
           <ElCol v-if="form.deliveryFeeMode === 'custom'" :xs="24" :sm="12">
             <ElFormItem label="夜间配送费（元）">
               <ElInputNumber v-model="form.deliveryFee" :min="0.01" :max="50" :precision="2" />
+            </ElFormItem>
+          </ElCol>
+          <ElCol :xs="24" :sm="12">
+            <!-- IKWLHZ 楼长押金档位（默认 500 元）：缴纳按此档递增，余额低于一档自动闭店 -->
+            <ElFormItem label="楼长押金档位（元）">
+              <ElInputNumber
+                v-model="form.depositTier"
+                :min="100"
+                :max="50000"
+                :precision="0"
+                :step="100"
+              />
             </ElFormItem>
           </ElCol>
         </ElRow>
