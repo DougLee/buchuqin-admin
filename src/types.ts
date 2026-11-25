@@ -1695,6 +1695,10 @@ export interface NightOrderRow {
   completedAt: string | null;
   cancelReason: string | null;
   afterSaleStatus: string | null;
+  /** IKXW9K Q14：售后申请时间与超时标记（requested 单）+ 处理人（楼长/后台） */
+  afterSaleRequestedAt?: string | null;
+  afterSaleOverdue?: boolean;
+  afterSaleOperatorName?: string | null;
 refund?: { id: string; kind: string; fullProductRefund: boolean; status: string; amount: number; productAmount: number; deliveryFeeAmount: number; restock: boolean; reason: string; message: string; createdAt: string; completedAt: string | null } | null;
   store: { id: string; buildingName: string };
   user?: { id: string; nickname: string; phone: string } | null;

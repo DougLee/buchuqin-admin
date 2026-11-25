@@ -360,8 +360,14 @@ onMounted(() => {
                 row.statusText || nightOrderStatus(row.status).text
               }}</ElTag>
               <ElTag v-if="row.afterSaleStatus === 'requested'" size="small" type="warning">待处理售后</ElTag>
+              <ElTag v-if="row.afterSaleOverdue" size="small" type="danger" style="margin-top: 4px">超24h未处理</ElTag>
               <ElTag v-else-if="row.afterSaleStatus === 'refund-processing'" size="small" type="warning">退款核对中</ElTag>
             </template>
+          </ElTableColumn>
+          <ElTableColumn label="售后处理人" width="110">
+            <template #default="{ row }">{{
+              row.afterSaleOperatorName || (row.afterSaleStatus === "requested" ? (row.afterSaleOverdue ? "已升级平台" : "待楼长处理") : "—")
+            }}</template>
           </ElTableColumn>
           <ElTableColumn label="营业日" width="100" prop="businessDate" />
           <ElTableColumn label="下单时间" min-width="150">
