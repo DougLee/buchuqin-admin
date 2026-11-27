@@ -183,6 +183,11 @@
             prop="availableStock"
             label="可售库存"
             sortable="custom"
+          /><ElTableColumn
+            v-if="!official"
+            prop="sales"
+            label="已售"
+            sortable="custom"
           /><ElTableColumn label="状态"
             ><template #default="{ row }"
               ><ElTag :type="row.status === 'on-sale' ? 'success' : 'info'">{{
@@ -549,7 +554,7 @@ async function exportProducts() {
       categories.value.find((c) => c.id === id)?.name ?? id ?? "";
     const header = official.value
       ? ["商品名", "条码", "分类", "售价", "建议零售价", "进货价", "批发价", "可售库存", "状态"]
-      : ["库位", "商品名", "条码", "分类", "售价", "建议零售价", "批发价", "本地进货价", "采购来源", "可售库存", "状态"];
+      : ["库位", "商品名", "条码", "分类", "售价", "建议零售价", "批发价", "本地进货价", "采购来源", "可售库存", "已售", "状态"];
     const rows = all.map((p) =>
       official.value
         ? [
@@ -574,6 +579,7 @@ async function exportProducts() {
             money(p.localPurchasePrice),
             modeText(p.procurementMode),
             String(p.availableStock ?? p.stock ?? 0),
+            String(p.sales ?? 0),
             statusText(p.status),
           ],
     );
