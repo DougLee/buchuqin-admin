@@ -95,28 +95,16 @@ async function loadManagers() {
   if (managers.value.length || !detail.value) return;
   managersLoading.value = true;
   try {
-    // 后端 assertManager：本校区在职 building-manager / intern-building-manager
-    const [m1, m2] = await Promise.all([
-      fetchAllPages(
-        (q) =>
-          api.staff({
-            ...q,
-            role: "building-manager",
-            campusId: detail.value!.campusId,
-          }),
-        100,
-      ),
-      fetchAllPages(
-        (q) =>
-          api.staff({
-            ...q,
-            role: "intern-building-manager",
-            campusId: detail.value!.campusId,
-          }),
-        100,
-      ),
-    ]);
-    managers.value = [...m1, ...m2];
+    // 后端 assertManager：仅本校区在职正式楼长（building-manager）可经营夜宵店
+    managers.value = await fetchAllPages(
+      (q) =>
+        api.staff({
+          ...q,
+          role: "building-manager",
+          campusId: detail.value!.campusId,
+        }),
+      100,
+    );
   } catch (e) {
     notify(e instanceof Error ? e.message : "楼长列表加载失败", "error");
   } finally {
@@ -431,6 +419,40 @@ async function submitDeduct() {
     notify(e instanceof Error ? e.message : "扣除失败", "error");
   } finally {
     deductSaving.value = false;
+  }
+}
+/* ---------- IKY6QE 追加：押金补录（线下收款补录/运营赠送） ---------- */
+const addOpen = ref(false);
+const addForm = reactive({ amount: 0, reason: "" });
+const addSaving = ref(false);
+function openAdd() {
+  addForm.amount = 0;
+  addForm.reason = "";
+  addOpen.value = true;
+}
+async function submitAdd() {
+  const amount = yuanToFen(addForm.amount);
+  if (!(amount >= 1)) return notify("补录金额必须大于 0", "error");
+  if (!addForm.reason.trim()) return notify("请填写补录原因（留痕）", "error");
+  try {
+    await ElMessageBox.confirm(
+      `补录押金 ¥${fenToYuan(amount)} 将即时增加押金余额（押金=进货额度），并写入流水留痕。确认补录？`,
+      "押金补录",
+      { type: "info", confirmButtonText: "确认补录", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  addSaving.value = true;
+  try {
+    await api.nightAddDeposit(storeId, amount, addForm.reason.trim());
+    notify("押金已补录");
+    addOpen.value = false;
+    await load();
+  } catch (e) {
+    notify(e instanceof Error ? e.message : "补录失败", "error");
+  } finally {
+    addSaving.value = false;
   }
 }
 /** 押金退还（退出清算原路退；押金/清算两处共用）。 */
@@ -850,6 +872,13 @@ const saving = ref(false);
               >判责扣除</ElButton
             >
             <ElButton
+              v-if="hasPerm('POST /admin/night/stores/:id/deposit/add')"
+              type="success"
+              plain
+              @click="openAdd"
+              >补录押金</ElButton
+            >
+            <ElButton
               v-if="hasPerm('POST /admin/night/stores/:id/deposit/refund')"
               type="warning"
               plain
@@ -1262,6 +1291,42 @@ const saving = ref(false);
         <ElButton @click="deductOpen = false">取消</ElButton>
         <ElButton type="danger" :loading="deductSaving" @click="submitDeduct"
           >确认扣除</ElButton
+        >
+      </template>
+    </ElDialog>
+
+    <!-- IKY6QE 追加：押金补录 -->
+    <ElDialog
+      v-model="addOpen"
+      title="押金补录"
+      width="min(480px, calc(100vw - 32px))"
+      align-center
+      :close-on-click-modal="false"
+    >
+      <p class="form-hint">
+        当前押金余额 ¥{{ fenToYuan(depositBalance) }}（补录后即时增加进货额度）
+      </p>
+      <ElForm label-position="top">
+        <ElFormItem label="补录金额（元）">
+          <ElInputNumber
+            v-model="addForm.amount"
+            :min="0.01"
+            :precision="2"
+          />
+        </ElFormItem>
+        <ElFormItem label="补录原因（留痕）">
+          <ElInput
+            v-model="addForm.reason"
+            maxlength="200"
+            show-word-limit
+            placeholder="如：线下收款补录 / 运营赠送额度"
+          />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <ElButton @click="addOpen = false">取消</ElButton>
+        <ElButton type="primary" :loading="addSaving" @click="submitAdd"
+          >确认补录</ElButton
         >
       </template>
     </ElDialog>

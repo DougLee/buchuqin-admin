@@ -2000,6 +2000,12 @@ export const api = {
       `/admin/night/stores/${storeId}/deposit/deduct`,
       { method: "POST", body: JSON.stringify({ amount, reason }) },
     ),
+  /** IKY6QE 追加：押金补录（线下收款补录/运营赠送，写 deposit 流水）。 */
+  nightAddDeposit: (storeId: string, amount: number, reason: string) =>
+    request<{ txnId: string; deposit: number }>(
+      `/admin/night/stores/${storeId}/deposit/add`,
+      { method: "POST", body: JSON.stringify({ amount, reason }) },
+    ),
   /** 押金退还（amount 缺省=全额退当前余额；原路退款分配）。 */
   nightRefundDeposit: (storeId: string, requestId: string, amount?: number, reason?: string) =>
     request<NightDepositRefundView>(`/admin/night/stores/${storeId}/deposit/refund`, {

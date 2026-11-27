@@ -275,7 +275,7 @@ export function hasPlatformPerm(pattern: string): boolean {
 }
 export function hasPerm(pattern: string, grants = patterns.value): boolean {
   if (pattern.includes('/admin/night/') && !nightEnabled.value) {
-    const history = /^(GET \/admin\/night\/(stores(?:\/[^/]+(?:\/(stock-txns|deposit-txns|deposit-refunds|liquidation))?)?|orders(?:\/[^/]+)?|stock-orders|inventory-reports|settlements)|POST \/admin\/night\/(stock-orders\/[^/]+\/(review|ship|cancel)|inventory-reports\/[^/]+\/review|orders\/[^/]+\/(refund(?:\/sync)?|after-sale\/reject)|stores\/[^/]+\/deposit\/(deduct|refund|refunds\/[^/]+\/sync)|settlements\/(settle|[^/]+\/pay)))$/.test(pattern);
+    const history = /^(GET \/admin\/night\/(stores(?:\/[^/]+(?:\/(stock-txns|deposit-txns|deposit-refunds|liquidation))?)?|orders(?:\/[^/]+)?|stock-orders|inventory-reports|settlements)|POST \/admin\/night\/(stock-orders\/[^/]+\/(review|ship|cancel)|inventory-reports\/[^/]+\/review|orders\/[^/]+\/(refund(?:\/sync)?|after-sale\/reject)|stores\/[^/]+\/deposit\/(deduct|refund|add|refunds\/[^/]+\/sync)|settlements\/(settle|[^/]+\/pay)))$/.test(pattern);
     if (!nightAccess.value.history || !history) return false;
   }
   if (isSuper.value) return true;
